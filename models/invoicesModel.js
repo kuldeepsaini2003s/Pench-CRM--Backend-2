@@ -10,8 +10,7 @@ const invoiceSchema = new mongoose.Schema(
     },
     customer: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Customer"
-
+      ref: "Customer",
     },
     totalAmount: {
       type: Number,
@@ -26,7 +25,7 @@ const invoiceSchema = new mongoose.Schema(
     note: {
       type: String,
     },
-    paymnetMethod: {
+    paymentMethod: {
       type: String,
       enum: ["Cash", "Card", "Online", "Other"],
       default: "Cash",
