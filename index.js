@@ -29,6 +29,7 @@ const DelhiveryBoyRoutes = require("./routes/delhiveryBoyRoutes");
 const bottleRoutes = require("./routes/bottleTransactionRoutes");
 const delhiverHistoryRoutes = require("./routes/delhiveryHistoryRoutes");
 const productRoutes = require("./routes/productRoutes");
+const CreateInvoiceRoutes = require("./routes/customInvoiceRoute");
 
 app.use("/admin", adminRoutes);
 app.use("/customer", coustomerRoutes);
@@ -36,6 +37,7 @@ app.use("/deliveryBoy", DelhiveryBoyRoutes);
 app.use("/bottle", bottleRoutes);
 app.use("/deliveryHistory", delhiverHistoryRoutes);
 app.use("/product", productRoutes);
+app.use("/invoice", CreateInvoiceRoutes);
 
 app.get("/", (req, res) => {
   res.send("we are Pench Milk");

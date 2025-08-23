@@ -10,12 +10,18 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    invoiceNumber: {
+      type: String,
+      unique: true,
+      required: true,
+    },
     invoiceDate: {
       type: Date,
-      required: true,
+      default: Date.now,
     },
     productType: {
       type: String,
+      enum: ["A2 Milk", "Curd", "Paneer"],
       required: true,
     },
     productSize: {
@@ -32,19 +38,21 @@ const invoiceSchema = new mongoose.Schema(
     },
     subscriptionPlan: {
       type: String,
+      enum: ["Monthly", "Weekly", "Daily"],
+      required: true,
     },
     paymentMode: {
       type: String,
       required: true,
-      enum: ["Cash", "Card", "UPI", "Bank Transfer"],
+      enum: ["Cash", "Online", "UPI"],
     },
     paymentStatus: {
       type: String,
       required: true,
-      enum: ["Pending", "Paid", "Failed"],
+      enum: ["Paid", "Unpaid"],
     },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Invoice", invoiceSchema);
+module.exports = mongoose.model("customInvoiceModel", invoiceSchema);
