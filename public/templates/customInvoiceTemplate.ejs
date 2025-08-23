@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Invoice Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-white text-black w-full min-h-screen p-4 sm:p-6 font-sans">
+    <div class="max-w-8xl mx-auto">
+      <!-- Header and Button Section -->
+      <div class="bg-white border-b border-black">
+        <div class="flex justify-between items-center mt-2 mb-2">
+          <!-- Logo -->
+          <div class="flex items-center gap-1">
+            <img src="/assets/pench-logo.png" alt="Logo" class="w-28" />
+          </div>
+
+          `
+        </div>
+      </div>
+      <!-- Invoice Header -->
+      <div class="flex items-center flex-col gap-4 mb-6">
+        <div class="pt-4">
+          <h2 class="text-4xl font-bold text-green-800">Invoice</h2>
+        </div>
+      </div>
+      <!-- Invoice Meta -->
+      <div class="flex flex-col sm:flex-row gap-4 text-sm mb-2">
+        <!-- Left Side -->
+        <div>
+          <p><%= invoice.invoiceNumber %></p>
+          <p>GST-No: 3215658686786767</p>
+        </div>
+        <!-- Right Side -->
+        <div class="ml-auto text-right">
+          <p>
+            <strong class="text-gray-500">Issue Date:</strong>
+            <%= formattedDate %>
+          </p>
+        </div>
+      </div>
+      <!-- Bill From / Bill To -->
+      <div
+        class="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-6 items-start text-gray-700 text-sm"
+      >
+        <div class="text-left">
+          <h3 class="text-lg font-semibold mb-1">Bill from:</h3>
+          <p>
+            17, S Ambazari Rd, Madhav Nagar,<br />
+            Nagpur 440010,<br />
+            Maharashtra
+          </p>
+        </div>
+        <div class="text-center">
+          <h3 class="text-lg font-semibold mb-1">Bill to:</h3>
+          <p><%= invoice.customerName %></p>
+        </div>
+      </div>
+      <!-- Items Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-sm">
+          <thead>
+            <tr class="bg-gray-200 font-semibold text-center">
+              <th class="p-2">Item</th>
+              <th class="p-2">Description</th>
+              <th class="p-2">Product Size</th>
+              <th class="p-2">Quantity</th>
+              <th class="p-2">Price(₹)</th>
+              <th class="p-2">Total(₹)</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white text-center">
+            <tr>
+              <td class="p-2"><%= invoice.productType || "milk" %></td>
+              <td class="p-2"><%= invoice.description || "N/A" %></td>
+              <td class="p-2"><%= invoice.productSize || "20" %></td>
+              <td class="p-2"><%= invoice.productQuantity || "2" %></td>
+              <td class="p-2"><%= invoice.price || "80" %></td>
+              <td class="p-2">
+                <%= invoice.total || (invoice.productQuantity * invoice.price)
+                %>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Footer Section -->
+      <div class="mt-2 border-t pt-2 text-sm">
+        <h3 class="text-lg font-semibold text-[#414141] mb-1">
+          Partial Payment
+          <span class="float-right font-semibold text-black">
+            ₹<%= invoice.partialPayment || 100 %>
+          </span>
+        </h3>
+        <h3 class="text-lg font-semibold text-[#414141]">
+          Subtotal
+          <span class="float-right font-bold text-black">
+            ₹<%= invoice.grandTotal %>
+          </span>
+        </h3>
+        <p class="mt-1">
+          Status:
+          <span class="text-green-600 font-semibold">
+            <%= invoice.paymentStatus %>
+          </span>
+        </p>
+        <p>
+          Payment: ₹<%= invoice.grandTotal %> Payment by <%= invoice.paymentMode
+          %>
+        </p>
+      </div>
+      <!-- Note Section -->
+      <div class="mt-2">
+        <label for="note" class="font-semibold block mb-1">Note:</label>
+        <textarea
+          id="note"
+          class="w-full border px-3 py-2 rounded-md border-[#000000]"
+          rows="3"
+          placeholder="Add Note..."
+        >
+ <%= invoice.note || "" %></textarea
+        >
+      </div>
+    </div>
+  </body>
+</html>
