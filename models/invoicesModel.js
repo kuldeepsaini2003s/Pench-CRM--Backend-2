@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+
 const invoiceSchema = new mongoose.Schema(
   {
     pdf: {
@@ -29,6 +30,9 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       enum: ["Cash", "Card", "Online", "Other"],
       default: "Cash",
+    },
+    issueDate: {
+      type: Date,
     },
     status: {
       type: String,
