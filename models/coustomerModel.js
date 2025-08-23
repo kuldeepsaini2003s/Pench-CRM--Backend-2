@@ -73,6 +73,11 @@ const customerSchema = new mongoose.Schema(
       },
     ],
 
+    absentDays : {
+      type: [Date],
+      default: [],
+    },
+
     deliveryBoy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "DeliveryBoy",
@@ -91,11 +96,11 @@ const customerSchema = new mongoose.Schema(
 );
 
 // ✅ Virtual populate for delivery history
-customerSchema.virtual("deliveryHistory", {
-  ref: "DeliveryHistory",
-  localField: "_id",
-  foreignField: "customer",
-});
+// customerSchema.virtual("deliveryHistory", {
+//   ref: "DeliveryHistory",
+//   localField: "_id",
+//   foreignField: "customer",
+// });
 
 customerSchema.set("toJSON", { virtuals: true });
 customerSchema.set("toObject", { virtuals: true });
