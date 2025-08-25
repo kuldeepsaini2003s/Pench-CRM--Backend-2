@@ -1,46 +1,7 @@
 
 const CustomerCustomOrder = require("../models/customerCustomOrder");
 
-exports.createOrder = async (req, res) => {
-  try {
-    const { customer, date , quantity, product, totalPrice, deliveryBoy } = req.body;
 
-    // Validate required fields
-    if (!customer || !quantity || !product || !totalPrice ||!date) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer, quantity, product, and totalPrice are required fields",
-      });
-    }
-
-    const newOrder = new CustomerCustomOrder({
-      customer,
-      date,
-      quantity,
-      product,
-      totalPrice,
-      deliveryBoy,
-    });
-
-    const savedOrder = await newOrder.save();
-    const populatedOrder = await CustomerCustomOrder.findById(savedOrder._id)
-      .populate("customer", "name phoneNumber address ")
-      .populate("product", "productName price size")
-      .populate("deliveryBoy", "name phone");
-
-    res.status(201).json({
-      success: true,
-      message: "Order created successfully",
-      data: populatedOrder,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error creating order",
-      error: error.message,
-    });
-  }
-};
 
 exports.getAllOrders = async (req, res) => {
   try {

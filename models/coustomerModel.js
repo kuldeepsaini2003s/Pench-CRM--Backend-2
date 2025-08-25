@@ -34,16 +34,23 @@ const customerSchema = new mongoose.Schema(
           ref: "Product",
           required: true,
         },
+        price: {
+          type: String,
+          required: true
+        },
+
         quantity: {
           type: Number,
           required: true,
           min: [1, "Quantity must be at least 1"],
         },
+
         subscriptionPlan: {
           type: String,
-          enum: ["Daily", "Weekly", "Monthly","None"],
+          enum: ["Monthly", "Daily", "Alternate Days"],
           required: true,
         },
+
         deliveryDays: {
           type: String,
           enum: [
@@ -74,7 +81,7 @@ const customerSchema = new mongoose.Schema(
       },
     ],
 
-    absentDays : {
+    absentDays: {
       type: [Date],
       default: [],
     },

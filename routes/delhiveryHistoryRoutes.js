@@ -8,6 +8,7 @@ const {
   updateDeliveryHistory,
   deleteDeliveryHistory,
   updateDeliveryStatus,
+  getTodayOrdersSummary
 } = require("../controllers/delhiveryHistoryController");
 
 // Create new delivery history
@@ -31,6 +32,7 @@ router.delete("/delete/:id", deleteDeliveryHistory);
 // update delhivery status payment all
 
 router.put("/updateDeliveryStatus", updateDeliveryStatus);
+
 
 // POST /api/delivery-history/update-status
 // {
@@ -65,4 +67,7 @@ router.put("/updateDeliveryStatus", updateDeliveryStatus);
 //   ]
 // }
 
+
+router.put("/today-summary", getTodayOrdersSummary);
+// today-summary?date=2023-12-25
 module.exports = router;

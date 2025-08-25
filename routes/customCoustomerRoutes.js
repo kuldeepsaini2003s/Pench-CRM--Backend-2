@@ -11,7 +11,7 @@ const {
 } = require("../controllers/customerCustomOrderController");
 
 // Basic CRUD routes
-router.post("/", createOrder);
+// router.post("/", createOrder);
 router.get("/", getAllOrders);
 // router.get("/stats", getOrderStats);
 router.get("/:id", getOrderById);
