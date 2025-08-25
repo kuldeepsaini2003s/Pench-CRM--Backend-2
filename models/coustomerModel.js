@@ -63,6 +63,7 @@ const customerSchema = new mongoose.Schema(
           type: Date,
           default: Date.now,
         },
+
         endDate: {
           type: Date,
         },
@@ -102,7 +103,7 @@ const customerSchema = new mongoose.Schema(
 //   foreignField: "customer",
 // });
 
-customerSchema.set("toJSON", { virtuals: true });
-customerSchema.set("toObject", { virtuals: true });
+// customerSchema.set("toJSON", { virtuals: true });
+// customerSchema.set("toObject", { virtuals: true });
 
 module.exports = mongoose.model("Customer", customerSchema);

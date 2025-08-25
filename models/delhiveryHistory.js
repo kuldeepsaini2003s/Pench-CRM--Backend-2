@@ -15,15 +15,34 @@ const deliveryHistorySchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
-    product: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      required: true,
-    },
-    quantityDelivered: {
-      type: Number,
-      default: 0,
-    },
+    products: [
+      {
+        product: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
+        quantity: {
+          type: Number,
+          required: true,
+          min: [1, "Quantity must be at least 1"],
+        },
+
+        totalPrice: {
+          type: Number,
+          required: true,
+        },
+        isDelivered: {
+          type: Boolean,
+          default: false,
+        },
+        status:{
+          type:String,
+          enum:["absent","delivered"]
+        }
+      },
+    ],
+
     totalPrice: {
       type: Number,
       required: true,
@@ -33,6 +52,28 @@ const deliveryHistorySchema = new mongoose.Schema(
       enum: ["Delivered", "Missed", "Pending"],
       default: "Pending",
     },
+    amountPaid: {
+      type: Number,
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "upi", "card"],
+    },
+
+    bottleIssued: [
+      {
+        size: { type: String, required: true }, // e.g. "500ml", "1L"
+        count: { type: Number, default: 0 }, // how many issued
+      },
+    ],
+
+    bottleReturn: [
+      {
+        size: { type: String, required: true }, // e.g. "500ml", "1L"
+        count: { type: Number, default: 0 }, // how many issued
+      },
+    ],
+
     remarks: {
       type: String,
     },

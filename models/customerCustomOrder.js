@@ -6,7 +6,7 @@ const customerCustomSchema = new mongoose.Schema(
       ref: "Customer",
       required: true,
     },
-      date: {
+    date: {
       type: Date,
       default: Date.now,
     },

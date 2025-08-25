@@ -1,5 +1,6 @@
+
 const mongoose = require("mongoose");
-const invoiceSchema = new mongoose.Schema(
+const paymentSchema = new mongoose.Schema(
   {
     pdf: {
       type: String,
@@ -23,11 +24,10 @@ const invoiceSchema = new mongoose.Schema(
     paidDate: {
       type: Date,
     },
-
     note: {
       type: String,
     },
-    paymnetMethod: {
+    paymentMethod: {
       type: String,
       enum: ["Cash", "Card", "Online", "Other"],
       default: "Cash",
@@ -40,4 +40,4 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Invoice", invoiceSchema);
+module.exports = mongoose.model("Payment", paymentSchema);

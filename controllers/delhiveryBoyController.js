@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 
 const mongoose = require("mongoose");
 const Customer = require("../models/coustomerModel");
+const CustomerCustomOrder = require("../models/customerCustomOrder");
 const {
   formatOrderResponse,
   shouldDeliverOnDate,
@@ -202,20 +203,28 @@ exports.getTodayOrders = async (req, res) => {
       .populate("products.product")
       .populate({
         path: "deliveryBoy",
-        select: "name phoneNumber email", // only fetch these fields
+        select: "name phoneNumber email",
       });
 
-    if (!customers || customers.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No customers found for this delivery boy",
-        data: [],
+    // Find custom orders for this delivery boy on the target date
+    const customOrders = await CustomerCustomOrder.find({
+      deliveryBoy: new mongoose.Types.ObjectId(deliveryBoyId),
+      date: {
+        $gte: new Date(targetDate.setHours(0, 0, 0, 0)),
+        $lt: new Date(targetDate.setHours(23, 59, 59, 999)),
+      },
+    })
+      .populate("customer", "name phoneNumber address userProfile gender")
+      .populate("product")
+      .populate({
+        path: "deliveryBoy",
+        select: "name phoneNumber email",
       });
-    }
 
-    // Format orders
-    const todayOrders = formatOrderResponse(
+    // Format subscription orders and custom orders
+    const formattedOrders = await formatOrderResponse(
       customers,
+      customOrders,
       targetDate,
       deliveryBoyId
     );
@@ -225,8 +234,11 @@ exports.getTodayOrders = async (req, res) => {
       message: `Orders for ${targetDate.toDateString()}`,
       data: {
         date: targetDate,
-        totalOrders: todayOrders.length,
-        orders: todayOrders,
+        totalOrders: formattedOrders.reduce(
+          (total, customer) => total + customer.orders.length,
+          0
+        ),
+        customers: formattedOrders,
       },
     });
   } catch (error) {
@@ -314,6 +326,22 @@ exports.getOrdersByDateRange = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching orders by date range:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+exports
+
+
+exports.getPayments = async (req, res) => {
+  try {
+
+  } catch (error) {
     res.status(500).json({
       success: false,
       message: "Internal server error",
