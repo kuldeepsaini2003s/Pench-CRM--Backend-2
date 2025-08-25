@@ -51,6 +51,10 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
       enum: ["Paid", "Unpaid"],
     },
+    pdfUrl: {
+      type: String,
+      required: false,
+    },
   },
   { timestamps: true }
 );

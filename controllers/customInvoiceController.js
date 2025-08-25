@@ -1,20 +1,10 @@
-const path = require("path");
-const ejs = require("ejs");
-const puppeteer = require("puppeteer");
 const Invoice = require("../models/custumInvoiceModel");
 const ErrorHandler = require("../utils/errorhendler");
 const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 const catchAsyncErrors = require("../middlewares/catchAsyncErrors");
+const { generateInvoicePDF } = require("../service/pdfService");
+const { uploadBufferToCloudinary } = require("../service/cloudinaryService");
 
-function formatDate(date) {
-  const d = new Date(date);
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const year = d.getFullYear();
-  return `${day}/${month}/${year}`;
-}
-
-// Create Invoice & Generate PDF
 exports.createInvoice = catchAsyncErrors(async (req, res, next) => {
   const {
     customerName,
@@ -56,32 +46,21 @@ exports.createInvoice = catchAsyncErrors(async (req, res, next) => {
     invoiceDate: new Date(),
   });
 
-  const templatePath = path.join(
-    __dirname,
-    "../public/templates/customInvoiceTemplate.ejs"
+  // ✅ PDF generate
+  const pdfBuffer = await generateInvoicePDF(invoice);
+
+  // ✅ Upload Cloudinary
+  const result = await uploadBufferToCloudinary(
+    pdfBuffer,
+    `invoice-${invoiceNumber}`
   );
 
-  const formattedDate = formatDate(invoice.invoiceDate);
+  invoice.pdfUrl = result.secure_url;
+  await invoice.save();
 
-  const html = await ejs.renderFile(templatePath, { invoice, formattedDate });
-
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
-
-  await page.setContent(html, { waitUntil: "networkidle0" });
-
-  const pdfBuffer = await page.pdf({
-    format: "A4",
-    printBackground: true,
+  res.status(201).json({
+    success: true,
+    message: "Invoice created successfully",
+    invoice,
   });
-
-  await browser.close();
-
-  res.set({
-    "Content-Type": "application/pdf",
-    "Content-Disposition": `attachment; filename=invoice-${invoiceNumber}.pdf`,
-    "Content-Length": pdfBuffer.length,
-  });
-
-  res.send(pdfBuffer);
 });
