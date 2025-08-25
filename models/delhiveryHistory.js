@@ -22,6 +22,9 @@ const deliveryHistorySchema = new mongoose.Schema(
           ref: "Product",
           required: true,
         },
+        price:{
+      type:String
+    },
         quantity: {
           type: Number,
           required: true,

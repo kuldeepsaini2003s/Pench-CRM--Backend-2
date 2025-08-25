@@ -106,7 +106,13 @@ exports.getAllCustomers = async (req, res) => {
     if (req.query.phoneNumber) {
       filter.phoneNumber = { $regex: req.query.phoneNumber };
     }
-
+ if (req.query.search) {
+      filter.$or = [
+        { name: { $regex: req.query.search, $options: "i" } },
+        { phoneNumber: { $regex: req.query.search, $options: "i" } },
+        { address: { $regex: req.query.search, $options: "i" } }
+      ];
+    }
     // Product-wise filtering
     if (req.query.product) {
       filter["products.product"] = req.query.product;
@@ -296,7 +302,7 @@ exports.makeAbsentDays = async (req, res) => {
   try {
     const { id } = req.params;
     const { absentDays } = req.body;
-
+console.log("Absent Days Received:", absentDays);
     // Validate input
     if (!absentDays || !Array.isArray(absentDays)) {
       return res.status(400).json({
@@ -319,7 +325,10 @@ exports.makeAbsentDays = async (req, res) => {
 
     for (const dateStr of absentDays) {
       try {
+        // Better date parsing with validation
         const date = new Date(dateStr);
+
+        // Check if date is valid
         if (isNaN(date.getTime())) {
           return res.status(400).json({
             success: false,
@@ -327,16 +336,38 @@ exports.makeAbsentDays = async (req, res) => {
           });
         }
 
-        // Normalize date to remove time component
-        date.setHours(0, 0, 0, 0);
-        formattedAbsentDays.push(date);
+        // Additional validation to ensure it's a proper date string
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(dateStr)) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid date format: ${dateStr}. Use ISO format (YYYY-MM-DD)`,
+          });
+        }
 
-        // Fetch custom orders for this date
+        // Check if date components are valid
+        const [year, month, day] = dateStr.split('-').map(Number);
+        if (month < 1 || month > 12 || day < 1 || day > 31) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid date: ${dateStr}`,
+          });
+        }
+
+        // Normalize date to remove time component (UTC)
+        const normalizedDate = new Date(Date.UTC(year, month - 1, day));
+
+        formattedAbsentDays.push(normalizedDate);
+
+        // Fetch custom orders for this date (using UTC dates)
+        const startOfDay = new Date(Date.UTC(year, month - 1, day));
+        const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+
         const customOrders = await CustomerCustomOrder.find({
           customer: id,
           date: {
-            $gte: new Date(date.setHours(0, 0, 0, 0)),
-            $lt: new Date(date.setHours(23, 59, 59, 999)),
+            $gte: startOfDay,
+            $lt: endOfDay,
           },
         }).populate("product");
 
@@ -345,6 +376,7 @@ exports.makeAbsentDays = async (req, res) => {
           // Subscription products
           ...customer.products.map((product) => ({
             product: product.product,
+            price:product.price,
             quantity: product.quantity,
             isDelivered: false,
             status: "absent",
@@ -355,6 +387,7 @@ exports.makeAbsentDays = async (req, res) => {
           ...customOrders.map((customOrder) => ({
             product: customOrder.product,
             quantity: customOrder.quantity,
+            price:customOrder.price,
             isDelivered: false,
             status: "absent",
             totalPrice: customOrder.totalPrice,
@@ -366,7 +399,9 @@ exports.makeAbsentDays = async (req, res) => {
         // Create delivery history entry for each absent day
         const historyEntry = await DeliveryHistory.create({
           customer: id,
-          date: date,
+          date: normalizedDate,
+          // price: allProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0),
+          totalPrice: allProducts.reduce((sum, item) => sum + (item.totalPrice || 0), 0),
           status: "Missed",
           remarks: "Customer absent",
           deliveryBoy: customer.deliveryBoy,
@@ -378,23 +413,34 @@ exports.makeAbsentDays = async (req, res) => {
         console.error(`Error processing date ${dateStr}:`, error);
         return res.status(400).json({
           success: false,
-          error: `Invalid date: ${dateStr}`,
+          error: `Error processing date: ${dateStr}`,
         });
       }
     }
 
     // Update customer's absent days (avoid duplicates)
     const uniqueAbsentDays = [
-      ...new Set([...customer.absentDays, ...formattedAbsentDays]),
-    ];
-    customer.absentDays = uniqueAbsentDays;
+      ...new Set([
+        ...customer.absentDays.map(d => d.toISOString().split('T')[0]),
+        ...formattedAbsentDays.map(d => d.toISOString().split('T')[0])
+      ])
+    ].map(dateStr => {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      return new Date(Date.UTC(year, month - 1, day));
+    });
 
+    customer.absentDays = uniqueAbsentDays;
     await customer.save();
 
     res.json({
       success: true,
       data: {
-        customer: customer,
+        customer: {
+          _id: customer._id,
+          name: customer.name,
+          phoneNumber: customer.phoneNumber,
+          absentDays: customer.absentDays,
+        },
         deliveryHistory: deliveryHistoryEntries,
       },
       message: `Marked ${formattedAbsentDays.length} days as absent and created delivery history entries`,
@@ -410,7 +456,7 @@ exports.makeAbsentDays = async (req, res) => {
 
 exports.createCustomOrder = async (req, res) => {
   try {
-    const { customer, date, quantity, product, totalPrice, deliveryBoy } =
+    const { customer, date, quantity, product,price, totalPrice, deliveryBoy } =
       req.body;
 
     // Validate required fields
@@ -426,6 +472,7 @@ exports.createCustomOrder = async (req, res) => {
       customer,
       date,
       quantity,
+      price,
       product,
       totalPrice,
       deliveryBoy,

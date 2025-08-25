@@ -8,8 +8,8 @@ router.get("/getAllCustomers", customerController.getAllCustomers);
 router.get("/getCustomerById/:id", customerController.getCustomerById);
 router.put("/update/:id", customerController.updateCustomer);
 router.delete("/delete/:id", customerController.deleteCustomer);
-router.delete("/makeAbsentDays/:id", customerController.makeAbsentDays);
-router.delete("/makeCustomOrders", customerController.createCustomOrder);
+router.post("/makeAbsentDays/:id", customerController.makeAbsentDays);
+router.post("/makeCustomOrders", customerController.createCustomOrder);
 
 // Delivery history
 // router.post("/:customerId/delivery-history", customerController.addDeliveryHistory);
