@@ -14,33 +14,30 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
     limit = 10,
   } = req.query;
 
-  // 🔹 Query object banate hain
+
   let query = {};
 
   if (name) {
-    query.name = { $regex: name, $options: "i" }; // case-insensitive search
+    query.name = { $regex: name, $options: "i" };
   }
 
   if (phoneNumber) {
     query.phoneNumber = { $regex: phoneNumber, $options: "i" };
   }
 
-  // Status filter (Unpaid, Paid, Partially Paid) - Derived logic
   if (status) {
     query["products.status"] = status;
   }
 
-  // Date range filter
+
   if (startDate && endDate) {
     query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
   }
 
-  // 🔹 Pagination
   page = parseInt(page);
   limit = parseInt(limit);
   const skip = (page - 1) * limit;
 
-  // 🔹 Fetch customers
   const customers = await Customer.find(query)
     .select("name phoneNumber products createdAt")
     .sort(sort)
@@ -51,7 +48,7 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler("No customers found", 404));
   }
 
-  // 🔹 Format customers
+
   const formattedCustomers = customers.map((cust) => {
     const firstProduct = cust.products[0];
     return {
@@ -68,7 +65,7 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
     };
   });
 
-  // 🔹 Total Count for Pagination
+
   const total = await Customer.countDocuments(query);
 
   res.status(200).json({
@@ -80,3 +77,115 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
     customers: formattedCustomers,
   });
 });
+
+
+
+
+
+
+//  perticular customer invoices
+
+
+
+const Invoice = require("../models/invoicesModel");
+const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
+
+// Helper to format date as dd/mm/yyyy
+function formatDate(date) {
+  const d = new Date(date);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+exports.generateInvoiceForCustomer = async (req, res, next) => {
+  try {
+    const { customerId } = req.body;
+
+    if (!customerId) {
+      return next(new ErrorHandler("Customer ID is required", 400));
+    }
+
+    // Fetch customer with subscription products
+    const customer = await Customer.findById(customerId).populate("products.product");
+    if (!customer) {
+      return next(new ErrorHandler("Customer not found", 404));
+    }
+
+    if (!customer.products || customer.products.length === 0) {
+      return next(new ErrorHandler("Customer has no products", 404));
+    }
+
+    // Hardcoded default values
+    const DairyAddress = `17, S Ambazari Rd, Madhav Nagar,<br />Nagpur 440010,<br />Maharashtra`;
+    const defaultGST = "3215658686786767";
+
+    // Aggregate product data
+    const productMap = {};
+    customer.products.forEach((item) => {
+      const p = item.product;
+      const key = p.productCode;
+
+      if (!productMap[key]) {
+        productMap[key] = {
+          productName: p.productName,
+          productCode: p.productCode,
+          description: p.description,
+          size: p.size,
+          quantity: item.quantity || 0,
+          price: p.price,
+          total: (item.quantity || 0) * p.price,
+        };
+      } else {
+        productMap[key].quantity += item.quantity || 0;
+        productMap[key].total += (item.quantity || 0) * p.price;
+      }
+    });
+
+    const productsArray = Object.values(productMap);
+
+    // Calculate subtotal & totalAmount
+    const subtotal = productsArray.reduce((acc, p) => acc + p.total, 0);
+    const totalAmount = subtotal;
+
+    // Generate invoice number
+    const invoiceNumber = generateInvoiceNumber();
+
+    // Create invoice in DB
+    await Invoice.create({
+      invoiceNumber,
+      customer: customer._id,
+      totalAmount,
+      subTotal: subtotal,
+      issueDate: new Date(),
+      status: "Unpaid",
+    });
+
+    // Prepare payload for frontend
+    const payload = {
+      invoiceNumber,
+      customerName: customer.name,
+      customerAddress: customer.address,
+      DairyAddress,
+      GST: defaultGST,
+      issueDate: formatDate(new Date()),
+      products: productsArray,
+      subtotal,
+      totalAmount,
+      status: "Unpaid",
+    };
+
+    res.status(200).json({
+      success: true,
+      invoice: payload,
+    });
+  } catch (err) {
+    next(
+      err instanceof Error
+        ? err
+        : new ErrorHandler(err.message || "Something went wrong", 500)
+    );
+  }
+};
+

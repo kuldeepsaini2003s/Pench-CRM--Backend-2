@@ -4,7 +4,6 @@ const invoiceSchema = new mongoose.Schema(
   {
     pdf: {
       type: String,
-      required: true,
     },
     invoiceNumber: {
       type: String,
@@ -13,19 +12,32 @@ const invoiceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
     },
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+    },
+    customerOrder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerOrder",
+    },
+
     totalAmount: {
       type: Number,
     },
-    paidAmount: {
+    subTotal: {
       type: Number,
     },
 
-    paidDate: {
-      type: Date,
-    },
-    note: {
-      type: String,
-    },
+    // paidAmount: {
+    //   type: Number,
+    // },
+
+    // paidDate: {
+    //   type: Date,
+    // },
+    // note: {
+    //   type: String,
+    // },
     paymentMethod: {
       type: String,
       enum: ["Cash", "Card", "Online", "Other"],

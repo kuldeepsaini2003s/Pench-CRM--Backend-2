@@ -27,6 +27,7 @@ const invoiceSchema = new mongoose.Schema(
       type: [String],
       required: true,
     },
+
     productQuantity: {
       type: Number,
       required: true,
