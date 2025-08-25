@@ -9,6 +9,7 @@ router.get("/:id", customerController.getCustomerById);
 router.put("/:id", customerController.updateCustomer);
 router.delete("/:id", customerController.deleteCustomer);
 
+
 // Delivery history
 // router.post("/:customerId/delivery-history", customerController.addDeliveryHistory);
 

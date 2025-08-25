@@ -24,9 +24,8 @@ const invoiceSchema = new mongoose.Schema(
       required: [true, "Product name is required"],
     },
     productSize: {
-      type: String,
+      type: [String],
       required: true,
-      enum: ["250gm", "500gm", "1kg", "1/2ltr", "1ltr", "1/4ltr"], // allowed sizes
     },
     productQuantity: {
       type: Number,

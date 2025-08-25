@@ -46,10 +46,10 @@ exports.createInvoice = catchAsyncErrors(async (req, res, next) => {
     invoiceDate: new Date(),
   });
 
-  // ✅ PDF generate
+  //  PDF generate
   const pdfBuffer = await generateInvoicePDF(invoice);
 
-  // ✅ Upload Cloudinary
+  //  Upload Cloudinary
   const result = await uploadBufferToCloudinary(
     pdfBuffer,
     `invoice-${invoiceNumber}`
