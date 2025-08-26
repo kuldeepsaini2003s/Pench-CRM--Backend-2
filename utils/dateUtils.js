@@ -1,7 +1,4 @@
 function isSameDay(date1, date2) {
-
-  // Convert both dates to local date strings for comparison
-
   return date1.toDateString() === date2.toDateString();
 }
 
@@ -9,35 +6,19 @@ const Product = require("../models/productModel");
 
 function isWeekday(date) {
   const day = date.getDay();
-
-  return day >= 1 && day <= 5; // Monday to Friday
-
   return day >= 1 && day <= 5;
-
 }
 
 function isWeekend(date) {
   const day = date.getDay();
-
-  return day === 0 || day === 6; // Saturday or Sunday
-}
-
-function normalizeDate(date) {
-  // Create a new date object and set time to midnight in local timezone
-
   return day === 0 || day === 6;
 }
 
 function normalizeDate(date) {
-
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
   return normalized;
 }
-
-
-function shouldDeliverOnDate(product, targetDate) {
-  console.log(product, "prodyc");
 
 function isAbsentDay(customer, targetDate) {
   if (!customer.absentDays || !Array.isArray(customer.absentDays)) {
@@ -56,51 +37,11 @@ function shouldDeliverOnDate(customer, product, targetDate) {
     return false;
   }
 
-
   const startDate = normalizeDate(product.startDate);
   const endDate = normalizeDate(product.endDate);
   const normalizedTargetDate = normalizeDate(targetDate);
 
   // Check if within subscription period
-
-  if (normalizedTargetDate < startDate || normalizedTargetDate > endDate)
-    return false;
-
-  switch (product.deliveryDays) {
-    case "Daily":
-      return true;
-
-    case "Alternate Days":
-      // Calculate days difference from start date
-      const daysDiff = Math.floor(
-        (normalizedTargetDate - startDate) / (1000 * 60 * 60 * 24)
-      );
-      return daysDiff % 2 === 0;
-
-    case "Monday to Friday":
-      return isWeekday(normalizedTargetDate);
-
-    case "Weekends":
-      return isWeekend(normalizedTargetDate);
-
-    case "Custom":
-      if (
-        !product.customDeliveryDates ||
-        product.customDeliveryDates.length === 0
-      ) {
-        return false;
-      }
-
-      return product.customDeliveryDates.some((customDate) => {
-        try {
-          const customDateObj = normalizeDate(customDate);
-          return isSameDay(customDateObj, normalizedTargetDate);
-        } catch (error) {
-          console.error("Error parsing custom delivery date:", error);
-          return false;
-        }
-      });
-
   if (normalizedTargetDate < startDate || normalizedTargetDate > endDate) {
     return false;
   }
@@ -131,50 +72,10 @@ console.log(normalizedTargetDate,"normalizedTargetDate")
     //   // Weekends subscription (Saturday-Sunday)
     //   return isWeekend(normalizedTargetDate);
 
-
     default:
       return false;
   }
 }
-
-
-function formatOrderResponse(customers, targetDate, deliveryBoyId) {
-  const orders = [];
-  const normalizedTargetDate = normalizeDate(targetDate);
-  console.log("Normalized Target Date:", normalizedTargetDate);
-  console.log("customers", customers);
-
-  for (const customer of customers) {
-    // Check if customer has products array
-    if (!customer.products || !Array.isArray(customer.products)) {
-      continue;
-    }
-
-    for (const product of customer.products) {
-      console.log(product, "product");
-      // Check if product has required fields and is assigned to this delivery boy
-      if (!product || !product.product) {
-        continue;
-      }
-      console.log(product, "product1");
-      try {
-        if (shouldDeliverOnDate(product, normalizedTargetDate)) {
-          orders.push({
-            orderId: product._id,
-            customer: {
-              _id: customer._id,
-              name: customer.name || "N/A",
-              phoneNumber: customer.phoneNumber || "N/A",
-              address: customer.address || "N/A",
-              userProfile: customer.userProfile || null,
-              gender: customer.gender || "N/A",
-            },
-            product: {
-              _id: product.product._id,
-              name: product.product.productName || "Unknown Product",
-              description: product.product.description || "",
-              quantity: product.quantity || 0,
-              price: product.product.price || 0,
 
 function checkDeliveryPattern(product, targetDate, startDate) {
   switch (product.deliveryDays) {
@@ -327,7 +228,6 @@ console.log(customer,"customer")
               quantity: product.quantity || 0,
               price: product.price || 0,
               isMilkProduct: productInfo.isMilkProduct || false
-
             },
             subscription: {
               plan: product.subscriptionPlan || "N/A",
@@ -341,26 +241,10 @@ console.log(customer,"customer")
               amountPaid: product.amountPaidTillDate || 0,
               amountDue: product.amountDue || 0,
             },
-
-            deliveryInfo: {
-              deliveryBoy: customer.deliveryBoy.name,
-              deliveryDate: normalizedTargetDate.toISOString().split("T")[0],
-              mobile: customer.phoneNumber.name, // YYYY-MM-DD format
-            },
-
             timestamps: {
               createdAt: product.createdAt,
               updatedAt: product.updatedAt,
             },
-
-          });
-        }
-      } catch (error) {
-        console.error("Error processing product:", error);
-        // Continue with other products instead of failing completely
-        continue;
-      }
-
           };
 
           // Calculate bottle requirements for milk products
@@ -406,12 +290,7 @@ console.log(customer,"customer")
   for (const customOrder of customOrders) {
     if (!customOrder.customer || !customOrder.product) {
       continue;
-
     }
-  }
-
-
-  return orders;
 
     const customerId = customOrder.customer._id.toString();
     const productId = customOrder.product._id.toString();
@@ -514,30 +393,14 @@ function isProductMilk(productName) {
 function calculateBottlesRequired(size, quantity) {
   // 1 bottle per unit for all milk sizes
   return quantity || 0;
-
 }
-
-const formatDate = (date) => {
-  const d = new Date(date);
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const year = d.getFullYear();
-  return `${day}/${month}/${year}`;
-};
 
 module.exports = {
   isSameDay,
   isWeekday,
   isWeekend,
   normalizeDate,
-
-  shouldDeliverOnDate,
-  formatOrderResponse,
-  formatDate,
-};
-
   isAbsentDay,
   shouldDeliverOnDate,
   formatOrderResponse,
 };
-
