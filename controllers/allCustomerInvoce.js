@@ -4,6 +4,7 @@ const catchAsyncErrors = require("../middlewares/catchAsyncErrors");
 const Invoice = require("../models/invoicesModel");
 const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 const { formatDate } = require("../utils/dateUtils");
+const { processCustomerInvoice } = require("../service/invoiceService");
 
 exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
   let {
@@ -168,3 +169,94 @@ exports.generateInvoiceForCustomer = async (req, res, next) => {
     );
   }
 };
+
+exports.generateMonthlyInvoices = async (req, res, next) => {
+  try {
+    // 🔹 Get all customers
+    const customers = await Customer.find().populate("products.product");
+
+    if (!customers || customers.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "No customers found" });
+    }
+
+    let results = [];
+    for (const customer of customers) {
+      const invoice = await processCustomerInvoice(customer);
+
+      // 🔹 Send to WhatsApp (dummy function for now)
+      await sendInvoiceOnWhatsApp(customer.phoneNumber, invoice.pdf);
+
+      results.push({ customer: customer.name, pdfUrl: invoice.pdf });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Monthly invoices generated and sent via WhatsApp",
+      results,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// exports.bulkSendInvoices = catchAsync(async (req, res, next) => {
+//   const { customerIds } = req.body;
+
+//   if (!Array.isArray(customerIds) || customerIds.length === 0) {
+//     return next(new ErrorHandler("Customer IDs are required", 400));
+//   }
+
+//   const invoices = await Invoice.find({
+//     customer: { $in: customerIds },
+//   }).populate("customer", "name phoneNumber");
+
+//   if (!invoices || invoices.length === 0) {
+//     return next(new ErrorHandler("No invoices found for given customers", 404));
+//   }
+
+//   const results = await Promise.allSettled(
+//     invoices.map(async (invoice) => {
+//       if (!invoice.customer?.phoneNumber) {
+//         throw new Error(
+//           `Customer ${invoice.customer?.name || ""} has no phone number`
+//         );
+//       }
+
+//       const payload = {
+//         messaging_product: "whatsapp",
+//         to: invoice.customer.phoneNumber,
+//         type: "document",
+//         document: {
+//           link: invoice.pdf,
+//           caption: `This is your one month schema.\nInvoice No: ${invoice.invoiceNumber}`,
+//           filename: `${invoice.customer.name}-invoice.pdf`,
+//         },
+//       };
+
+//       const resp = await axios.post(
+//         `${WHATSAPP_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
+//         payload,
+//         {
+//           headers: {
+//             Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+//             "Content-Type": "application/json",
+//           },
+//         }
+//       );
+
+//       return {
+//         customer: invoice.customer.name,
+//         status: "sent",
+//         data: resp.data,
+//       };
+//     })
+//   );
+
+//   res.status(200).json({
+//     success: true,
+//     message: "Bulk invoices processed",
+//     results,
+//   });
+// });
