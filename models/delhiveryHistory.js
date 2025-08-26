@@ -22,9 +22,9 @@ const deliveryHistorySchema = new mongoose.Schema(
           ref: "Product",
           required: true,
         },
-        price:{
-      type:String
-    },
+        price: {
+          type: String,
+        },
         quantity: {
           type: Number,
           required: true,
@@ -39,10 +39,10 @@ const deliveryHistorySchema = new mongoose.Schema(
           type: Boolean,
           default: false,
         },
-        status:{
-          type:String,
-          enum:["absent","delivered"]
-        }
+        status: {
+          type: String,
+          enum: ["absent", "delivered"],
+        },
       },
     ],
 
@@ -60,7 +60,8 @@ const deliveryHistorySchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["cash", "upi", "card"],
+       enum: ["Cash", "Card", "Online", "Other"],
+        default: "Other",
     },
 
     bottleIssued: [

@@ -2,7 +2,7 @@ const DeliveryHistory = require("../models/delhiveryHistory");
 const Customer = require("../models/coustomerModel");
 const DeliveryBoy = require("../models/delhiveryBoyModel");
 const Payment = require("../models/paymentModel");
-
+const mongoose = require("mongoose")
 // ➡️ Create a new delivery history entry
 exports.createDeliveryHistory = async (req, res) => {
   try {
@@ -72,16 +72,159 @@ exports.getAllDeliveries = async (req, res) => {
 exports.getDeliveriesByCustomer = async (req, res) => {
   try {
     const { customerId } = req.params;
-    const deliveries = await DeliveryHistory.find({ customer: customerId })
+    const {
+      fromDate,
+      toDate,
+      status,
+      page = 1,
+      limit = 10,
+      sortBy = "date",
+      sortOrder = "desc"
+    } = req.query;
+
+    // Validate customer ID
+    if (!mongoose.Types.ObjectId.isValid(customerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid customer ID format",
+      });
+    }
+
+    // Build filter object
+    const filter = { customer: customerId };
+
+    // Date range filtering
+    if (fromDate || toDate) {
+      filter.date = {};
+
+      if (fromDate) {
+        const from = new Date(fromDate);
+        if (isNaN(from.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid fromDate format. Use YYYY-MM-DD",
+          });
+        }
+        from.setHours(0, 0, 0, 0);
+        filter.date.$gte = from;
+      }
+
+      if (toDate) {
+        const to = new Date(toDate);
+        if (isNaN(to.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid toDate format. Use YYYY-MM-DD",
+          });
+        }
+        to.setHours(23, 59, 59, 999);
+        filter.date.$lte = to;
+      }
+    }
+
+    // Status filtering
+    if (status) {
+      if (!["Delivered", "Missed", "Pending"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid status. Use: Delivered, Missed, or Pending",
+        });
+      }
+      filter.status = status;
+    }
+
+    // Pagination
+    const pageNumber = parseInt(page);
+    const pageSize = parseInt(limit);
+    const skip = (pageNumber - 1) * pageSize;
+
+    // Sorting
+    const sort = {};
+    const validSortFields = ["date", "createdAt", "totalPrice", "status"];
+    if (validSortFields.includes(sortBy)) {
+      sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+    } else {
+      sort.date = -1; // Default sort by date descending
+    }
+
+    // Execute query with pagination
+    const deliveries = await DeliveryHistory.find(filter)
       .populate("customer", "name phoneNumber address")
       .populate("deliveryBoy", "name phoneNumber area")
-      .populate("product", "name price size");
+      .populate("products.product", "productName price size productType")
+      .sort(sort)
+      .skip(skip)
+      .limit(pageSize);
 
-    res
-      .status(200)
-      .json({ success: true, count: deliveries.length, deliveries });
+    // Get total count for pagination
+    const totalCount = await DeliveryHistory.countDocuments(filter);
+
+    // Calculate summary statistics
+    const summary = {
+      totalDeliveries: totalCount,
+      totalAmount: 0,
+      totalAmountPaid: 0,
+      deliveredCount: 0,
+      missedCount: 0,
+      pendingCount: 0,
+      bottleSummary: {}
+    };
+
+    deliveries.forEach(delivery => {
+      summary.totalAmount += delivery.totalPrice || 0;
+      summary.totalAmountPaid += delivery.amountPaid || 0;
+
+      if (delivery.status === "Delivered") summary.deliveredCount++;
+      if (delivery.status === "Missed") summary.missedCount++;
+      if (delivery.status === "Pending") summary.pendingCount++;
+
+      // Bottle summary
+      if (delivery.bottleIssued && Array.isArray(delivery.bottleIssued)) {
+        delivery.bottleIssued.forEach(bottle => {
+          if (!summary.bottleSummary[bottle.size]) {
+            summary.bottleSummary[bottle.size] = { issued: 0, returned: 0 };
+          }
+          summary.bottleSummary[bottle.size].issued += bottle.count || 0;
+        });
+      }
+
+      if (delivery.bottleReturn && Array.isArray(delivery.bottleReturn)) {
+        delivery.bottleReturn.forEach(bottle => {
+          if (!summary.bottleSummary[bottle.size]) {
+            summary.bottleSummary[bottle.size] = { issued: 0, returned: 0 };
+          }
+          summary.bottleSummary[bottle.size].returned += bottle.count || 0;
+        });
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      count: deliveries.length,
+      totalCount,
+      pagination: {
+        currentPage: pageNumber,
+        totalPages: Math.ceil(totalCount / pageSize),
+        hasNext: pageNumber < Math.ceil(totalCount / pageSize),
+        hasPrev: pageNumber > 1,
+        pageSize
+      },
+      filters: {
+        fromDate,
+        toDate,
+        status,
+        customerId
+      },
+      summary,
+      deliveries
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Error fetching deliveries:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
   }
 };
 
@@ -204,14 +347,18 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     // Set target date (default to today if not provided)
     const targetDate = date ? new Date(date) : new Date();
-    targetDate.setHours(0, 0, 0, 0);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
 
     // Check if delivery history already exists for this date
     let deliveryHistory = await DeliveryHistory.findOne({
       customer: customerId,
       date: {
-        $gte: new Date(targetDate.setHours(0, 0, 0, 0)),
-        $lt: new Date(targetDate.setHours(23, 59, 59, 999)),
+        $gte: startOfDay,
+        $lt: endOfDay,
       },
     });
 
@@ -231,7 +378,6 @@ exports.updateDeliveryStatus = async (req, res) => {
         products: products || [],
         totalPrice: totalPrice,
         status: status || "Pending",
-
         amountPaid: amountPaid || 0,
         paymentMethod: paymentMethod,
         bottleIssued: bottleIssued || [],
@@ -318,7 +464,7 @@ exports.updateDeliveryStatus = async (req, res) => {
     const populatedHistory = await DeliveryHistory.findById(deliveryHistory._id)
       .populate("customer", "name phoneNumber address")
       .populate("deliveryBoy", "name phoneNumber")
-      .populate("products.product", "productName price");
+      .populate("products.product", "productName price size");
 
     res.status(200).json({
       success: true,
@@ -330,6 +476,17 @@ exports.updateDeliveryStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating delivery status:", error);
+
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: "Validation error",
+        errors: errors
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -359,7 +516,7 @@ exports.getTodayOrdersSummary = async (req, res) => {
     const customers = await Customer.find()
       .populate({
         path: "products.product",
-        select: "productName productType size price",
+        select: "productName  size price",
       })
       .populate("deliveryBoy", "name phoneNumber")
       .populate("absentDays");
@@ -372,7 +529,7 @@ exports.getTodayOrdersSummary = async (req, res) => {
       },
     })
       .populate("customer", "name phoneNumber address")
-      .populate("product", "productName productType size price")
+      .populate("product", "productName  size price")
       .populate("deliveryBoy", "name phoneNumber");
 
     // Process orders
@@ -390,7 +547,7 @@ exports.getTodayOrdersSummary = async (req, res) => {
     };
 
     // Function to check if product is milk
-    const isMilkProduct = (productType, size) => {
+    const isMilkProduct = (productName, size) => {
       const milkTypes = ["milk", "doodh", "दूध", "Milk", "MILK"];
       const liquidSizes = ["1/4ltr", "1/2ltr", "1ltr"];
 
@@ -428,7 +585,7 @@ exports.getTodayOrdersSummary = async (req, res) => {
             const quantity = product.quantity || 0;
             const price = productData.price || 0;
 
-            const isMilk = isMilkProduct(productType, size);
+            const isMilk = isMilkProduct(productName, size);
             const bottlesRequired = isMilk
               ? calculateBottlesRequired(size, quantity)
               : 0;
@@ -554,7 +711,7 @@ exports.getTodayOrdersSummary = async (req, res) => {
       const quantity = customOrder.quantity || 0;
       const price = productData.price || 0;
 
-      const isMilk = isMilkProduct(productType, size);
+      const isMilk = isMilkProduct(productName, size);
       const bottlesRequired = isMilk
         ? calculateBottlesRequired(size, quantity)
         : 0;

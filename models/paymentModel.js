@@ -2,10 +2,7 @@
 const mongoose = require("mongoose");
 const paymentSchema = new mongoose.Schema(
   {
-    pdf: {
-      type: String,
-      required: true,
-    },
+
     invoiceNumber: {
       type: String,
     },

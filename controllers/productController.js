@@ -88,32 +88,56 @@ exports.getAllProducts = catchAsyncErrors(async (req, res) => {
 
   // Get grouped products (without pagination for grouping)
   const groupedProducts = await Product.aggregate([
-    { $match: filter },
-    {
-      $group: {
-        _id: "$productName",
-        productName: { $first: "$productName" },
-        description: { $first: "$description" },
-        productType: { $first: "$productType" },
-        sizes: {
-          $push: {
-            _id: "$_id",
-            size: "$size",
-            price: "$price",
-            stock: "$stock",
-            productCode: "$productCode"
-          }
-        },
-        totalVariants: { $sum: 1 },
-        minPrice: { $min: "$price" },
-        maxPrice: { $max: "$price" },
-        avgPrice: { $avg: "$price" },
-        stockTotal: { $sum: "$stock" }
+  { $match: filter },
+  {
+    $addFields: {
+      // Normalize product name: trim whitespace and convert to lowercase for grouping
+      normalizedProductName: {
+        $trim: { input: { $toLower: "$productName" } }
       }
-    },
-    { $sort: { productName: 1 } }
-  ]);
-
+    }
+  },
+  {
+    $group: {
+      _id: "$normalizedProductName", // Group by normalized name
+      productName: { $first: "$productName" }, // Keep original name for display
+      originalNames: { $addToSet: "$productName" }, // Track all original names
+      description: { $first: "$description" },
+      productType: { $first: "$productType" },
+      sizes: {
+        $push: {
+          _id: "$_id",
+          size: "$size",
+          price: "$price",
+          stock: "$stock",
+          productCode: "$productCode"
+        }
+      },
+      totalVariants: { $sum: 1 },
+      minPrice: { $min: "$price" },
+      maxPrice: { $max: "$price" },
+      avgPrice: { $avg: "$price" },
+      stockTotal: { $sum: "$stock" }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      normalizedName: "$_id",
+      productName: 1,
+      originalNames: 1,
+      description: 1,
+      productType: 1,
+      sizes: 1,
+      totalVariants: 1,
+      minPrice: 1,
+      maxPrice: 1,
+      avgPrice: 1,
+      stockTotal: 1
+    }
+  },
+  { $sort: { productName: 1 } }
+]);
   res.status(200).json({
     success: true,
     count: products.length,

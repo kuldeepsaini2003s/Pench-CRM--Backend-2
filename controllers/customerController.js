@@ -1,7 +1,7 @@
 const Customer = require("../models/coustomerModel");
 const DeliveryHistory = require("../models/delhiveryHistory");
 const CustomerCustomOrder = require("../models/customerCustomOrder");
-
+const mongoose = require("mongoose")
 exports.createCustomer = async (req, res) => {
   try {
     const {
@@ -497,3 +497,5 @@ exports.createCustomOrder = async (req, res) => {
     });
   }
 };
+
+
