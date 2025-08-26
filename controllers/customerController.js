@@ -185,7 +185,7 @@ exports.getCustomerById = async (req, res) => {
     const customer = await Customer.findById(id)
       .populate(
         "products.product",
-        "productName price productType category description"
+        "productName price size  description"
       )
       .populate("deliveryBoy", "name phoneNumber email address");
 
