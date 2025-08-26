@@ -1,6 +1,8 @@
 const Customer = require("../models/coustomerModel");
 const ErrorHandler = require("../utils/errorhendler");
 const catchAsyncErrors = require("../middlewares/catchAsyncErrors");
+const Invoice = require("../models/invoicesModel");
+const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 
 exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
   let {
@@ -13,7 +15,6 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
     page = 1,
     limit = 10,
   } = req.query;
-
 
   let query = {};
 
@@ -28,7 +29,6 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
   if (status) {
     query["products.status"] = status;
   }
-
 
   if (startDate && endDate) {
     query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
@@ -48,7 +48,6 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler("No customers found", 404));
   }
 
-
   const formattedCustomers = customers.map((cust) => {
     const firstProduct = cust.products[0];
     return {
@@ -65,7 +64,6 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
     };
   });
 
-
   const total = await Customer.countDocuments(query);
 
   res.status(200).json({
@@ -77,18 +75,6 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
     customers: formattedCustomers,
   });
 });
-
-
-
-
-
-
-//  perticular customer invoices
-
-
-
-const Invoice = require("../models/invoicesModel");
-const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 
 // Helper to format date as dd/mm/yyyy
 function formatDate(date) {
@@ -108,7 +94,9 @@ exports.generateInvoiceForCustomer = async (req, res, next) => {
     }
 
     // Fetch customer with subscription products
-    const customer = await Customer.findById(customerId).populate("products.product");
+    const customer = await Customer.findById(customerId).populate(
+      "products.product"
+    );
     if (!customer) {
       return next(new ErrorHandler("Customer not found", 404));
     }
@@ -153,7 +141,7 @@ exports.generateInvoiceForCustomer = async (req, res, next) => {
     const invoiceNumber = generateInvoiceNumber();
 
     // Create invoice in DB
-    await Invoice.create({
+    const invoice = await Invoice.create({
       invoiceNumber,
       customer: customer._id,
       totalAmount,
@@ -161,7 +149,7 @@ exports.generateInvoiceForCustomer = async (req, res, next) => {
       issueDate: new Date(),
       status: "Unpaid",
     });
-
+    await invoice.save();
     // Prepare payload for frontend
     const payload = {
       invoiceNumber,
@@ -188,4 +176,3 @@ exports.generateInvoiceForCustomer = async (req, res, next) => {
     );
   }
 };
-
