@@ -11,6 +11,7 @@ router.delete("/delete/:id", customerController.deleteCustomer);
 router.post("/makeAbsentDays/:id", customerController.makeAbsentDays);
 router.post("/makeCustomOrders", customerController.createCustomOrder);
 
+
 // Delivery history
 // router.post("/:customerId/delivery-history", customerController.addDeliveryHistory);
 

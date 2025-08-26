@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
+
 const invoiceSchema = new mongoose.Schema(
   {
     pdf: {
       type: String,
-      required: true,
     },
     invoiceNumber: {
       type: String,
@@ -11,13 +11,37 @@ const invoiceSchema = new mongoose.Schema(
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
+
     },
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+
+    },
+    customerOrder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerOrder",
+    },
+
     totalAmount: {
       type: Number,
     },
-    paidAmount: {
+    subTotal: {
       type: Number,
     },
+
+
+    // paidAmount: {
+    //   type: Number,
+    // },
+
+    // paidDate: {
+    //   type: Date,
+    // },
+    // note: {
+    //   type: String,
+    // },
+    paymentMethod: {
 
     productId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
     paidDate: {
@@ -28,9 +52,13 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
     },
     paymnetMethod: {
+
       type: String,
       enum: ["Cash", "Card", "Online", "Other"],
       default: "Cash",
+    },
+    issueDate: {
+      type: Date,
     },
     status: {
       type: String,
