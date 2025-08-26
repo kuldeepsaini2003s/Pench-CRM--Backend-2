@@ -25,13 +25,13 @@ function isAbsentDay(customer, targetDate) {
     return false;
   }
 
-  return customer.absentDays.some(absentDate =>
+  return customer.absentDays.some((absentDate) =>
     isSameDay(normalizeDate(absentDate), normalizeDate(targetDate))
   );
 }
 
 function shouldDeliverOnDate(customer, product, targetDate) {
-  console.log(product,customer,targetDate,"product")
+  console.log(product, customer, targetDate, "product");
   // Check if customer is absent on this day
   if (isAbsentDay(customer, targetDate)) {
     return false;
@@ -45,7 +45,7 @@ function shouldDeliverOnDate(customer, product, targetDate) {
   if (normalizedTargetDate < startDate || normalizedTargetDate > endDate) {
     return false;
   }
-console.log(normalizedTargetDate,"normalizedTargetDate")
+  console.log(normalizedTargetDate, "normalizedTargetDate");
   // Handle different subscription plans
   switch (product.subscriptionPlan) {
     case "Monthly":
@@ -53,8 +53,8 @@ console.log(normalizedTargetDate,"normalizedTargetDate")
       return checkDeliveryPattern(product, normalizedTargetDate, startDate);
 
     case "Alternate Days":
-      // Alternate days subscription delivers every 2nd day
-      // return checkAlternateDays(startDate, normalizedTargetDate);
+    // Alternate days subscription delivers every 2nd day
+    // return checkAlternateDays(startDate, normalizedTargetDate);
 
     case "Daily":
       // Daily subscription delivers every day
@@ -95,7 +95,10 @@ function checkDeliveryPattern(product, targetDate, startDate) {
       return isWeekend(targetDate);
 
     case "Custom":
-      if (!product.customDeliveryDates || product.customDeliveryDates.length === 0) {
+      if (
+        !product.customDeliveryDates ||
+        product.customDeliveryDates.length === 0
+      ) {
         return false;
       }
       return product.customDeliveryDates.some((customDate) => {
@@ -114,9 +117,7 @@ function checkDeliveryPattern(product, targetDate, startDate) {
 }
 
 function checkAlternateDays(startDate, targetDate) {
-  const daysDiff = Math.floor(
-    (targetDate - startDate) / (1000 * 60 * 60 * 24)
-  );
+  const daysDiff = Math.floor((targetDate - startDate) / (1000 * 60 * 60 * 24));
   return daysDiff % 2 === 0;
 }
 
@@ -156,32 +157,37 @@ function isAbsentDay(customer, targetDate) {
     return false;
   }
 
-  return customer.absentDays.some(absentDate =>
+  return customer.absentDays.some((absentDate) =>
     isSameDay(normalizeDate(absentDate), normalizeDate(targetDate))
   );
 }
 
-async function formatOrderResponse(customers, customOrders, targetDate, deliveryBoyId) {
-    console.log(customOrders,customers,targetDate,"product")
+async function formatOrderResponse(
+  customers,
+  customOrders,
+  targetDate,
+  deliveryBoyId
+) {
+  console.log(customOrders, customers, targetDate, "product");
   const customerOrdersMap = new Map();
   const normalizedTargetDate = normalizeDate(targetDate);
-  console.log(normalizedTargetDate,"normalizedTargetDate")
+  console.log(normalizedTargetDate, "normalizedTargetDate");
 
   // First, fetch all products to get size information
-  const allProducts = await Product.find({}).select('_id productName size');
+  const allProducts = await Product.find({}).select("_id productName size");
 
   // Create a map of product information
   const productInfoMap = new Map();
   const sizeBottleRequirements = new Map();
 
-  allProducts.forEach(product => {
+  allProducts.forEach((product) => {
     // Check if product is milk based on product name
     const isMilkProduct = isProductMilk(product.productName);
 
     productInfoMap.set(product._id.toString(), {
       productName: product.productName,
       size: product.size,
-      isMilkProduct: isMilkProduct
+      isMilkProduct: isMilkProduct,
     });
 
     // Track all unique sizes that require bottles (for milk products)
@@ -190,7 +196,7 @@ async function formatOrderResponse(customers, customOrders, targetDate, delivery
         sizeBottleRequirements.set(product.size, {
           size: product.size,
           count: 0,
-          productNames: new Set()
+          productNames: new Set(),
         });
       }
     }
@@ -201,7 +207,7 @@ async function formatOrderResponse(customers, customOrders, targetDate, delivery
     if (!customer.products || !Array.isArray(customer.products)) {
       continue;
     }
-console.log(customer,"customer")
+    console.log(customer, "customer");
     const customerOrders = [];
 
     for (const product of customer.products) {
@@ -211,7 +217,7 @@ console.log(customer,"customer")
 
       try {
         if (shouldDeliverOnDate(customer, product, normalizedTargetDate)) {
-          console.log("working")
+          console.log("working");
           const productId = product.product._id.toString();
           const productInfo = productInfoMap.get(productId);
 
@@ -227,7 +233,7 @@ console.log(customer,"customer")
               size: productInfo.size || "N/A",
               quantity: product.quantity || 0,
               price: product.price || 0,
-              isMilkProduct: productInfo.isMilkProduct || false
+              isMilkProduct: productInfo.isMilkProduct || false,
             },
             subscription: {
               plan: product.subscriptionPlan || "N/A",
@@ -249,11 +255,13 @@ console.log(customer,"customer")
 
           // Calculate bottle requirements for milk products
           if (productInfo.isMilkProduct && productInfo.size) {
-            order.bottleRequirements = [{
-              size: productInfo.size,
-              count: product.quantity || 0,
-              productName: productInfo.productName
-            }];
+            order.bottleRequirements = [
+              {
+                size: productInfo.size,
+                count: product.quantity || 0,
+                productName: productInfo.productName,
+              },
+            ];
 
             // Update overall size bottle requirements
             if (sizeBottleRequirements.has(productInfo.size)) {
@@ -281,7 +289,7 @@ console.log(customer,"customer")
           userProfile: customer.userProfile || null,
           gender: customer.gender || "N/A",
         },
-        orders: customerOrders
+        orders: customerOrders,
       });
     }
   }
@@ -308,7 +316,7 @@ console.log(customer,"customer")
         size: productInfo.size || "N/A",
         quantity: customOrder.quantity || 0,
         price: customOrder.product.price || 0,
-        isMilkProduct: productInfo.isMilkProduct || false
+        isMilkProduct: productInfo.isMilkProduct || false,
       },
       financials: {
         totalPrice: customOrder.totalPrice || 0,
@@ -323,11 +331,13 @@ console.log(customer,"customer")
 
     // Calculate bottle requirements for milk products
     if (productInfo.isMilkProduct && productInfo.size) {
-      orderData.bottleRequirements = [{
-        size: productInfo.size,
-        count: customOrder.quantity || 0,
-        productName: productInfo.productName
-      }];
+      orderData.bottleRequirements = [
+        {
+          size: productInfo.size,
+          count: customOrder.quantity || 0,
+          productName: productInfo.productName,
+        },
+      ];
 
       // Update overall size bottle requirements
       if (sizeBottleRequirements.has(productInfo.size)) {
@@ -349,7 +359,7 @@ console.log(customer,"customer")
           userProfile: customOrder.customer.userProfile || null,
           gender: customOrder.customer.gender || "N/A",
         },
-        orders: [orderData]
+        orders: [orderData],
       });
     }
   }
@@ -359,17 +369,20 @@ console.log(customer,"customer")
 
   // Add overall bottle requirements summary
   const bottleSummary = Array.from(sizeBottleRequirements.values())
-    .filter(sizeReq => sizeReq.count > 0)
-    .map(sizeReq => ({
+    .filter((sizeReq) => sizeReq.count > 0)
+    .map((sizeReq) => ({
       size: sizeReq.size,
       totalBottles: sizeReq.count,
-      products: Array.from(sizeReq.productNames)
+      products: Array.from(sizeReq.productNames),
     }));
 
   return {
     customers: result,
     bottleSummary: bottleSummary,
-    totalBottlesRequired: bottleSummary.reduce((total, item) => total + item.totalBottles, 0)
+    totalBottlesRequired: bottleSummary.reduce(
+      (total, item) => total + item.totalBottles,
+      0
+    ),
   };
 }
 
@@ -378,13 +391,21 @@ function isProductMilk(productName) {
   if (!productName) return false;
 
   const milkKeywords = [
-    'milk', 'doodh', 'दूध', 'dudh', 'दुध',
-    'milk', 'milky', 'dairy', 'क्षीर', 'ksheer'
+    "milk",
+    "doodh",
+    "दूध",
+    "dudh",
+    "दुध",
+    "milk",
+    "milky",
+    "dairy",
+    "क्षीर",
+    "ksheer",
   ];
 
   const productNameLower = productName.toLowerCase();
 
-  return milkKeywords.some(keyword =>
+  return milkKeywords.some((keyword) =>
     productNameLower.includes(keyword.toLowerCase())
   );
 }
@@ -395,6 +416,13 @@ function calculateBottlesRequired(size, quantity) {
   return quantity || 0;
 }
 
+const formatDate = (date) => {
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+};
 module.exports = {
   isSameDay,
   isWeekday,
@@ -403,4 +431,5 @@ module.exports = {
   isAbsentDay,
   shouldDeliverOnDate,
   formatOrderResponse,
+  formatDate,
 };
