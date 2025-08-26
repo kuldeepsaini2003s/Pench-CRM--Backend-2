@@ -11,10 +11,12 @@ const invoiceSchema = new mongoose.Schema(
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
+
     },
     product: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
+
     },
     customerOrder: {
       type: mongoose.Schema.Types.ObjectId,
@@ -28,6 +30,7 @@ const invoiceSchema = new mongoose.Schema(
       type: Number,
     },
 
+
     // paidAmount: {
     //   type: Number,
     // },
@@ -39,6 +42,17 @@ const invoiceSchema = new mongoose.Schema(
     //   type: String,
     // },
     paymentMethod: {
+
+    productId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+    paidDate: {
+      type: Date,
+    },
+
+    note: {
+      type: String,
+    },
+    paymnetMethod: {
+
       type: String,
       enum: ["Cash", "Card", "Online", "Other"],
       default: "Cash",
