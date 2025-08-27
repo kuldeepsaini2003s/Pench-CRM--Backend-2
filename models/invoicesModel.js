@@ -2,9 +2,6 @@ const mongoose = require("mongoose");
 
 const invoiceSchema = new mongoose.Schema(
   {
-    pdf: {
-      type: String,
-    },
     invoiceNumber: {
       type: String,
     },
@@ -27,17 +24,6 @@ const invoiceSchema = new mongoose.Schema(
     subTotal: {
       type: Number,
     },
-
-    // paidAmount: {
-    //   type: Number,
-    // },
-
-    // paidDate: {
-    //   type: Date,
-    // },
-    // note: {
-    //   type: String,
-    // },
     productId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
     paidDate: {
       type: Date,
@@ -57,6 +43,9 @@ const invoiceSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ["Paid", "Unpaid", "Partially Paid"],
+    },
+    pdfUrl: {
+      type: String,
     },
   },
   { timestamps: true }
