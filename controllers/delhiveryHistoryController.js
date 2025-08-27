@@ -58,7 +58,7 @@ exports.getAllDeliveries = async (req, res) => {
     const deliveries = await DeliveryHistory.find(filter)
       .populate("customer", "name phoneNumber address")
       .populate("deliveryBoy", "name phoneNumber area")
-      .populate("product", "productName price size stock");
+      .populate("products.product", "productName price size stock");
 
     res
       .status(200)
@@ -367,8 +367,8 @@ exports.updateDeliveryStatus = async (req, res) => {
       // Calculate total price from products
       const totalPrice = products
         ? products.reduce((total, product) => {
-            return total + (product.totalPrice || 0);
-          }, 0)
+          return total + (product.totalPrice || 0);
+        }, 0)
         : 0;
 
       deliveryHistory = await DeliveryHistory.create({
@@ -618,9 +618,9 @@ exports.getTodayOrdersSummary = async (req, res) => {
               quantity: quantity,
               deliveryBoy: customer.deliveryBoy
                 ? {
-                    _id: customer.deliveryBoy._id,
-                    name: customer.deliveryBoy.name,
-                  }
+                  _id: customer.deliveryBoy._id,
+                  name: customer.deliveryBoy.name,
+                }
                 : null,
             });
 
