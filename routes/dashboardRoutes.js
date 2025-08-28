@@ -1,22 +1,19 @@
 const express = require("express");
 const router = express.Router();
 const {
-  getAllSales,
+  TotalSales,
   getLowStockProducts,
   getActiveSubscriptions,
-  getSalesSummary,
-  getTopProducts
+  getTopAndLowestProducts,
+  getPendingPayments,
+  getNewOnboardCustomers,
 } = require("../controllers/dashboardController");
 
-// Sales Routes
-router.get("/sales", getAllSales);
-router.get("/sales/summary", getSalesSummary);
-router.get("/sales/top-products", getTopProducts);
-
-// Inventory Routes
+router.get("/total-sales", TotalSales);
+router.get("/top-lowest/product", getTopAndLowestProducts);
 router.get("/inventory/low-stock", getLowStockProducts);
-
-// Customer Routes
-router.get("/customers/active-subscriptions", getActiveSubscriptions);
+router.get("/active-subscriptions", getActiveSubscriptions);
+router.get("/payments/pending", getPendingPayments);
+router.get("/new-onboard", getNewOnboardCustomers);
 
 module.exports = router;

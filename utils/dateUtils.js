@@ -423,6 +423,16 @@ const formatDate = (date) => {
   const year = d.getFullYear();
   return `${day}/${month}/${year}`;
 };
+
+const isToday = (date) => {
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+};
+
 module.exports = {
   isSameDay,
   isWeekday,
@@ -432,4 +442,5 @@ module.exports = {
   shouldDeliverOnDate,
   formatOrderResponse,
   formatDate,
+  isToday,
 };

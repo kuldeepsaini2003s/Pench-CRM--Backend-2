@@ -1,379 +1,470 @@
 const DeliveryHistory = require("../models/delhiveryHistory");
+const Payment = require("../models/paymentModel");
+const catchAsync = require("../middlewares/catchAsyncErrors");
+const ErrorHandler = require("../utils/errorhendler");
 const Product = require("../models/productModel");
 const Customer = require("../models/coustomerModel");
+const { formatDate, normalizeDate } = require("../utils/dateUtils");
+const { checkSubscriptionStatus } = require("../helper/helperFuctions");
 
-// 1. Get All Sales Data
-exports.getAllSales = async (req, res) => {
-  try {
-    const { page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
+exports.TotalSales = catchAsync(async (req, res, next) => {
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
 
-    // Get total count for pagination
-    const totalRecords = await DeliveryHistory.countDocuments({});
+  //  Total Delivered Records
+  const totalRecords = await DeliveryHistory.countDocuments({
+    status: "Delivered",
+  });
 
-    // Get paginated sales data
-    const salesData = await DeliveryHistory.find({})
-      .populate({
-        path: "customer",
-        select: "name phoneNumber address"
-      })
-      .populate({
-        path: "deliveryBoy",
-        select: "name phoneNumber"
-      })
-      .populate({
-        path: "products.product",
-        select: "productName size productCode"
-      })
-      .sort({ date: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    // Calculate all-time summary statistics (without pagination)
-    const allTimeSalesData = await DeliveryHistory.find({});
-
-    // Calculate total sales amount (all time)
-    const totalSalesAmount = allTimeSalesData.reduce((sum, delivery) => sum + delivery.totalPrice, 0);
-
-    // Calculate total number of products delivered (all time)
-    const totalProductsDelivered = allTimeSalesData.reduce((total, delivery) => {
-      return total + delivery.products.reduce((productSum, product) => {
-        return productSum + product.quantity;
-      }, 0);
-    }, 0);
-
-    // Calculate other summary statistics (all time)
-    const totalDeliveries = allTimeSalesData.length;
-    const deliveredCount = allTimeSalesData.filter(d => d.status === "Delivered").length;
-    const pendingCount = allTimeSalesData.filter(d => d.status === "Pending").length;
-    const missedCount = allTimeSalesData.filter(d => d.status === "Missed").length;
-
-    // Pagination info
-    const totalPages = Math.ceil(totalRecords / limit);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
-
-    res.status(200).json({
-      success: true,
-      data: {
-        sales: salesData,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages,
-          totalRecords,
-          hasNextPage,
-          hasPrevPage,
-          limit: parseInt(limit)
-        },
-        allTimeSummary: {
-          totalSalesAmount,
-          totalProductsDelivered,
-          totalDeliveries,
-          deliveredCount,
-          pendingCount,
-          missedCount,
-          deliveryRate: totalDeliveries > 0 ? ((deliveredCount / totalDeliveries) * 100).toFixed(2) : 0
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error("Error fetching sales data:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch sales data",
-      error: error.message
-    });
+  if (totalRecords === 0) {
+    return next(new ErrorHandler("No delivered sales found", 404));
   }
-};
 
-// 2. Get Low Stock Products (less than 10)
-exports.getLowStockProducts = async (req, res) => {
-  try {
-    const { threshold = 10 } = req.query;
+  const deliveries = await DeliveryHistory.find({ status: "Delivered" })
+    .populate("customer", "name phoneNumber address createdAt")
+    .populate("products.product", "productName productCode size price")
+    .sort({ date: -1 })
+    .skip(skip)
+    .limit(parseInt(limit));
 
-    const lowStockProducts = await Product.find({
-      stock: { $lt: parseInt(threshold) }
-    }).sort({ stock: 1 }); // Sort by lowest stock first
+  const salesData = await Promise.all(
+    deliveries.map(async (delivery) => {
+      const customer = delivery.customer;
 
-    // Categorize by urgency
-    const criticalStock = lowStockProducts.filter(p => p.stock === 0);
-    const lowStock = lowStockProducts.filter(p => p.stock > 0 && p.stock < 5);
-    const moderateStock = lowStockProducts.filter(p => p.stock >= 5 && p.stock < threshold);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        allLowStockProducts: lowStockProducts,
-        categorized: {
-          critical: criticalStock, // Out of stock
-          low: lowStock, // Less than 5
-          moderate: moderateStock // 5-9 items
-        },
-        summary: {
-          totalLowStockItems: lowStockProducts.length,
-          criticalCount: criticalStock.length,
-          lowCount: lowStock.length,
-          moderateCount: moderateStock.length
-        }
+      if (!customer) {
+        return {
+          customer: {
+            name: "Unknown Customer",
+            phoneNumber: "N/A",
+            address: "N/A",
+            startDate: null,
+          },
+          products: [],
+          totalAmount: 0,
+          payment: {
+            method: "N/A",
+            status: "Unpaid",
+            totalPaid: 0,
+          },
+        };
       }
-    });
 
-  } catch (error) {
-    console.error("Error fetching low stock products:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch low stock products",
-      error: error.message
-    });
-  }
-};
+      const paymentRecord = await Payment.findOne({ customer: customer._id })
+        .sort({ createdAt: -1 })
+        .select("paymentMethod status paidAmount");
 
-// 3. Get Active Subscriptions (customers with regular delivery history)
-exports.getActiveSubscriptions = async (req, res) => {
-  try {
-    const { days = 30 } = req.query; // Check activity in last 30 days
+      const products = delivery.products.map((item) => {
+        const product = item.product;
+        const price = Number(product?.price || item.price || 0);
+        const quantity = Number(item.quantity || 0);
+        const total = price * quantity;
 
-    const dateThreshold = new Date();
-    dateThreshold.setDate(dateThreshold.getDate() - parseInt(days));
+        return {
+          productName: product?.productName || "N/A",
+          productCode: product?.productCode || "N/A",
+          size: product?.size || "N/A",
+          price,
+          quantity,
+          total,
+        };
+      });
 
-    // Get customers with active subscriptions (end date is future or null)
-    const currentDate = new Date();
-    const activeCustomers = await Customer.find({
-      $or: [
-        { "products.endDate": { $gte: currentDate } },
-        { "products.endDate": null },
-        { "products.endDate": { $exists: false } }
-      ]
+      const deliveryTotal = products.reduce((sum, p) => sum + p.total, 0);
+
+      return {
+        customer: {
+          name: customer.name,
+          phoneNumber: customer.phoneNumber,
+          address: customer.address,
+          startDate: customer.createdAt,
+        },
+        products,
+        totalAmount: deliveryTotal,
+        payment: {
+          method: paymentRecord?.paymentMethod || "N/A",
+          status: paymentRecord?.status || "Unpaid",
+          totalPaid: paymentRecord?.paidAmount || 0,
+        },
+      };
     })
+  );
+
+  const grandTotalAmount = salesData.reduce(
+    (sum, record) => sum + (record.totalAmount || 0),
+    0
+  );
+
+  const allDeliveries = await DeliveryHistory.find({
+    status: "Delivered",
+  }).populate("products.product");
+
+  let totalProductsDelivered = 0;
+  allDeliveries.forEach((d) => {
+    d.products.forEach((p) => {
+      totalProductsDelivered += Number(p.quantity || 0);
+    });
+  });
+
+  const totalDeliveries = allDeliveries.length;
+  const totalPages = Math.ceil(totalRecords / limit);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      sales: salesData,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        totalRecords,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+        limit: parseInt(limit),
+      },
+      summary: {
+        grandTotalAmount,
+        totalProductsDelivered,
+        totalDeliveries,
+      },
+    },
+  });
+});
+
+//  Get Low Stock Products (stock < 10)
+exports.getLowStockProducts = catchAsync(async (req, res, next) => {
+  const products = await Product.find(
+    { stock: { $lt: 10 } },
+    { productName: 1, productCode: 1, stock: 1, size: 1, _id: 1 }
+  ).sort({ stock: 1 });
+
+  if (!products || products.length === 0) {
+    return next(new ErrorHandler("No low stock products found", 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    count: products.length,
+    products,
+  });
+});
+
+// 3. Get Active Subscriptions
+exports.getActiveSubscriptions = catchAsync(async (req, res, next) => {
+  const { customerId } = req.query;
+  const match = {};
+
+  if (customerId) match._id = customerId;
+  const customers = await Customer.find(match)
+    .select("name phoneNumber address userProfile products")
     .populate({
       path: "products.product",
-      select: "productName size price productCode"
+      select: "productName size productCode",
     })
-    .populate({
-      path: "deliveryBoy",
-      select: "name phoneNumber"
-    });
+    .lean();
 
-    // Check recent delivery activity for each customer
-    const activeSubscriptions = [];
+  if (!customers || customers.length === 0) {
+    return next(new ErrorHandler("No customers found", 404));
+  }
 
-    for (const customer of activeCustomers) {
-      // Get recent delivery history
-      const recentDeliveries = await DeliveryHistory.find({
-        customer: customer._id,
-        date: { $gte: dateThreshold }
-      }).sort({ date: -1 });
+  const subscriptions = [];
+  for (const c of customers) {
+    if (!Array.isArray(c.products) || c.products.length === 0) {
+      subscriptions.push({
+        id: c._id,
+        fullName: c.name,
+        phoneNumber: c.phoneNumber,
+        address: c.address,
+        userProfile: c.userProfile,
+        productType: "N/A",
+        productSize: "N/A",
+        productCode: "N/A",
+        quantity: 0,
+        startDate: null,
+        endDate: null,
+        subscription: "N/A",
+        deliveryDays: [],
+        status: "Inactive",
+      });
+      continue;
+    }
 
-      // Calculate activity metrics
-      const totalDeliveries = recentDeliveries.length;
-      const successfulDeliveries = recentDeliveries.filter(d => d.status === "Delivered").length;
-      const lastDeliveryDate = recentDeliveries.length > 0 ? recentDeliveries[0].date : null;
+    for (const p of c.products) {
+      const status = checkSubscriptionStatus(p);
 
-      // Determine if subscription is active based on recent activity
-      const isActive = totalDeliveries > 0 || customer.products.some(p =>
-        p.endDate && p.endDate >= currentDate
-      );
+      subscriptions.push({
+        id: c._id,
+        fullName: c.name,
+        phoneNumber: c.phoneNumber,
+        address: c.address,
+        userProfile: c.userProfile,
+        productType: p.product?.productName || "N/A",
+        productSize: p.product?.size || "N/A",
+        productCode: p.product?.productCode || "N/A",
+        quantity: p.quantity,
+        startDate: p.startDate ? formatDate(p.startDate) : null,
+        endDate: p.endDate ? formatDate(p.endDate) : null,
+        subscription: p.subscriptionPlan,
+        deliveryDays: p.deliveryDays,
+        status,
+      });
+    }
+  }
 
-      if (isActive) {
-        activeSubscriptions.push({
-          customer: {
-            _id: customer._id,
-            name: customer.name,
-            phoneNumber: customer.phoneNumber,
-            address: customer.address,
-            amountDue: customer.amountDue,
-            amountPaidTillDate: customer.amountPaidTillDate
-          },
-          deliveryBoy: customer.deliveryBoy,
-          subscriptions: customer.products.filter(p =>
-            !p.endDate || p.endDate >= currentDate
-          ),
-          recentActivity: {
-            totalDeliveries,
-            successfulDeliveries,
-            deliveryRate: totalDeliveries > 0 ? ((successfulDeliveries / totalDeliveries) * 100).toFixed(2) : 0,
-            lastDeliveryDate,
-            daysSinceLastDelivery: lastDeliveryDate ?
-              Math.floor((currentDate - lastDeliveryDate) / (1000 * 60 * 60 * 24)) : null
+  if (subscriptions.length === 0) {
+    return next(new ErrorHandler("No active subscriptions found", 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    count: subscriptions.length,
+    data: subscriptions,
+  });
+});
+
+// 5. Get Top &lowest Products by Sales
+
+exports.getTopAndLowestProducts = catchAsync(async (req, res, next) => {
+  let { startDate, endDate } = req.query;
+
+  // Prepare match stage
+  const matchStage = { status: "Delivered" };
+  if (startDate || endDate) {
+    matchStage.date = {};
+    if (startDate) matchStage.date.$gte = normalizeDate(startDate);
+    if (endDate) matchStage.date.$lte = normalizeDate(endDate);
+  }
+
+  // Aggregate deliveries
+  const productAggregation = await DeliveryHistory.aggregate([
+    { $match: matchStage },
+    { $unwind: "$products" },
+    { $match: { "products.status": "delivered" } },
+    {
+      $group: {
+        _id: "$products.product",
+        totalQuantity: { $sum: "$products.quantity" },
+      },
+    },
+    {
+      $lookup: {
+        from: "products",
+        localField: "_id",
+        foreignField: "_id",
+        as: "productInfo",
+      },
+    },
+    { $unwind: "$productInfo" },
+    {
+      $project: {
+        productName: "$productInfo.productName",
+        productCode: "$productInfo.productCode",
+        totalQuantity: 1,
+      },
+    },
+    { $sort: { totalQuantity: -1 } }, // Descending for top products
+  ]);
+
+  if (!productAggregation || productAggregation.length === 0) {
+    return next(new ErrorHandler("No product deliveries found", 404));
+  }
+
+  const topProduct = productAggregation[0];
+  const lowestProduct = productAggregation[productAggregation.length - 1];
+
+  res.status(200).json({
+    success: true,
+    data: {
+      topProduct: topProduct
+        ? {
+            productName: topProduct.productName,
+            productCode: topProduct.productCode,
+            count: topProduct.totalQuantity,
           }
-        });
-      }
-    }
+        : null,
+      lowestProduct: lowestProduct
+        ? {
+            productName: lowestProduct.productName,
+            productCode: lowestProduct.productCode,
+            count: lowestProduct.totalQuantity,
+          }
+        : null,
+    },
+  });
+});
 
-    // Sort by recent activity (most recent first)
-    activeSubscriptions.sort((a, b) => {
-      if (!a.recentActivity.lastDeliveryDate) return 1;
-      if (!b.recentActivity.lastDeliveryDate) return -1;
-      return b.recentActivity.lastDeliveryDate - a.recentActivity.lastDeliveryDate;
-    });
+// 📌 Get Delivery History with Customer-level Pending Amount
+// exports.getPendingPayments = catchAsync(async (req, res, next) => {
+//   const { page = 1, limit = 10 } = req.query;
+//   const skip = (page - 1) * limit;
 
-    // Calculate summary
-    const totalActiveSubscriptions = activeSubscriptions.length;
-    const totalAmountDue = activeSubscriptions.reduce((sum, sub) => sum + (sub.customer.amountDue || 0), 0);
-    const regularCustomers = activeSubscriptions.filter(sub =>
-      sub.recentActivity.deliveryRate >= 70 && sub.recentActivity.totalDeliveries >= 5
-    );
+//   // 🔹 Delivery fetch with customer + product details
+//   const deliveries = await DeliveryHistory.find()
+//     .populate("customer", "name phoneNumber")
+//     .populate("products.product", "productName size")
+//     .sort({ date: -1 })
+//     .skip(skip)
+//     .limit(parseInt(limit))
+//     .lean();
 
-    res.status(200).json({
-      success: true,
-      data: {
-        activeSubscriptions,
-        summary: {
-          totalActiveSubscriptions,
-          regularCustomersCount: regularCustomers.length,
-          totalAmountDue,
-          averageDeliveryRate: activeSubscriptions.length > 0 ?
-            (activeSubscriptions.reduce((sum, sub) =>
-              sum + parseFloat(sub.recentActivity.deliveryRate), 0) / activeSubscriptions.length
-            ).toFixed(2) : 0
-        }
-      }
-    });
+//   if (!deliveries || deliveries.length === 0) {
+//     return next(new ErrorHandler("No delivery history found", 404));
+//   }
 
-  } catch (error) {
-    console.error("Error fetching active subscriptions:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch active subscriptions",
-      error: error.message
-    });
+//   // 🔹 Grouping by customer
+//   const customerMap = new Map();
+
+//   deliveries.forEach((delivery) => {
+//     const customerId = delivery.customer?._id?.toString();
+//     if (!customerId) return;
+
+//     if (!customerMap.has(customerId)) {
+//       customerMap.set(customerId, {
+//         customerId,
+//         customerName: delivery.customer?.name || "Unknown",
+//         phoneNumber: delivery.customer?.phoneNumber || "N/A",
+//         totalDelivered: 0,
+//         totalPaid: 0,
+//         pendingAmount: 0,
+//         deliveries: [],
+//       });
+//     }
+
+//     let customerData = customerMap.get(customerId);
+
+//     // Aggregate amounts
+//     const deliveryTotal = delivery.products.reduce(
+//       (sum, p) => sum + (p.totalPrice || 0),
+//       0
+//     );
+//     const paid = delivery.amountPaid || 0;
+
+//     customerData.totalDelivered += deliveryTotal;
+//     customerData.totalPaid += paid;
+//     customerData.pendingAmount =
+//       customerData.totalDelivered - customerData.totalPaid;
+
+//     // Save delivery detail for reference
+//     customerData.deliveries.push({
+//       date: delivery.date,
+//       products: delivery.products.map((p) => ({
+//         productName: p.product?.productName || "N/A",
+//         size: p.product?.size || "N/A",
+//         quantity: p.quantity,
+//         totalPrice: p.totalPrice || 0,
+//       })),
+//       amountPaid: delivery.amountPaid || 0,
+//     });
+//   });
+
+//   // 🔹 Convert Map → Array
+//   const response = Array.from(customerMap.values());
+
+//   res.status(200).json({
+//     success: true,
+//     count: response.length,
+//     data: response,
+//     pagination: {
+//       currentPage: parseInt(page),
+//       limit: parseInt(limit),
+//     },
+//   });
+// });
+
+exports.getPendingPayments = catchAsync(async (req, res, next) => {
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
+
+  const deliveries = await DeliveryHistory.find()
+    .populate("customer", "name phoneNumber")
+    .populate("products.product", "productName size")
+    .sort({ date: -1 })
+    .skip(skip)
+    .limit(parseInt(limit))
+    .lean();
+
+  if (!deliveries || deliveries.length === 0) {
+    return next(new ErrorHandler("No delivery history found", 404));
   }
-};
 
-// 4. Get Sales Summary by Date Range
-exports.getSalesSummary = async (req, res) => {
-  try {
-    const { startDate, endDate, groupBy = "day" } = req.query;
+  const response = deliveries
+    .map((delivery, index) => {
+      return delivery.products.map((p) => {
+        const pendingAmount = (p.totalPrice || 0) - (delivery.amountPaid || 0);
 
-    let matchStage = {};
-    if (startDate || endDate) {
-      matchStage.date = {};
-      if (startDate) matchStage.date.$gte = new Date(startDate);
-      if (endDate) matchStage.date.$lte = new Date(endDate);
-    }
+        return {
+          srNo: skip + index + 1,
+          customerName: delivery.customer?.name || "Unknown",
+          productName: p.product?.productName || "N/A",
+          productSize: p.product?.size || "N/A",
+          quantity: p.quantity,
+          pendingAmount,
+          date: delivery.date,
+        };
+      });
+    })
+    .flat();
 
-    // Determine grouping format
-    let dateFormat;
-    switch (groupBy) {
-      case "month":
-        dateFormat = "%Y-%m";
-        break;
-      case "week":
-        dateFormat = "%Y-%U";
-        break;
-      default:
-        dateFormat = "%Y-%m-%d";
-    }
+  res.status(200).json({
+    success: true,
+    count: response.length,
+    data: response,
+    pagination: {
+      currentPage: parseInt(page),
+      limit: parseInt(limit),
+    },
+  });
+});
 
-    const salesSummary = await DeliveryHistory.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: dateFormat, date: "$date" } },
-            status: "$status"
-          },
-          count: { $sum: 1 },
-          totalAmount: { $sum: "$totalPrice" },
-          totalPaid: { $sum: "$amountPaid" }
-        }
+// 📌 Get New Onboard Customers (first delivery)
+exports.getNewOnboardCustomers = catchAsync(async (req, res, next) => {
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
+
+  const deliveries = await DeliveryHistory.aggregate([
+    {
+      $sort: { date: 1 },
+    },
+    {
+      $group: {
+        _id: "$customer",
+        firstDelivery: { $first: "$$ROOT" },
       },
-      {
-        $group: {
-          _id: "$_id.date",
-          deliveries: {
-            $push: {
-              status: "$_id.status",
-              count: "$count",
-              amount: "$totalAmount",
-              paid: "$totalPaid"
-            }
-          },
-          totalDeliveries: { $sum: "$count" },
-          totalRevenue: { $sum: "$totalAmount" },
-          totalCollected: { $sum: "$totalPaid" }
-        }
-      },
-      { $sort: { "_id": 1 } }
-    ]);
+    },
+    { $skip: skip },
+    { $limit: parseInt(limit) },
+  ]);
 
-    res.status(200).json({
-      success: true,
-      data: {
-        summary: salesSummary,
-        groupBy
-      }
-    });
-
-  } catch (error) {
-    console.error("Error fetching sales summary:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch sales summary",
-      error: error.message
-    });
+  if (!deliveries || deliveries.length === 0) {
+    return next(new ErrorHandler("No onboard customers found", 404));
   }
-};
 
-// 5. Get Top Products by Sales
-exports.getTopProducts = async (req, res) => {
-  try {
-    const { limit = 10, startDate, endDate } = req.query;
+  // 🔹 Populate customer + product
+  const populated = await DeliveryHistory.populate(deliveries, [
+    { path: "firstDelivery.customer", select: "name" },
+    { path: "firstDelivery.products.product", select: "productName size" },
+  ]);
 
-    let matchStage = { status: "Delivered" };
-    if (startDate || endDate) {
-      matchStage.date = {};
-      if (startDate) matchStage.date.$gte = new Date(startDate);
-      if (endDate) matchStage.date.$lte = new Date(endDate);
-    }
+  // 🔹 Response format
+  const response = populated
+    .map((d) => {
+      const delivery = d.firstDelivery;
 
-    const topProducts = await DeliveryHistory.aggregate([
-      { $match: matchStage },
-      { $unwind: "$products" },
-      {
-        $group: {
-          _id: "$products.product",
-          totalQuantity: { $sum: "$products.quantity" },
-          totalRevenue: { $sum: "$products.totalPrice" },
-          deliveryCount: { $sum: 1 }
-        }
-      },
-      {
-        $lookup: {
-          from: "products",
-          localField: "_id",
-          foreignField: "_id",
-          as: "productInfo"
-        }
-      },
-      { $unwind: "$productInfo" },
-      {
-        $project: {
-          productName: "$productInfo.productName",
-          size: "$productInfo.size",
-          productCode: "$productInfo.productCode",
-          totalQuantity: 1,
-          totalRevenue: 1,
-          deliveryCount: 1,
-          averageOrderValue: { $divide: ["$totalRevenue", "$deliveryCount"] }
-        }
-      },
-      { $sort: { totalRevenue: -1 } },
-      { $limit: parseInt(limit) }
-    ]);
+      return delivery?.products?.map((p) => ({
+        customerName: delivery.customer?.name || "Unknown",
+        productType: p.product?.productName || "N/A",
+        productSize: p.product?.size || "N/A",
+        quantity: p.quantity,
+        date: delivery.date,
+      }));
+    })
+    .flat();
 
-    res.status(200).json({
-      success: true,
-      data: topProducts
-    });
-
-  } catch (error) {
-    console.error("Error fetching top products:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch top products",
-      error: error.message
-    });
-  }
-};
+  res.status(200).json({
+    success: true,
+    count: response.length,
+    data: response,
+    pagination: {
+      currentPage: parseInt(page),
+      limit: parseInt(limit),
+    },
+  });
+});
