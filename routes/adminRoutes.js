@@ -1,17 +1,13 @@
 const express = require("express");
 const router = express.Router();
-const adminController = require("../controllers/adminController");
+const {createAdmin, loginAdmin, getAdminProfile, updateAdmin, forgotPassword, resetPassword} = require("../controllers/adminController");
 
 // CRUD
-router.post("/", adminController.createAdmin);
-router.post("/login", adminController.loginAdmin);
-router.get("/", adminController.getAdmins);
-router.get("/:id", adminController.getAdminById);8
-router.put("/:id", adminController.updateAdmin);
-router.delete("/:id", adminController.deleteAdmin);
-
-// Forgot / Reset Password
-router.post("/forgot-password", adminController.forgotPassword);
-router.post("/reset-password", adminController.resetPassword);
+router.post("/register", createAdmin);
+router.post("/login", loginAdmin);
+router.get("/profile", getAdminProfile);
+router.put("/:id", updateAdmin);
+router.post("/forgot-password", forgotPassword);
+router.post("/reset-password", resetPassword);
 
 module.exports = router;

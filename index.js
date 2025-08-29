@@ -13,13 +13,10 @@ app.use(express.json());
 
 app.use(cookieParser());
 
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN,
-    credentials: true,
-    exposedHeaders: ["X-Total-Count"],
-  })
-);
+app.use(cors({
+  origin: "*",
+  optionsSuccessStatus: 200
+}));
 
 app.use(express.json());
 

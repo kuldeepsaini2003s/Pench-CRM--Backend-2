@@ -1,43 +1,41 @@
-const nodemailer = require("nodemailer");
-
-/**
- * Send OTP email for password change
- * @param {string} to - Recipient email address
- * @param {string} otp - One-time password
- * @returns {Promise}
- */
-async function sendOtpEmail(to, otp) {
+const nodemailer = require('nodemailer');
+ 
+// Configure Nodemailer
+const transport = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+ 
+// Send Password Reset Email
+const sendOtpEmail = async (admin) => {
   try {
-    const transporter = nodemailer.createTransport({
-     service: "Gmail",// true for 465, false for 587
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
-
+    // Generate a 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Generates random 6-digit number
+    admin.otp = otp;
+    admin.otpExpires = Date.now() + 3600000; // OTP expires in 1 hour
+    await admin.save(); // Save OTP and expiration to the admin document
+ 
     const mailOptions = {
-      from: `"Your App" <${process.env.SMTP_USER}>`,
-      to,
-      subject: "Your OTP for Password Change",
+      from: `"Your Company" <${process.env.EMAIL_USER}>`,
+      to: admin.email,
+      subject: 'Password Reset Request',
       html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
-          <h2 style="color: #333;">Password Change Verification</h2>
-          <p>Use the OTP below to verify your password change request:</p>
-          <h1 style="color: #4CAF50; font-size: 32px; letter-spacing: 5px;">${otp}</h1>
-          <p>This OTP will expire in 5 minutes.</p>
-          <p>If you did not request this, please ignore this email.</p>
-        </div>
-      `
+        <p>Hello ${admin.name},</p>
+        <p>Your OTP for password reset is:</p>
+        <h2>${otp}</h2>
+        <p>This OTP will expire in 1 hour. If you did not request this, please ignore this email.</p>
+      `,
     };
-
-    const info = await transporter.sendMail(mailOptions);
-    console.log("OTP Email sent:", info.messageId);
-    return info;
+ console.log(mailOptions);
+    await transport.sendMail(mailOptions); // Send email
+    return { success: true, message: 'Password reset email sent successfully.', otp };
   } catch (error) {
-    console.error("Error sending OTP email:", error);
-    throw error;
+    console.error('Error sending password reset email:', error);
+    return { success: false, message: 'Failed to send password reset email.' };
   }
-}
-
-module.exports = sendOtpEmail;
+};
+ 
+module.exports = { sendOtpEmail };

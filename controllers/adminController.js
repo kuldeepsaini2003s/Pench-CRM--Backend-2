@@ -1,10 +1,10 @@
 const Admin = require("../models/adminModel");
 const bcrypt = require("bcrypt");
-const sendOtpEmail = require("../utils/sendMail");
-const adminModel = require("../models/adminModel");
-const jwt = require("jsonwebtoken")
+const {sendOtpEmail} = require("../utils/sendMail");
+
+
 // ✅ Create Admin
-exports.createAdmin = async (req, res) => {
+const createAdmin = async (req, res) => {
   try {
     const { name, email, phoneNumber, gstNumber, password, address, role } =
       req.body;
@@ -26,19 +26,23 @@ exports.createAdmin = async (req, res) => {
       role,
     });
 
-    res.status(201).json({ success: true, admin });
+   return res.status(201).json({ 
+      success: true,
+      message:"Admin Created Successfully", 
+      admin 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ 
+      success: false,
+      message:"Failed to create admin",
+      error: error.message 
+    });
   }
 };
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "7d",
-  });
-};
 
-exports.loginAdmin = async (req, res) => {
+// ✅ Login Admin
+const loginAdmin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -59,9 +63,9 @@ exports.loginAdmin = async (req, res) => {
     }
 
     // Generate JWT token
-    const token = generateToken(admin._id);
+    const token = await admin.generateToken();
 
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       token,
       admin: {
@@ -73,35 +77,43 @@ exports.loginAdmin = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 
-// ✅ Get All Admins
-exports.getAdmins = async (req, res) => {
-  try {
-    const admins = await Admin.find().select("-password");
-    res.json({ success: true, count: admins.length, admins });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
 
-// ✅ Get Single Admin
-exports.getAdminById = async (req, res) => {
+// ✅ Get Admin Profile
+const getAdminProfile = async (req, res) => {
   try {
-    const admin = await Admin.findById(req.params.id).select("-password");
-    if (!admin) return res.status(404).json({ message: "Admin not found" });
+    const adminId = req.admin._id;
+    if(!adminId){
+      return res.status(401).json({
+        success:false,
+        message:"Unauthorized"
+      })
+    }
 
-    res.json({ success: true, admin });
+    const admin = await Admin.findById(adminId).select("-password");
+    if(!admin){
+      return res.status(404).json({
+        success:false,
+        message:"Admin not found"
+      })
+    }
+
+   return res.json({ 
+      success: true,
+      message:"Admin Profile Fetched Successfully", 
+      admin 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 
 // ✅ Update Admin
-exports.updateAdmin = async (req, res) => {
+const updateAdmin = async (req, res) => {
   try {
     const { name, phoneNumber, gstNumber, address, role, status } = req.body;
 
@@ -119,20 +131,9 @@ exports.updateAdmin = async (req, res) => {
   }
 };
 
-// ✅ Delete Admin
-exports.deleteAdmin = async (req, res) => {
-  try {
-    const admin = await Admin.findByIdAndDelete(req.params.id);
-    if (!admin) return res.status(404).json({ message: "Admin not found" });
 
-    res.json({ success: true, message: "Admin deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-
-exports.forgotPassword = async (req, res) => {
+// ✅ Forgot Password
+const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const admin = await Admin.findOne({ email });
@@ -141,25 +142,21 @@ exports.forgotPassword = async (req, res) => {
       return res.status(404).json({ message: "Admin not found" });
     }
 
-    // Generate OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpire = Date.now() + 10 * 60 * 1000; // 10 min expiry
+    const result = await sendOtpEmail(admin);
+    // console.log("result",result)
 
-    admin.otp = otp;
-    admin.otpExpire = otpExpire;
-    await admin.save();
-
-    // Send OTP via email (basic transporter)
-  //  await sendOtpEmail(email, otp);
-
-    res.json({ success: true, message: "OTP sent to email" ,otp:otp });
+  if(result.success){
+    return res.status(200).json({ success: true, message:result.message, otp:result.otp });
+  }else{
+    return res.status(400).json({ success: false, message:result.message });
+  }
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
 // ✅ Reset Password
-exports.resetPassword = async (req, res) => {
+const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
     const admin = await Admin.findOne({ email });
@@ -185,3 +182,12 @@ exports.resetPassword = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+module.exports = {
+  createAdmin,
+  loginAdmin,
+  getAdminProfile,
+  updateAdmin,
+  forgotPassword,
+  resetPassword,
+}
