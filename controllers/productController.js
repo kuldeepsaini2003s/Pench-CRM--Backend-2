@@ -230,6 +230,8 @@ const updateProduct = async (req, res) => {
 
 // ✅ Delete Product
 const deleteProduct = async (req, res, next) => {
+ 
+ try {
   const { id } = req.params;
   const product = await Product.findByIdAndDelete(id);
   if (!product) return next(new ErrorHandler("Product not found", 404));
@@ -239,6 +241,13 @@ const deleteProduct = async (req, res, next) => {
     message: "Product deleted successfully",
     deletedProduct: product,
   });
+ } catch (error) {
+    console.log(error)
+    return res.status(500).json({
+      success:false,
+      message:"Failed To Delete Product"
+    })
+ }
 }
 
 module.exports = {
