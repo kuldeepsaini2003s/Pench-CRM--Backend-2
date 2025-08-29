@@ -16,7 +16,7 @@ const adminSchema = new mongoose.Schema(
     },
 
     phoneNumber: {
-      type: String,
+      type: Number,
       match: [
         /^\+?[1-9]\d{1,14}$/,
         "Please provide a valid phone number with a country code (e.g., +1234567890)",
@@ -51,10 +51,10 @@ const adminSchema = new mongoose.Schema(
       default: "active",
     },
 
-    userProfile: {
+    profileImage: {
       type: String,
-      default:
-        "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y",
+     default:
+        "https://static.vecteezy.com/system/resources/previews/020/911/740/non_2x/user-profile-icon-profile-avatar-user-icon-male-icon-face-icon-profile-icon-free-png.png",
     },
 
     otp: { type: String },

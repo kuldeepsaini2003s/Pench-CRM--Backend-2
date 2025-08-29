@@ -8,7 +8,7 @@ const { processCustomerInvoice } = require("../service/invoiceService");
 const { generateInvoicePDF } = require("../service/pdfService");
 const { uploadBufferToCloudinary } = require("../service/cloudinaryService");
 
-exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
+const allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
   let {
     name,
     phoneNumber,
@@ -80,7 +80,7 @@ exports.allCustomerInvoices = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-exports.generateInvoiceForCustomer = async (req, res, next) => {
+const generateInvoiceForCustomer = async (req, res, next) => {
   try {
     const { customerId } = req.body;
 
@@ -199,7 +199,7 @@ exports.generateInvoiceForCustomer = async (req, res, next) => {
   }
 };
 
-exports.generateMonthlyInvoices = async (req, res, next) => {
+const generateMonthlyInvoices = async (req, res, next) => {
   try {
     // 🔹 Get all customers
     const customers = await Customer.find().populate("products.product");
@@ -230,7 +230,7 @@ exports.generateMonthlyInvoices = async (req, res, next) => {
   }
 };
 
-// exports.bulkSendInvoices = catchAsync(async (req, res, next) => {
+// const bulkSendInvoices = catchAsync(async (req, res, next) => {
 //   const { customerIds } = req.body;
 
 //   if (!Array.isArray(customerIds) || customerIds.length === 0) {
@@ -289,3 +289,9 @@ exports.generateMonthlyInvoices = async (req, res, next) => {
 //     results,
 //   });
 // });
+
+module.exports={
+  allCustomerInvoices,
+  generateInvoiceForCustomer,
+  generateMonthlyInvoices,
+}

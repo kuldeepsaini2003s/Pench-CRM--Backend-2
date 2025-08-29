@@ -15,7 +15,7 @@ const sendOtpEmail = async (admin) => {
     // Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Generates random 6-digit number
     admin.otp = otp;
-    admin.otpExpires = Date.now() + 3600000; // OTP expires in 1 hour
+    admin.otpExpire = Date.now() + 3600000; // OTP expires in 1 hour
     await admin.save(); // Save OTP and expiration to the admin document
  
     const mailOptions = {

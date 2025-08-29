@@ -12,11 +12,11 @@ const productSchema = new mongoose.Schema(
       required: [true, "Description is required"],
     },
     size: {
-      type:String, // 🔹 multiple sizes allowed
+      type: String, // 🔹 multiple sizes allowed
       required: true,
     },
-    price:{
-      type:Number
+    price: {
+      type: Number
     },
     stock: {
       type: Number,
@@ -27,6 +27,11 @@ const productSchema = new mongoose.Schema(
       required: [true, "Product code is required"],
       unique: true, // 🔹 always unique
     },
+    productImage: {
+      type: String,
+      default:
+        "https://static.vecteezy.com/system/resources/previews/020/911/740/non_2x/user-profile-icon-profile-avatar-user-icon-male-icon-face-icon-profile-icon-free-png.png",
+    }
   },
   { timestamps: true }
 );
