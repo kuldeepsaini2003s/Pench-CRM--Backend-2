@@ -12,10 +12,10 @@ const customerSchema = new mongoose.Schema(
       match: [/^[0-9]{10}$/, "Please enter a valid 10-digit phone number"],
       unique: true,
     },
-    userProfile: {
+    image: {
       type: String,
-      default:
-        "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y",
+     default:
+     "https://static.vecteezy.com/system/resources/previews/020/911/740/non_2x/user-profile-icon-profile-avatar-user-icon-male-icon-face-icon-profile-icon-free-png.png",
     },
     gender: {
       type: String,

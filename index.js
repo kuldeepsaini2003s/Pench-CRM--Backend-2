@@ -34,18 +34,18 @@ const customOrderRoutes = require("./routes/customCoustomerRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes")
 
 
-app.use("/admin", adminRoutes);
-app.use("/customer", coustomerRoutes);
-app.use("/deliveryBoy", DelhiveryBoyRoutes);
-app.use("/bottle", bottleRoutes);
-app.use("/deliveryHistory", delhiverHistoryRoutes);
-app.use("/product", productRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/customer", coustomerRoutes);
+app.use("/api/deliveryBoy", DelhiveryBoyRoutes);
+app.use("/api/bottle", bottleRoutes);
+app.use("/api/deliveryHistory", delhiverHistoryRoutes);
+app.use("/api/product", productRoutes);
 
-app.use("/invoice", CreateInvoiceRoutes);
-app.use("/customers", customerInvoce);
+// app.use("/invoice", CreateInvoiceRoutes);
+app.use("/api/customers", customerInvoce);
 
-app.use("/customOrder", customOrderRoutes);
-app.use("/dashboard", dashboardRoutes);
+app.use("/api/customOrder", customOrderRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 
 app.get("/", (req, res) => {

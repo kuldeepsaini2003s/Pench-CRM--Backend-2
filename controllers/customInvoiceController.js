@@ -1,66 +1,156 @@
 const Invoice = require("../models/custumInvoiceModel");
 const ErrorHandler = require("../utils/errorhendler");
 const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
-const catchAsyncErrors = require("../middlewares/catchAsyncErrors");
 const { generateInvoicePDF } = require("../service/pdfService");
 const { uploadBufferToCloudinary } = require("../service/cloudinaryService");
+const Customer = require("../models/coustomerModel");
 
-exports.createInvoice = catchAsyncErrors(async (req, res, next) => {
-  const {
-    customerName,
+// ✅ Create Invoice
+const createCustomerInvoice = async (req, res) => {
+  try {
+    const {
+      customerName,
+      phoneNumber,
+      productType,
+      productSize,
+      productQuantity,
+      price,
+      subscriptionPlan,
+      paymentMode,
+      paymentStatus,
+    } = req.body;
+  
+    if (
+      !customerName ||
+      !phoneNumber ||
+      !productType ||
+      !productSize ||
+      !productQuantity ||
+      !price ||
+      !paymentMode
+    ) {
+      return res.status(400).json({
+        success:false,
+        message:"All required fields must be filled"
+      });
+    }
+  
+    const invoiceNumber = generateInvoiceNumber();
+  
+    const invoice = await Invoice.create({
+      customerName,
+      phoneNumber,
+      invoiceNumber,
+      productType,
+      productSize,
+      productQuantity,
+      price,
+      subscriptionPlan,
+      paymentMode,
+      paymentStatus,
+      invoiceDate: new Date(),
+    });
+  
+    //  PDF generate
+    const pdfBuffer = await generateInvoicePDF(invoice);
+  
+    //  Upload Cloudinary
+    const result = await uploadBufferToCloudinary(
+      pdfBuffer,
+      `invoice-${invoiceNumber}`
+    );
+  
+    invoice.pdfUrl = result.secure_url;
+    await invoice.save();
+  
+    res.status(201).json({
+      success: true,
+      message: "Invoice created successfully",
+      invoice,
+    });
+  } catch (error) {
+    console.log(error)
+    return res.status(500).json({
+      success:false,
+      message:"Failed To Create Invoice"
+    })
+  }
+}
+
+// ✅ Get All Customer Invoices
+const getAllCustomerInvoices = async (req, res, next) => {
+  let {
+    name,
     phoneNumber,
-    productType,
-    productSize,
-    productQuantity,
-    price,
-    subscriptionPlan,
-    paymentMode,
-    paymentStatus,
-  } = req.body;
+    status,
+    startDate,
+    endDate,
+    sort = "-createdAt",
+    page = 1,
+    limit = 10,
+  } = req.query;
 
-  if (
-    !customerName ||
-    !phoneNumber ||
-    !productType ||
-    !productSize ||
-    !productQuantity ||
-    !price ||
-    !paymentMode
-  ) {
-    return next(new ErrorHandler("All required fields must be filled", 400));
+  let query = {};
+
+  if (name) {
+    query.name = { $regex: name, $options: "i" };
   }
 
-  const invoiceNumber = generateInvoiceNumber();
+  if (phoneNumber) {
+    query.phoneNumber = { $regex: phoneNumber, $options: "i" };
+  }
 
-  const invoice = await Invoice.create({
-    customerName,
-    phoneNumber,
-    invoiceNumber,
-    productType,
-    productSize,
-    productQuantity,
-    price,
-    subscriptionPlan,
-    paymentMode,
-    paymentStatus,
-    invoiceDate: new Date(),
+  if (status) {
+    query["products.status"] = status;
+  }
+
+  if (startDate && endDate) {
+    query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
+  }
+
+  page = parseInt(page);
+  limit = parseInt(limit);
+  const skip = (page - 1) * limit;
+
+  const customers = await Customer.find(query)
+    .select("name phoneNumber products createdAt")
+    .sort(sort)
+    .skip(skip)
+    .limit(limit);
+
+  if (!customers || customers.length === 0) {
+    return next(new ErrorHandler("No customers found", 404));
+  }
+
+  const formattedCustomers = customers.map((cust) => {
+    const firstProduct = cust.products[0];
+    return {
+      id: cust._id,
+      name: cust.name,
+      phoneNumber: cust.phoneNumber,
+      startDate: firstProduct?.startDate || null,
+      subscriptionPlan: firstProduct?.subscriptionPlan || "None",
+      totalAmount: cust.products.reduce(
+        (acc, p) => acc + (p.totalPrice || 0),
+        0
+      ),
+      status: "Unpaid", // agar aapko product ka actual status chahiye to ye dynamic bana sakte ho
+    };
   });
 
-  //  PDF generate
-  const pdfBuffer = await generateInvoicePDF(invoice);
+  const total = await Customer.countDocuments(query);
 
-  //  Upload Cloudinary
-  const result = await uploadBufferToCloudinary(
-    pdfBuffer,
-    `invoice-${invoiceNumber}`
-  );
-
-  invoice.pdfUrl = result.secure_url;
-  await invoice.save();
-
-  res.status(201).json({
+  res.status(200).json({
     success: true,
-    message: "Invoice created successfully",
-    invoice,
+    count: formattedCustomers.length,
+    page,
+    totalPages: Math.ceil(total / limit),
+    totalCustomers: total,
+    customers: formattedCustomers,
   });
-});
+}
+
+module.exports = {
+  createCustomerInvoice,
+  getAllCustomerInvoices,
+}
