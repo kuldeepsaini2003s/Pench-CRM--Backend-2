@@ -117,6 +117,7 @@ const getAllProducts = async (req, res) => {
     const formattedProducts = products.map((p) => ({
       id: p._id,
       productName: p.productName,
+      productImage:p.productImage,
       // description: p.description,
       // productType: p.productType,
       size: p.size,
