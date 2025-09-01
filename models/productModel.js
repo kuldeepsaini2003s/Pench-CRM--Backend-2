@@ -29,6 +29,10 @@ const productSchema = new mongoose.Schema(
       required: [true, "Product code is required"],
       unique: true, // 🔹 always unique
     },
+    totalSold: {
+      type: Number,
+      default: 0,
+    },
     productImage: {
       type: String,
       default:

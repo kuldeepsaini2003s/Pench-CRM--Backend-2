@@ -3,13 +3,16 @@ const {
   registerDeliveryBoy,
   loginDeliveryBoy,
   getAllDeliveryBoys,
-  getDeliveryBoyById,
   updateDeliveryBoy,
   deleteDeliveryBoy,
+  getDeliveryBoyProfile,
   getOrders,
   getOrdersByDateRange,
-  getOrderStatistics
+  getOrderStatistics,
 } = require("../controllers/delhiveryBoyController");
+const {
+  verifyDeliveryBoyToken,
+} = require("../middlewares/deliveryBoy.middleware");
 
 const router = express.Router();
 
@@ -17,13 +20,17 @@ const router = express.Router();
 router.post("/register", registerDeliveryBoy);
 router.post("/login", loginDeliveryBoy);
 router.get("/getAll", getAllDeliveryBoys);
-router.get("/getById/:id", getDeliveryBoyById);
-router.put("/update/:id", updateDeliveryBoy);
+router.get(
+  "/deliveryBoyProfile",
+  verifyDeliveryBoyToken,
+  getDeliveryBoyProfile
+);
+router.put("/update", verifyDeliveryBoyToken, updateDeliveryBoy);
 router.delete("/delete/:id", deleteDeliveryBoy);
 
 // Order routes
-router.get('/getOrders', getOrders);
-router.get('/range/:deliveryBoyId', getOrdersByDateRange);
+router.get("/getOrders", getOrders);
+router.get("/range/:deliveryBoyId", getOrdersByDateRange);
 // router.get('/stats/:deliveryBoyId', getOrderStatistics);
 
 module.exports = router;
