@@ -1,6 +1,5 @@
 const express = require("express");
 const app = express();
-
 const http = require("http");
 const db = require("./config/db");
 const mongoose = require("mongoose");
@@ -9,16 +8,50 @@ env.config();
 const port = process.env.PORT || 4000;
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
+const swaggerUi = require("swagger-ui-express");
+const swaggerJsdoc = require("swagger-jsdoc");
+
 app.use(express.json());
 
 app.use(cookieParser());
 
-app.use(cors({
-  origin: "*",
-  optionsSuccessStatus: 200
-}));
+app.use(
+  cors({
+    origin: "*",
+    optionsSuccessStatus: 200,
+  })
+);
 
 app.use(express.json());
+
+const options = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Pench",
+      version: "1.0.0",
+      description: "API documentation for Pench Backend",
+    },
+    servers: [
+      { url: "http://localhost:8000" },
+      { url: "https://pench-crm-backend.onrender.com" },
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+        },
+      },
+    },
+  },
+  apis: ["./routes/*.js"], // path to your route files
+};
+
+const swaggerSpec = swaggerJsdoc(options);
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const adminRoutes = require("./routes/adminRoutes");
 const coustomerRoutes = require("./routes/coustomerRoutes");
@@ -31,8 +64,7 @@ const CreateInvoiceRoutes = require("./routes/customInvoiceRoute");
 const customerInvoce = require("./routes/customerInvoce");
 
 const customOrderRoutes = require("./routes/customCoustomerRoutes");
-const dashboardRoutes = require("./routes/dashboardRoutes")
-
+const dashboardRoutes = require("./routes/dashboardRoutes");
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", coustomerRoutes);
@@ -46,7 +78,6 @@ app.use("/api/customers", customerInvoce);
 
 app.use("/api/customOrder", customOrderRoutes);
 app.use("/api/dashboard", dashboardRoutes);
-
 
 app.get("/", (req, res) => {
   res.send("we are Pench Milk");
