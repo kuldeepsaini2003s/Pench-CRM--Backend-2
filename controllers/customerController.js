@@ -3,7 +3,7 @@ const DeliveryHistory = require("../models/delhiveryHistory");
 const CustomerCustomOrder = require("../models/customerCustomOrder");
 const mongoose = require("mongoose");
 
-exports.createCustomer = async (req, res) => {
+const createCustomer = async (req, res) => {
   try {
     const { name, phoneNumber, gender, address, products, deliveryBoy } =
       req.body;
@@ -94,7 +94,7 @@ exports.createCustomer = async (req, res) => {
 };
 
 // Get all customers
-exports.getAllCustomers = async (req, res) => {
+const getAllCustomers = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -175,7 +175,7 @@ exports.getAllCustomers = async (req, res) => {
 };
 
 // Get single customer by ID
-exports.getCustomerById = async (req, res) => {
+const getCustomerById = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -211,7 +211,7 @@ exports.getCustomerById = async (req, res) => {
 };
 
 // Update customer
-exports.updateCustomer = async (req, res) => {
+const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -266,7 +266,7 @@ exports.updateCustomer = async (req, res) => {
 };
 
 // Delete customer
-exports.deleteCustomer = async (req, res) => {
+const deleteCustomer = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -299,7 +299,7 @@ exports.deleteCustomer = async (req, res) => {
   }
 };
 
-exports.makeAbsentDays = async (req, res) => {
+const makeAbsentDays = async (req, res) => {
   try {
     const { id } = req.params;
     const { dates } = req.body; // array of YYYY-MM-DD strings
@@ -432,7 +432,7 @@ exports.makeAbsentDays = async (req, res) => {
   }
 };
 
-exports.createCustomOrder = async (req, res) => {
+const createCustomOrder = async (req, res) => {
   try {
     const { customer, date, products, deliveryBoy } = req.body;
 
@@ -470,4 +470,14 @@ exports.createCustomOrder = async (req, res) => {
       error: error.message,
     });
   }
+};
+
+module.exports = {
+  createCustomer,
+  getAllCustomers,
+  getCustomerById,
+  updateCustomer,
+  deleteCustomer,
+  makeAbsentDays,
+  createCustomOrder,
 };
