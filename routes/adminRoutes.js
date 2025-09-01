@@ -9,8 +9,8 @@ router.post("/login", loginAdmin);
 router.get("/getProfile", authToken, getAdminProfile);
 router.put("/updateProfile", authToken, upload.single("profileImage"), updateAdminProfile);
 router.post("/forgot-password", forgotPassword);
-router.post("/verify-otp", verifyOtp);
-router.post("/reset-password", resetPassword);
+router.post("/verifyOTP", verifyOtp);
+router.post("/resetPassword", resetPassword);
 router.post("/logout", authToken, logoutAdmin);
 
 module.exports = router;

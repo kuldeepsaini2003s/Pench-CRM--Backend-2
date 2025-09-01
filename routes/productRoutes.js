@@ -22,6 +22,7 @@ router.put("/updateProduct/:id", upload.single("productImage"), updateProduct);
 
 router.delete("/deleteProduct/:id", deleteProduct);
 
+
 router.get("/totalProductsSold", totalProductsSold);
 
 module.exports = router;

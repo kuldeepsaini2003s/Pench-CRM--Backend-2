@@ -1,4 +1,5 @@
 const Product = require("../models/productModel");
+
 const ErrorHandler = require("../utils/errorhendler");
 const DeliveryHistory = require("../models/delhiveryHistory");
 const {
@@ -10,6 +11,10 @@ const {
   subWeeks,
   subMonths,
 } = require("date-fns");
+
+
+
+
 
 // ✅ Create Product
 const createProduct = async (req, res) => {
@@ -80,37 +85,29 @@ const createProduct = async (req, res) => {
 const getAllProducts = async (req, res) => {
   try {
     let {
-      productName = "",
-      size,
-      minPrice,
-      maxPrice,
-      sortBy,
-      sortOrder = "desc",
       page = 1,
       limit = 10,
+      sortOrder = "",
+      search = "",
     } = req.query;
 
     page = parseInt(page);
     limit = parseInt(limit);
 
     // ---- Search Filter ----
-    const filter = {};
-    if (productName) {
-      filter.productName = { $regex: productName, $options: "i" };
-    }
-    if (size) {
-      filter.size = size;
-    }
-    if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = Number(minPrice);
-      if (maxPrice) filter.price.$lte = Number(maxPrice);
+    const filter={isDeleted:false}
+    if (search) {
+      filter.$or = [
+        { productName: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { size: { $regex: search, $options: "i" } },
+      ];
     }
 
     // ---- Sorting ----
     let sort = {};
-    if (sortBy) {
-      sort[sortBy] = sortOrder === "asc" ? 1 : -1;
+    if (sortOrder) {
+      sort[sortOrder] = sortOrder === "asc" ? 1 : -1;
     } else {
       sort = { createdAt: -1 };
     }
@@ -128,12 +125,14 @@ const getAllProducts = async (req, res) => {
     const formattedProducts = products.map((p) => ({
       id: p._id,
       productName: p.productName,
+      productImage:p.productImage,
       // description: p.description,
       // productType: p.productType,
       size: p.size,
       // price: p.price,
       stockAvailable: p.stock,
       productCode: p.productCode,
+      isDeleted:p.isDeleted
     }));
 
     const totalPages = Math.ceil(totalProducts / limit);
@@ -158,7 +157,7 @@ const getAllProducts = async (req, res) => {
       error: error.message,
     });
   }
-};
+}
 
 // ✅ Get Product By Id
 const getProductById = async (req, res) => {
@@ -233,24 +232,29 @@ const updateProduct = async (req, res) => {
 
 // ✅ Delete Product
 const deleteProduct = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const product = await Product.findByIdAndDelete(id);
-    if (!product) return next(new ErrorHandler("Product not found", 404));
-
-    res.status(200).json({
-      success: true,
-      message: "Product deleted successfully",
-      deletedProduct: product,
-    });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({
+ 
+ try {
+  const { id } = req.params;
+  const product = await Product.findByIdAndUpdate(id, { isDeleted: true });
+  if (!product){
+    return res.status(404).json({
       success: false,
-      message: "Failed To Delete Product",
+      message: "Product not found",
     });
   }
-};
+
+  res.status(200).json({
+    success: true,
+    message: "Product deleted successfully",
+  });
+ } catch (error) {
+    console.log(error)
+    return res.status(500).json({
+      success:false,
+      message:"Failed To Delete Product"
+    })
+ }
+}
 
 const totalProductsSold = async (req, res) => {
   try {
