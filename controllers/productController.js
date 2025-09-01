@@ -16,40 +16,53 @@ const createProduct = async (req, res) => {
       });
     }
 
-    if(!productImage){
+    if (!productImage) {
       return res.status(400).json({
-        success:false,
-        message:"Product Image is required",
-      })
+        success: false,
+        message: "Product Image is required",
+      });
     }
 
-    // 🔹 Generate productCode
-    const prefix = productName.toUpperCase().replace(/\s+/g, "-");
+    // ✅ Normalize size into array & remove duplicates
+    let normalizeSize = Array.isArray(size) ? size : [size];
+    normalizeSize = [...new Set(normalizeSize.map(s => s.trim()))]; // unique values only
 
-    // us productName se related last product find karo
-    const lastProduct = await Product.findOne({ productName }).sort({
-      createdAt: -1,
+    // ✅ Check for duplicate product (same productName + same size)
+    const duplicateProduct = await Product.findOne({
+      productName,
+      size: { $in: normalizeSize },
+      isDeleted: false
     });
+
+    if (duplicateProduct) {
+      return res.status(400).json({
+        success: false,
+        message: `Product with same name and size already exists`,
+      });
+    }
+
+    // ✅ Generate Sequential Product Code (PC00001, PC00002, ...)
+    const lastProduct = await Product.findOne().sort({ createdAt: -1 });
 
     let productNumber = 1;
     if (lastProduct && lastProduct.productCode) {
-      const lastCode = lastProduct.productCode.split("-").pop(); // last number nikal lo
+      const lastCode = lastProduct.productCode.replace("PC", "");
       if (!isNaN(lastCode)) {
         productNumber = parseInt(lastCode) + 1;
       }
     }
 
-    const productCode = `${prefix}-${String(productNumber).padStart(3, "0")}`;
+    const productCode = `PC${String(productNumber).padStart(5, "0")}`;
 
-    // 🔹 Save product
+    // ✅ Save product
     const product = await Product.create({
       productName,
       description,
-      size,
+      size: normalizeSize,
       price: Number(price),
       stock: stock || 0,
       productCode,
-      productImage:productImage?.path
+      productImage: productImage?.path
     });
 
     return res.status(201).json({
@@ -57,6 +70,7 @@ const createProduct = async (req, res) => {
       message: "Product Added successfully",
       product,
     });
+
   } catch (error) {
     console.error(error);
     return res.status(500).json({
@@ -66,6 +80,7 @@ const createProduct = async (req, res) => {
     });
   }
 };
+
 
 // ✅ Get All Products
 const getAllProducts = async (req, res) => {
@@ -81,7 +96,7 @@ const getAllProducts = async (req, res) => {
     limit = parseInt(limit);
 
     // ---- Search Filter ----
-    const filter={}
+    const filter={isDeleted:false}
     if (search) {
       filter.$or = [
         { productName: { $regex: search, $options: "i" } },
@@ -89,12 +104,6 @@ const getAllProducts = async (req, res) => {
         { size: { $regex: search, $options: "i" } },
       ];
     }
-
-    // if (minPrice || maxPrice) {
-    //   filter.price = {};
-    //   if (minPrice) filter.price.$gte = Number(minPrice);
-    //   if (maxPrice) filter.price.$lte = Number(maxPrice);
-    // }
 
     // ---- Sorting ----
     let sort = {};
@@ -124,6 +133,7 @@ const getAllProducts = async (req, res) => {
       // price: p.price,
       stockAvailable: p.stock,
       productCode: p.productCode,
+      isDeleted:p.isDeleted
     }));
 
     const totalPages = Math.ceil(totalProducts / limit);
