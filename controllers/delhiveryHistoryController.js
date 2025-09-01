@@ -2,7 +2,9 @@ const DeliveryHistory = require("../models/delhiveryHistory");
 const Customer = require("../models/coustomerModel");
 const DeliveryBoy = require("../models/delhiveryBoyModel");
 const Payment = require("../models/paymentModel");
-const mongoose = require("mongoose")
+const Product = require("../models/productModel");
+const mongoose = require("mongoose");
+
 // ➡️ Create a new delivery history entry
 exports.createDeliveryHistory = async (req, res) => {
   try {
@@ -32,6 +34,19 @@ exports.createDeliveryHistory = async (req, res) => {
       status,
       remarks,
     });
+
+    // Update totalSold if status is "Delivered"
+    if (status === "Delivered" && product && quantityDelivered) {
+      try {
+        await Product.findByIdAndUpdate(
+          product,
+          { $inc: { totalSold: quantityDelivered } },
+          { new: true }
+        );
+      } catch (error) {
+        console.error("Error updating product totalSold:", error);
+      }
+    }
 
     res.status(201).json({ success: true, delivery });
   } catch (error) {
@@ -79,7 +94,7 @@ exports.getDeliveriesByCustomer = async (req, res) => {
       page = 1,
       limit = 10,
       sortBy = "date",
-      sortOrder = "desc"
+      sortOrder = "desc",
     } = req.query;
 
     // Validate customer ID
@@ -167,10 +182,10 @@ exports.getDeliveriesByCustomer = async (req, res) => {
       deliveredCount: 0,
       missedCount: 0,
       pendingCount: 0,
-      bottleSummary: {}
+      bottleSummary: {},
     };
 
-    deliveries.forEach(delivery => {
+    deliveries.forEach((delivery) => {
       summary.totalAmount += delivery.totalPrice || 0;
       summary.totalAmountPaid += delivery.amountPaid || 0;
 
@@ -180,7 +195,7 @@ exports.getDeliveriesByCustomer = async (req, res) => {
 
       // Bottle summary
       if (delivery.bottleIssued && Array.isArray(delivery.bottleIssued)) {
-        delivery.bottleIssued.forEach(bottle => {
+        delivery.bottleIssued.forEach((bottle) => {
           if (!summary.bottleSummary[bottle.size]) {
             summary.bottleSummary[bottle.size] = { issued: 0, returned: 0 };
           }
@@ -189,7 +204,7 @@ exports.getDeliveriesByCustomer = async (req, res) => {
       }
 
       if (delivery.bottleReturn && Array.isArray(delivery.bottleReturn)) {
-        delivery.bottleReturn.forEach(bottle => {
+        delivery.bottleReturn.forEach((bottle) => {
           if (!summary.bottleSummary[bottle.size]) {
             summary.bottleSummary[bottle.size] = { issued: 0, returned: 0 };
           }
@@ -207,23 +222,23 @@ exports.getDeliveriesByCustomer = async (req, res) => {
         totalPages: Math.ceil(totalCount / pageSize),
         hasNext: pageNumber < Math.ceil(totalCount / pageSize),
         hasPrev: pageNumber > 1,
-        pageSize
+        pageSize,
       },
       filters: {
         fromDate,
         toDate,
         status,
-        customerId
+        customerId,
       },
       summary,
-      deliveries
+      deliveries,
     });
   } catch (error) {
     console.error("Error fetching deliveries:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -367,8 +382,8 @@ exports.updateDeliveryStatus = async (req, res) => {
       // Calculate total price from products
       const totalPrice = products
         ? products.reduce((total, product) => {
-          return total + (product.totalPrice || 0);
-        }, 0)
+            return total + (product.totalPrice || 0);
+          }, 0)
         : 0;
 
       deliveryHistory = await DeliveryHistory.create({
@@ -390,6 +405,27 @@ exports.updateDeliveryStatus = async (req, res) => {
 
       if (status && ["Delivered", "Missed", "Pending"].includes(status)) {
         updateData.status = status;
+
+        // If status is changing to "Delivered", update totalSold
+        if (status === "Delivered") {
+          try {
+            // Get the previous status to check if it was not "Delivered"
+            const previousDelivery = await DeliveryHistory.findById(
+              deliveryHistory._id
+            );
+            if (previousDelivery && previousDelivery.status !== "Delivered") {
+              // Update totalSold for all products in this delivery
+              if (products && Array.isArray(products)) {
+                await updateProductTotalSold(products);
+              }
+            }
+          } catch (error) {
+            console.error(
+              "Error updating totalSold when status changes to Delivered:",
+              error
+            );
+          }
+        }
       }
 
       if (products && Array.isArray(products)) {
@@ -421,6 +457,11 @@ exports.updateDeliveryStatus = async (req, res) => {
         { $set: updateData },
         { new: true, runValidators: true }
       );
+    }
+
+    // Update totalSold for products in the delivery history
+    if (products && Array.isArray(products)) {
+      await updateProductTotalSold(products);
     }
 
     // Create payment record if amount is paid
@@ -478,12 +519,12 @@ exports.updateDeliveryStatus = async (req, res) => {
     console.error("Error updating delivery status:", error);
 
     // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
         message: "Validation error",
-        errors: errors
+        errors: errors,
       });
     }
 
@@ -618,9 +659,9 @@ exports.getTodayOrdersSummary = async (req, res) => {
               quantity: quantity,
               deliveryBoy: customer.deliveryBoy
                 ? {
-                  _id: customer.deliveryBoy._id,
-                  name: customer.deliveryBoy.name,
-                }
+                    _id: customer.deliveryBoy._id,
+                    name: customer.deliveryBoy.name,
+                  }
                 : null,
             });
 
@@ -774,5 +815,27 @@ exports.getTodayOrdersSummary = async (req, res) => {
       message: "Internal server error",
       error: error.message,
     });
+  }
+};
+
+// 🔹 Function to update totalSold in Product model
+const updateProductTotalSold = async (products) => {
+  try {
+    for (const productItem of products) {
+      if (productItem.product && productItem.quantity) {
+        const productId = productItem.product;
+        const quantity = productItem.quantity;
+
+        // Update the product's totalSold field
+        await Product.findByIdAndUpdate(
+          productId,
+          { $inc: { totalSold: quantity } },
+          { new: true }
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Error updating product totalSold:", error);
+    throw error;
   }
 };
