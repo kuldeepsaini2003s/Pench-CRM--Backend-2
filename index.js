@@ -22,7 +22,7 @@ app.use(
   })
 );
 
-app.use(express.json());
+
 
 const options = {
   definition: {
