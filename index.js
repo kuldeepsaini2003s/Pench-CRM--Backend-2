@@ -73,7 +73,7 @@ app.use("/api/product", productRoutes);
 
 // app.use("/invoice", CreateInvoiceRoutes);
 app.use("/api/customers", customerInvoce);
-
+app.use("/api/invoices", CreateInvoiceRoutes);
 app.use("/api/customOrder", customOrderRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 

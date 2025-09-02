@@ -3,7 +3,7 @@ const { createCustomerInvoice, getAllCustomerInvoices } = require("../controller
 
 const router = express.Router();
 
-router.post("/create", createCustomerInvoice);
+router.post("/createInvoice", createCustomerInvoice);
 router.get("/getAllInvoices", getAllCustomerInvoices);
 
 module.exports = router;

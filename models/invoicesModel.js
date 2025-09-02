@@ -34,13 +34,13 @@ const invoiceSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["Cash", "Card", "Online", "Other"],
+      enum: ["Cash", "UPI"],
       default: "Cash",
     },
     issueDate: {
       type: Date,
     },
-    status: {
+    paymentStatus: {
       type: String,
       enum: ["Paid", "Unpaid", "Partially Paid"],
     },

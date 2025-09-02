@@ -269,6 +269,7 @@ const deleteProduct = async (req, res, next) => {
  }
 }
 
+// ✅ Total Products Sold
 const totalProductsSold = async (req, res) => {
   try {
     const { period } = req.query;
@@ -347,6 +348,357 @@ const totalProductsSold = async (req, res) => {
   }
 };
 
+// ✅ Total Low Stock Product Count
+const getLowStockProductsCount = async (req, res) => {
+  try {
+    const lowStockCount = await Product.countDocuments({
+      stock: { $lte: 20 },
+      isDeleted: false,
+    });
+ 
+    return res.status(200).json({
+      success: true,
+      message: "Low stock count retrieved successfully",
+      lowStockCount: lowStockCount,
+    });
+  } catch (error) {
+    console.error("Error in getLowStockCount:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// ✅ Get Low Stock Products List
+const getLowStockProductsList = async (req, res) => {
+  try {
+    let { page = 1, limit = 10 } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    const filter = {
+      stock: { $lte: 20 }, // Low stock condition
+      isDeleted: false,
+    };
+
+    // ---- Count + Paginate ----
+    const [totalProducts, lowStockProducts] = await Promise.all([
+      Product.countDocuments(filter),
+      Product.find(filter)
+        .select("productName productImage size stock")
+        .sort({ stock: 1 }) // lowest stock first
+        .skip((page - 1) * limit)
+        .limit(limit),
+    ]);
+
+    // ---- Format Response ----
+    const formattedProducts = lowStockProducts.map((p) => ({
+      id: p._id,
+      productName: p.productName,
+      productImage: p.productImage,
+      size: p.size,
+      stockAvailable: p.stock,
+    }));
+
+    const totalPages = Math.ceil(totalProducts / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
+
+    return res.status(200).json({
+      success: true,
+      message: "Low stock products retrieved successfully",
+      totalProducts,
+      totalPages,
+      currentPage: page,
+      previous: hasPrevious,
+      next: hasNext,
+      products: formattedProducts,
+    });
+  } catch (error) {
+    console.error("Error in getLowStockProducts:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed To Get Low Stock Products",
+      error: error.message,
+    });
+  }
+};
+
+// ✅ Add Stock
+const addStock = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const { quantity } = req.body;
+ 
+    if (!productId || !quantity) {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID and quantity are required",
+      });
+    }
+ 
+    if (quantity <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be greater than 0",
+      });
+    }
+ 
+    const product = await Product.findById(productId);
+ 
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+ 
+    if (product.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot add stock to deleted product",
+      });
+    }
+ 
+    const updatedProduct = await Product.findByIdAndUpdate(
+      productId,
+      { $inc: { stock: parseInt(quantity) } },
+      { new: true }
+    );
+ 
+    return res.status(200).json({
+      success: true,
+      message: "Stock added successfully",
+      data: {
+        productId: updatedProduct._id,
+        productName: updatedProduct.productName,
+        stock: updatedProduct.stock,
+      },
+    });
+  } catch (error) {
+    console.error("Error in addStock:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed To Add Stock",
+      error: error.message,
+    });
+  }
+};
+
+// ✅ Remove Stock
+const removeStock = async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    if (!productId) {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required",
+      });
+    }
+
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    if (product.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot remove stock from deleted product",
+      });
+    }
+
+    if (product.stock <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient stock. No stock available to remove",
+        data: {
+          availableStock: product.stock,
+        },
+      });
+    }
+
+    // Decrease stock by 1
+    const updatedProduct = await Product.findByIdAndUpdate(
+      productId,
+      { $inc: { stock: -1 } },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Stock Decreased successfully",
+      data: {
+        productId: updatedProduct._id,
+        productName: updatedProduct.productName,
+        stock: updatedProduct.stock,
+      },
+    });
+  } catch (error) {
+    console.error("Error in removeStock:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed To Remove Stock",
+      error: error.message,
+    });
+  }
+};
+
+// ✅ Get Top Selling Product And Total Product Sold
+const getTopSellingProductAndTotalProductSold = async (req, res) => {
+  try {
+    const { period } = req.query;
+ 
+    // Validate period parameter
+    if (!["daily", "weekly", "monthly"].includes(period)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid period. Use: daily, weekly, or monthly",
+      });
+    }
+ 
+    let startDate, endDate;
+ 
+    // Calculate date ranges for current period
+    switch (period) {
+      case "daily":
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date();
+        endDate.setHours(23, 59, 59, 999);
+        break;
+ 
+      case "weekly":
+        startDate = startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 });
+        endDate = endOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 });
+        break;
+ 
+      case "monthly":
+        startDate = startOfMonth(subMonths(new Date(), 1));
+        endDate = endOfMonth(subMonths(new Date(), 1));
+        break;
+    }
+ 
+    // Get total products sold
+    const totalProductsPipeline = [
+      {
+        $match: {
+          status: "Delivered",
+          date: {
+            $gte: startDate,
+            $lte: endDate,
+          },
+        },
+      },
+      {
+        $unwind: "$products",
+      },
+      {
+        $match: {
+          "products.status": "delivered",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalUnits: { $sum: "$products.quantity" },
+        },
+      },
+    ];
+ 
+    // Get top selling product details
+    const topSellingPipeline = [
+      {
+        $match: {
+          status: "Delivered",
+          date: {
+            $gte: startDate,
+            $lte: endDate,
+          },
+        },
+      },
+      {
+        $unwind: "$products",
+      },
+      {
+        $match: {
+          "products.status": "delivered",
+        },
+      },
+      {
+        $group: {
+          _id: "$products.product",
+          totalQuantity: { $sum: "$products.quantity" },
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "productDetails",
+        },
+      },
+      {
+        $unwind: "$productDetails",
+      },
+      {
+        $project: {
+          _id: 1,
+          productName: "$productDetails.productName",
+          productImage: "$productDetails.productImage",
+          size: "$productDetails.size",
+          totalQuantity: 1,
+        },
+      },
+      {
+        $sort: { totalQuantity: -1 },
+      },
+      {
+        $limit: 1,
+      },
+    ];
+ 
+    const [totalProductsResult, topSellingResult] = await Promise.all([
+      DeliveryHistory.aggregate(totalProductsPipeline),
+      DeliveryHistory.aggregate(topSellingPipeline),
+    ]);
+ 
+    const totalProductsSold =
+      totalProductsResult.length > 0 ? totalProductsResult[0].totalUnits : 0;
+ 
+    let topSellingProduct = "";
+ 
+    if (topSellingResult.length > 0) {
+      topSellingProduct = topSellingResult[0].productName;
+    }
+ 
+    return res.status(200).json({
+      success: true,
+      message: `Sales summary for ${period} period`,
+      data: {
+        totalProductsSold: totalProductsSold,
+        topSellingProduct: topSellingProduct,
+        period: period,
+      },
+    });
+  } catch (error) {
+    console.error("Error in getSalesSummary:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed To Get Top Selling Product And Total Product Sold",
+      error: error.message,
+    });
+  }
+};
+ 
 module.exports = {
   createProduct,
   getAllProducts,
@@ -354,4 +706,9 @@ module.exports = {
   updateProduct,
   deleteProduct,
   totalProductsSold,
+  getLowStockProductsCount,
+  getLowStockProductsList,
+  addStock,
+  removeStock,
+  getTopSellingProductAndTotalProductSold,
 };
