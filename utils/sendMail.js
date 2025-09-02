@@ -19,7 +19,7 @@ const sendOtpEmail = async (admin) => {
     await admin.save(); // Save OTP and expiration to the admin document
  
     const mailOptions = {
-      from: `"Your Company" <${process.env.EMAIL_USER}>`,
+      from: `"Pench" <${process.env.EMAIL_USER}>`,
       to: admin.email,
       subject: 'Password Reset Request',
       html: `
@@ -33,7 +33,12 @@ const sendOtpEmail = async (admin) => {
     await transport.sendMail(mailOptions); // Send email
     return { success: true, message: 'Password reset email sent successfully.', otp };
   } catch (error) {
-    console.error('Error sending password reset email:', error);
+    console.error('Error sending password reset email:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      response: error.response,
+    });
     return { success: false, message: 'Failed to send password reset email.' };
   }
 };
