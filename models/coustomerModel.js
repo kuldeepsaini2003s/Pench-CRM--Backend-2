@@ -53,7 +53,7 @@ const customerSchema = new mongoose.Schema(
         subscriptionPlan: {
           type: String,
           enum: ["Monthly", "Daily", "Alternate Days"],
-          required: true,
+          // required: true,
         },
 
         deliveryDays: {
@@ -63,7 +63,7 @@ const customerSchema = new mongoose.Schema(
             "Alternate Days",
             "Monday to Friday",
             "Weekends",
-            "Custom",
+            "Custom Date",
           ],
           default: "Daily",
         },
@@ -78,6 +78,7 @@ const customerSchema = new mongoose.Schema(
 
         endDate: {
           type: Date,
+          default: Date.now,
         },
         totalPrice: {
           type: Number,

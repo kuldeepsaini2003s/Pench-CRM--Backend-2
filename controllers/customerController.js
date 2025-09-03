@@ -22,6 +22,24 @@ const createCustomer = async (req, res) => {
       });
     }
 
+    // ✅ helper to parse "dd/mm/yyyy"
+    const parseDDMMYYYYtoDate = (dateStr) => {
+      if (!dateStr) return null;
+      const [day, month, year] = dateStr.split("/");
+      return new Date(`${year}-${month}-${day}`);
+    };
+
+
+      // ✅ helper to format Date -> dd/mm/yyyy
+      const formatDateToDDMMYYYY = (dateObj) => {
+        if (!dateObj) return null;
+        const d = new Date(dateObj);
+        const day = String(d.getDate()).padStart(2, "0");
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+
     // 2. Validate Products
     const validatedProducts = [];
     for (let item of products) {
@@ -38,16 +56,29 @@ const createCustomer = async (req, res) => {
         });
       }
 
-      // Push validated product with productId
+      // ✅ Parse dates before saving
+      const parsedCustomDates = Array.isArray(customDeliveryDates)
+        ? customDeliveryDates.map((d) => parseDDMMYYYYtoDate(d))
+        : [];
+
+        let parsedStartDate = parseDDMMYYYYtoDate(startDate);
+        let parsedEndDate = parseDDMMYYYYtoDate(endDate);
+  
+        // ✅ If Monthly subscription & startDate is missing → take first custom date
+        if (subscriptionPlan === "Monthly" && !parsedStartDate && parsedCustomDates.length > 0) {
+          parsedStartDate = parsedCustomDates[0];
+        }
+  
+
       validatedProducts.push({
-        product: productDoc._id, // ✅ store ObjectId
+        product: productDoc._id,
         price,
         quantity,
         subscriptionPlan,
         deliveryDays,
-        customDeliveryDates,
-        startDate,
-        endDate,
+        customDeliveryDates: parsedCustomDates,
+        startDate: parsedStartDate,
+        endDate: parsedEndDate,
         totalPrice,
       });
     }
@@ -64,10 +95,22 @@ const createCustomer = async (req, res) => {
 
     await customer.save();
 
+    
+    // ✅ Format response before sending
+    const formattedCustomer = {
+      ...customer.toObject(),
+      products: customer.products.map((p) => ({
+        ...p.toObject(),
+        customDeliveryDates: p.customDeliveryDates.map((d) => formatDateToDDMMYYYY(d)),
+        startDate: formatDateToDDMMYYYY(p.startDate),
+        endDate: formatDateToDDMMYYYY(p.endDate),
+      })),
+    };
+
     res.status(201).json({
       success: true,
       message: "Customer created successfully",
-      data: customer,
+      data: formattedCustomer,
     });
   } catch (error) {
     console.error("Error creating customer:", error);
@@ -78,6 +121,7 @@ const createCustomer = async (req, res) => {
     });
   }
 };
+
 
 // ✅ Get all customers
 const getAllCustomers = async (req, res) => {
@@ -96,15 +140,19 @@ const getAllCustomers = async (req, res) => {
     // ---- Build filter ----
     const filter = {};
 
-    if (customerStatus) {
-      filter.customerStatus = customerStatus;
-    }
+    if (customerStatus) filter.customerStatus = customerStatus;
+    console.log("customerStatus", customerStatus);
 
     if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { phoneNumber: { $regex: search, $options: "i" } },
-      ];
+      const regex = new RegExp(search, "i");
+      if (!isNaN(search)) {
+        filter.$or = [
+          { name: regex },
+          { phoneNumber: Number(search) }
+        ];
+      } else {
+        filter.$or = [{ name: regex }];
+      }
     }
 
     // ---- Query DB ----
@@ -129,13 +177,13 @@ const getAllCustomers = async (req, res) => {
       customer.products.some((p) => p.product !== null)
     );
 
-    //✅Only Required Fields
+    // ✅ Only Required Fields
     const formattedCustomers = filteredCustomers.map((c) => {
       const firstProduct = c.products[0]?.product;
       return {
-        _id:c._id,
+        _id: c._id,
         customerStatus: c.customerStatus,
-        image:c.image,
+        image: c.image,
         customerName: c.name,
         phoneNumber: c.phoneNumber,
         productName: firstProduct ? firstProduct.productName : "",
@@ -144,6 +192,7 @@ const getAllCustomers = async (req, res) => {
         deliveryDays: c.products[0]?.deliveryDays || "",
       };
     });
+
     // ---- Pagination meta ----
     const totalPages = Math.ceil(totalCustomers / limit);
     const hasPrevious = page > 1;
@@ -170,7 +219,8 @@ const getAllCustomers = async (req, res) => {
 };
 
 
-// Get single customer by ID
+
+//✅ Get single customer by ID
 const getCustomerById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -206,7 +256,7 @@ const getCustomerById = async (req, res) => {
   }
 };
 
-// Update customer
+// ✅ Update customer
 const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
@@ -261,7 +311,7 @@ const updateCustomer = async (req, res) => {
   }
 };
 
-// Delete customer
+// ✅Delete customer
 const deleteCustomer = async (req, res) => {
   try {
     const { id } = req.params;
@@ -295,6 +345,7 @@ const deleteCustomer = async (req, res) => {
   }
 };
 
+// ✅ Make Absent Days
 const makeAbsentDays = async (req, res) => {
   try {
     const { id } = req.params;
@@ -428,6 +479,7 @@ const makeAbsentDays = async (req, res) => {
   }
 };
 
+//✅ Create Custom Order
 const createCustomOrder = async (req, res) => {
   try {
     const { customer, date, products, deliveryBoy } = req.body;
@@ -468,6 +520,44 @@ const createCustomOrder = async (req, res) => {
   }
 };
 
+//✅ DropDown Api For deliveryDays
+const getDeliveryDays = async(req, res) =>{
+  try{
+      const deliveryDays = await Customer.schema.path("products.0.deliveryDays").enumValues;
+      return res.status(200).json({
+        success: true,
+        message: "Delivery days fetched successfully",
+        deliveryDays,
+      });
+  }
+  catch(error){
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching delivery days",
+      error: error.message,
+    });
+  }
+}
+
+//✅ DropDown Api for subscriptionPlan
+const getSubscriptionPlan = async(req, res) =>{
+  try{
+      const subscriptionPlan = await Customer.schema.path("products.0.subscriptionPlan").enumValues;
+      return res.status(200).json({
+        success: true,
+        message: "Subscription plan fetched successfully",
+        subscriptionPlan,
+      });
+  }
+  catch(error){
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching subscription plan",
+      error: error.message,
+    });
+  }
+}
+
 module.exports = {
   createCustomer,
   getAllCustomers,
@@ -476,4 +566,6 @@ module.exports = {
   deleteCustomer,
   makeAbsentDays,
   createCustomOrder,
+  getDeliveryDays,
+  getSubscriptionPlan,
 };
