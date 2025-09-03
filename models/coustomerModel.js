@@ -43,6 +43,10 @@ const customerSchema = new mongoose.Schema(
           type: String,
           required: true
         },
+        productSize: {
+          type: String,
+          required: true
+        },
 
         quantity: {
           type: Number,
@@ -52,7 +56,7 @@ const customerSchema = new mongoose.Schema(
 
         subscriptionPlan: {
           type: String,
-          enum: ["Monthly", "Daily", "Alternate Days"],
+          enum: ["Monthly", "One Day", "Alternate Days"],
           // required: true,
         },
 
@@ -109,7 +113,17 @@ const customerSchema = new mongoose.Schema(
       type:String,
       enum:["Active","Inactive"],
       default:"Active"
-    }
+    },
+    // paymentMethod:{
+    //   type:String,
+    //   enum:["Cash","UPI"],
+    //   default:"Cash"
+    // },
+    // paymentStatus:{
+    //   type:String,
+    //   enum:["Paid","Partially Paid","Unpaid"],
+    //   default:"Pending"
+    // },
   },
   { timestamps: true }
 );

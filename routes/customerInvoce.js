@@ -4,9 +4,11 @@ const router = express.Router();
 
 router.get("/invoices", allCustomerInvoices);
 
-// single customer route
+
 
 router.post("/generate-invoice", generateInvoiceForCustomer);
+
+
 
 
 module.exports = router;

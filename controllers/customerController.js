@@ -30,20 +30,20 @@ const createCustomer = async (req, res) => {
     };
 
 
-      // ✅ helper to format Date -> dd/mm/yyyy
-      const formatDateToDDMMYYYY = (dateObj) => {
-        if (!dateObj) return null;
-        const d = new Date(dateObj);
-        const day = String(d.getDate()).padStart(2, "0");
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-      };
+    // ✅ helper to format Date -> dd/mm/yyyy
+    const formatDateToDDMMYYYY = (dateObj) => {
+      if (!dateObj) return null;
+      const d = new Date(dateObj);
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
 
     // 2. Validate Products
     const validatedProducts = [];
     for (let item of products) {
-      const { productName, price, quantity, subscriptionPlan, deliveryDays, customDeliveryDates, startDate, endDate, totalPrice } = item;
+      const { productName, price, productSize, quantity, subscriptionPlan, deliveryDays, customDeliveryDates, startDate, endDate, totalPrice } = item;
 
       // Product find by name
       const productDoc = await Product.findOne({ productName });
@@ -56,22 +56,41 @@ const createCustomer = async (req, res) => {
         });
       }
 
+
+      //✅ productSize validate
+      if (!productDoc.size.includes(productSize)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid size "${productSize}" for ${productName}. Please select from dropdown.`,
+          availableSizes: productDoc.size, // dropdown options
+        });
+      }
+
+   
+      if(subscriptionPlan !=="Monthly" && deliveryDays){
+        return res.status(400).json({
+          success: false,
+          message: `deliveryDays is only allowed for Monthly subscription. You used "${subscriptionPlan}".`,
+        });
+      }
+
       // ✅ Parse dates before saving
       const parsedCustomDates = Array.isArray(customDeliveryDates)
         ? customDeliveryDates.map((d) => parseDDMMYYYYtoDate(d))
         : [];
 
-        let parsedStartDate = parseDDMMYYYYtoDate(startDate);
-        let parsedEndDate = parseDDMMYYYYtoDate(endDate);
-  
-        // ✅ If Monthly subscription & startDate is missing → take first custom date
-        if (subscriptionPlan === "Monthly" && !parsedStartDate && parsedCustomDates.length > 0) {
-          parsedStartDate = parsedCustomDates[0];
-        }
-  
+      let parsedStartDate = parseDDMMYYYYtoDate(startDate);
+      let parsedEndDate = parseDDMMYYYYtoDate(endDate);
+
+      // ✅ If Monthly subscription & startDate is missing → take first custom date
+      if (subscriptionPlan === "Monthly" && !parsedStartDate && parsedCustomDates.length > 0) {
+        parsedStartDate = parsedCustomDates[0];
+      }
+
 
       validatedProducts.push({
         product: productDoc._id,
+        productSize,
         price,
         quantity,
         subscriptionPlan,
@@ -95,7 +114,7 @@ const createCustomer = async (req, res) => {
 
     await customer.save();
 
-    
+
     // ✅ Format response before sending
     const formattedCustomer = {
       ...customer.toObject(),
@@ -300,7 +319,7 @@ const updateCustomer = async (req, res) => {
       });
     }
 
-   return res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Customer updated successfully",
       data: updatedCustomer,
@@ -524,16 +543,16 @@ const createCustomOrder = async (req, res) => {
 };
 
 //✅ DropDown Api For deliveryDays
-const getDeliveryDays = async(req, res) =>{
-  try{
-      const deliveryDays = await Customer.schema.path("products.0.deliveryDays").enumValues;
-      return res.status(200).json({
-        success: true,
-        message: "Delivery days fetched successfully",
-        deliveryDays,
-      });
+const getDeliveryDays = async (req, res) => {
+  try {
+    const deliveryDays = await Customer.schema.path("products.0.deliveryDays").enumValues;
+    return res.status(200).json({
+      success: true,
+      message: "Delivery days fetched successfully",
+      deliveryDays,
+    });
   }
-  catch(error){
+  catch (error) {
     return res.status(500).json({
       success: false,
       message: "Error fetching delivery days",
@@ -543,16 +562,16 @@ const getDeliveryDays = async(req, res) =>{
 }
 
 //✅ DropDown Api for subscriptionPlan
-const getSubscriptionPlan = async(req, res) =>{
-  try{
-      const subscriptionPlan = await Customer.schema.path("products.0.subscriptionPlan").enumValues;
-      return res.status(200).json({
-        success: true,
-        message: "Subscription plan fetched successfully",
-        subscriptionPlan,
-      });
+const getSubscriptionPlan = async (req, res) => {
+  try {
+    const subscriptionPlan = await Customer.schema.path("products.0.subscriptionPlan").enumValues;
+    return res.status(200).json({
+      success: true,
+      message: "Subscription plan fetched successfully",
+      subscriptionPlan,
+    });
   }
-  catch(error){
+  catch (error) {
     return res.status(500).json({
       success: false,
       message: "Error fetching subscription plan",

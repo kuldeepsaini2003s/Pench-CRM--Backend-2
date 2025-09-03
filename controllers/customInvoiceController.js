@@ -150,7 +150,44 @@ const getAllCustomerInvoices = async (req, res, next) => {
   });
 }
 
+//✅ DropDown Api for Payment Method
+const getPaymentMethods = async (req, res) => {
+  try {
+    const paymentMethods = await Invoice.schema.path("paymentMethod").enumValues;
+    res.status(200).json({
+      success: true,
+      paymentMethods,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch payment methods",
+    });
+  }
+}
+
+//✅ DropDown Api for Payment Status
+const getPaymentStatus = async (req, res) => {
+  try {
+    const paymentStatus = await Invoice.schema.path("paymentStatus").enumValues;
+    res.status(200).json({
+      success: true,
+      paymentStatus,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch payment status",
+    });
+  }
+}
+
 module.exports = {
   createCustomerInvoice,
   getAllCustomerInvoices,
+  getPaymentMethods,
+  getPaymentStatus,
+  
 }
