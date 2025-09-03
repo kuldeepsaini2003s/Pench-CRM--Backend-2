@@ -156,6 +156,7 @@ const getPaymentMethods = async (req, res) => {
     const paymentMethods = await Invoice.schema.path("paymentMethod").enumValues;
     res.status(200).json({
       success: true,
+      message:"Payment Methods fetched successfully",
       paymentMethods,
     });
   } catch (error) {
@@ -173,6 +174,7 @@ const getPaymentStatus = async (req, res) => {
     const paymentStatus = await Invoice.schema.path("paymentStatus").enumValues;
     res.status(200).json({
       success: true,
+      message:"Payment Status fetched successfully",
       paymentStatus,
     });
   } catch (error) {
