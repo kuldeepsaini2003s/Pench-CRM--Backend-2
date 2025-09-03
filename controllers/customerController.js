@@ -5,11 +5,11 @@ const mongoose = require("mongoose");
 const DeliveryBoy = require("../models/delhiveryBoyModel");
 const Product = require("../models/productModel");
 
-
 // ✅ Create Customer
 const createCustomer = async (req, res) => {
   try {
-    const { name, phoneNumber, gender, address, deliveryBoyName, products } = req.body;
+    const { name, phoneNumber, gender, address, deliveryBoyName, products } =
+      req.body;
 
     // 1. DeliveryBoy validate
     const deliveryBoy = await DeliveryBoy.findOne({ name: deliveryBoyName });
@@ -29,21 +29,31 @@ const createCustomer = async (req, res) => {
       return new Date(`${year}-${month}-${day}`);
     };
 
-
-      // ✅ helper to format Date -> dd/mm/yyyy
-      const formatDateToDDMMYYYY = (dateObj) => {
-        if (!dateObj) return null;
-        const d = new Date(dateObj);
-        const day = String(d.getDate()).padStart(2, "0");
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-      };
+    // ✅ helper to format Date -> dd/mm/yyyy
+    const formatDateToDDMMYYYY = (dateObj) => {
+      if (!dateObj) return null;
+      const d = new Date(dateObj);
+      const day = String(d.getDate()).padStart(2, "0");
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
 
     // 2. Validate Products
     const validatedProducts = [];
     for (let item of products) {
-      const { productName, price, quantity, subscriptionPlan, deliveryDays, customDeliveryDates, startDate, endDate, totalPrice } = item;
+      const {
+        productName,
+        price,
+        quantity,
+        subscriptionPlan,
+        deliveryDays,
+        productSize,
+        customDeliveryDates,
+        startDate,
+        endDate,
+        totalPrice,
+      } = item;
 
       // Product find by name
       const productDoc = await Product.findOne({ productName });
@@ -56,24 +66,37 @@ const createCustomer = async (req, res) => {
         });
       }
 
+      // Validate product size if provided
+      if (productSize && !productDoc.size.includes(productSize)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid product size: ${productSize} for product: ${productName}`,
+          availableSizes: productDoc.size,
+        });
+      }
+
       // ✅ Parse dates before saving
       const parsedCustomDates = Array.isArray(customDeliveryDates)
         ? customDeliveryDates.map((d) => parseDDMMYYYYtoDate(d))
         : [];
 
-        let parsedStartDate = parseDDMMYYYYtoDate(startDate);
-        let parsedEndDate = parseDDMMYYYYtoDate(endDate);
-  
-        // ✅ If Monthly subscription & startDate is missing → take first custom date
-        if (subscriptionPlan === "Monthly" && !parsedStartDate && parsedCustomDates.length > 0) {
-          parsedStartDate = parsedCustomDates[0];
-        }
-  
+      let parsedStartDate = parseDDMMYYYYtoDate(startDate);
+      let parsedEndDate = parseDDMMYYYYtoDate(endDate);
+
+      // ✅ If Monthly subscription & startDate is missing → take first custom date
+      if (
+        subscriptionPlan === "Monthly" &&
+        !parsedStartDate &&
+        parsedCustomDates.length > 0
+      ) {
+        parsedStartDate = parsedCustomDates[0];
+      }
 
       validatedProducts.push({
         product: productDoc._id,
         price,
         quantity,
+        productSize,
         subscriptionPlan,
         deliveryDays,
         customDeliveryDates: parsedCustomDates,
@@ -95,13 +118,14 @@ const createCustomer = async (req, res) => {
 
     await customer.save();
 
-    
     // ✅ Format response before sending
     const formattedCustomer = {
       ...customer.toObject(),
       products: customer.products.map((p) => ({
         ...p.toObject(),
-        customDeliveryDates: p.customDeliveryDates.map((d) => formatDateToDDMMYYYY(d)),
+        customDeliveryDates: p.customDeliveryDates.map((d) =>
+          formatDateToDDMMYYYY(d)
+        ),
         startDate: formatDateToDDMMYYYY(p.startDate),
         endDate: formatDateToDDMMYYYY(p.endDate),
       })),
@@ -121,7 +145,6 @@ const createCustomer = async (req, res) => {
     });
   }
 };
-
 
 // ✅ Get all customers
 const getAllCustomers = async (req, res) => {
@@ -146,10 +169,7 @@ const getAllCustomers = async (req, res) => {
     if (search) {
       const regex = new RegExp(search, "i");
       if (!isNaN(search)) {
-        filter.$or = [
-          { name: regex },
-          { phoneNumber: Number(search) }
-        ];
+        filter.$or = [{ name: regex }, { phoneNumber: Number(search) }];
       } else {
         filter.$or = [{ name: regex }];
       }
@@ -218,8 +238,6 @@ const getAllCustomers = async (req, res) => {
   }
 };
 
-
-
 //✅ Get single customer by ID
 const getCustomerById = async (req, res) => {
   try {
@@ -260,8 +278,17 @@ const getCustomerById = async (req, res) => {
 const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const {
+      name,
+      phoneNumber,
+      subscriptionPlan,
+      address,
+      productName,
+      productSize,
+      quantity,
+    } = req.body;
 
+    // Validate customer ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -269,12 +296,22 @@ const updateCustomer = async (req, res) => {
       });
     }
 
+    // Find the customer
+    const customer = await Customer.findById(id);
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
     // If updating phone number, check for duplicates
-    if (updates.phoneNumber) {
+    if (phoneNumber) {
       const existingCustomer = await Customer.findOne({
-        phoneNumber: updates.phoneNumber,
+        phoneNumber: phoneNumber,
         _id: { $ne: id },
       });
+
       if (existingCustomer) {
         return res.status(400).json({
           success: false,
@@ -283,19 +320,87 @@ const updateCustomer = async (req, res) => {
       }
     }
 
-    const updatedCustomer = await Customer.findByIdAndUpdate(id, updates, {
-      new: true,
-      runValidators: true,
-    })
-      .populate("products.product", "productName price category")
-      .populate("deliveryBoy", "name phoneNumber email");
-
-    if (!updatedCustomer) {
-      return res.status(404).json({
+    // Validate subscription plan if provided
+    if (
+      subscriptionPlan &&
+      !["Monthly", "Daily", "Alternate Days"].includes(subscriptionPlan)
+    ) {
+      return res.status(400).json({
         success: false,
-        message: "Customer not found",
+        message:
+          "Invalid subscription plan. Must be Monthly, Daily, or Alternate Days",
       });
     }
+
+    // Prepare updates for customer fields
+    const customerUpdates = {};
+    if (name) customerUpdates.name = name;
+    if (phoneNumber) customerUpdates.phoneNumber = phoneNumber;
+    if (subscriptionPlan) customerUpdates.subscriptionPlan = subscriptionPlan;
+    if (address) customerUpdates.address = address;
+
+    // Handle product updates if productName is provided
+    if (productName) {
+      // Find the product by name
+      const product = await Product.findOne({ productName });
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found",
+        });
+      }
+
+      // Find the product in customer's products array
+      const productIndex = customer.products.findIndex(
+        (p) => p.product.toString() === product._id.toString()
+      );
+
+      if (productIndex === -1) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found in customer's products",
+        });
+      }
+
+      // Update the specific product in the products array
+      const productUpdates = {};
+      if (productSize) {
+        // Validate product size exists in product's size array
+        if (!product.size.includes(productSize)) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid product size. Available sizes: ${product.size.join(
+              ", "
+            )}`,
+          });
+        }
+        productUpdates[`products.${productIndex}.productSize`] = productSize;
+      }
+      if (quantity) {
+        if (quantity < 1) {
+          return res.status(400).json({
+            success: false,
+            message: "Quantity must be at least 1",
+          });
+        }
+        productUpdates[`products.${productIndex}.quantity`] = quantity;
+      }
+
+      // Apply product updates
+      if (Object.keys(productUpdates).length > 0) {
+        await Customer.findByIdAndUpdate(id, { $set: productUpdates });
+      }
+    }
+
+    // Apply customer field updates
+    if (Object.keys(customerUpdates).length > 0) {
+      await Customer.findByIdAndUpdate(id, customerUpdates);
+    }
+
+    // Fetch updated customer with populated data
+    const updatedCustomer = await Customer.findById(id)
+      .populate("products.product", "productName price size")
+      .populate("deliveryBoy", "name phoneNumber email");
 
     res.status(200).json({
       success: true,
@@ -521,42 +626,43 @@ const createCustomOrder = async (req, res) => {
 };
 
 //✅ DropDown Api For deliveryDays
-const getDeliveryDays = async(req, res) =>{
-  try{
-      const deliveryDays = await Customer.schema.path("products.0.deliveryDays").enumValues;
-      return res.status(200).json({
-        success: true,
-        message: "Delivery days fetched successfully",
-        deliveryDays,
-      });
-  }
-  catch(error){
+const getDeliveryDays = async (req, res) => {
+  try {
+    const deliveryDays = await Customer.schema.path("products.0.deliveryDays")
+      .enumValues;
+    return res.status(200).json({
+      success: true,
+      message: "Delivery days fetched successfully",
+      deliveryDays,
+    });
+  } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Error fetching delivery days",
       error: error.message,
     });
   }
-}
+};
 
 //✅ DropDown Api for subscriptionPlan
-const getSubscriptionPlan = async(req, res) =>{
-  try{
-      const subscriptionPlan = await Customer.schema.path("products.0.subscriptionPlan").enumValues;
-      return res.status(200).json({
-        success: true,
-        message: "Subscription plan fetched successfully",
-        subscriptionPlan,
-      });
-  }
-  catch(error){
+const getSubscriptionPlan = async (req, res) => {
+  try {
+    const subscriptionPlan = await Customer.schema.path(
+      "products.0.subscriptionPlan"
+    ).enumValues;
+    return res.status(200).json({
+      success: true,
+      message: "Subscription plan fetched successfully",
+      subscriptionPlan,
+    });
+  } catch (error) {
     return res.status(500).json({
       success: false,
       message: "Error fetching subscription plan",
       error: error.message,
     });
   }
-}
+};
 
 module.exports = {
   createCustomer,

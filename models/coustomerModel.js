@@ -50,6 +50,11 @@ const customerSchema = new mongoose.Schema(
           min: [1, "Quantity must be at least 1"],
         },
 
+        productSize: {
+          type: String,
+          required: false,
+        },
+
         subscriptionPlan: {
           type: String,
           enum: ["Monthly", "Daily", "Alternate Days"],
