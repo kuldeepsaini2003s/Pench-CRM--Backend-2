@@ -19,13 +19,13 @@ const router = express.Router();
 // Auth routes
 router.post("/register", registerDeliveryBoy);
 router.post("/login", loginDeliveryBoy);
-router.get("/getAll", getAllDeliveryBoys);
+router.get("/getAllDeliveryBoy", getAllDeliveryBoys);
 router.get(
   "/deliveryBoyProfile",
   verifyDeliveryBoyToken,
   getDeliveryBoyProfile
 );
-router.put("/update", verifyDeliveryBoyToken, updateDeliveryBoy);
+router.put("/updateDeliveryBoyProfile", verifyDeliveryBoyToken, updateDeliveryBoy);
 router.delete("/delete/:id", deleteDeliveryBoy);
 
 // Order routes
