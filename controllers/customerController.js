@@ -2,177 +2,173 @@ const Customer = require("../models/coustomerModel");
 const DeliveryHistory = require("../models/delhiveryHistory");
 const CustomerCustomOrder = require("../models/customerCustomOrder");
 const mongoose = require("mongoose");
+const DeliveryBoy = require("../models/delhiveryBoyModel");
+const Product = require("../models/productModel");
 
+
+// ✅ Create Customer
 const createCustomer = async (req, res) => {
   try {
-    const { name, phoneNumber, gender, address, products, deliveryBoy } =
-      req.body;
+    const { name, phoneNumber, gender, address, deliveryBoyName, products } = req.body;
 
-    // Check if customer with phone number already exists
-    const existingCustomer = await Customer.findOne({ phoneNumber });
-    if (existingCustomer) {
+    // 1. DeliveryBoy validate
+    const deliveryBoy = await DeliveryBoy.findOne({ name: deliveryBoyName });
+    if (!deliveryBoy) {
+      const allDeliveryBoys = await DeliveryBoy.find({}, "name");
       return res.status(400).json({
         success: false,
-        message: "Customer with this phone number already exists",
+        message: "Invalid delivery boy name, please select from dropdown",
+        availableDeliveryBoys: allDeliveryBoys.map((d) => d.name),
       });
     }
 
-    // Process products to ensure deliveryDays has valid values
-    const processedProducts = Array.isArray(products)
-      ? products.map((product) => ({
-          ...product,
-          deliveryDays:
-            product.deliveryDays &&
-            [
-              "Daily",
-              "Alternate Days",
-              "Monday to Friday",
-              "Weekends",
-              "Custom",
-            ].includes(product.deliveryDays)
-              ? product.deliveryDays
-              : "Daily",
-          // Ensure customDeliveryDates is an array
-          customDeliveryDates: Array.isArray(product.customDeliveryDates)
-            ? product.customDeliveryDates
-            : [],
-          // Set default startDate if not provided
-          startDate: product.startDate
-            ? new Date(product.startDate)
-            : new Date(),
-          // Convert endDate to Date object if provided
-          endDate: product.endDate ? new Date(product.endDate) : undefined,
-        }))
-      : [];
+    // 2. Validate Products
+    const validatedProducts = [];
+    for (let item of products) {
+      const { productName, price, quantity, subscriptionPlan, deliveryDays, customDeliveryDates, startDate, endDate, totalPrice } = item;
 
-    const newCustomer = new Customer({
+      // Product find by name
+      const productDoc = await Product.findOne({ productName });
+      if (!productDoc) {
+        const allProducts = await Product.find({}, "productName");
+        return res.status(400).json({
+          success: false,
+          message: `Invalid product name: ${productName}, please select from dropdown`,
+          availableProducts: allProducts.map((p) => p.productName),
+        });
+      }
+
+      // Push validated product with productId
+      validatedProducts.push({
+        product: productDoc._id, // ✅ store ObjectId
+        price,
+        quantity,
+        subscriptionPlan,
+        deliveryDays,
+        customDeliveryDates,
+        startDate,
+        endDate,
+        totalPrice,
+      });
+    }
+
+    // 3. Customer create
+    const customer = new Customer({
       name,
       phoneNumber,
       gender,
       address,
-      products: processedProducts,
-      deliveryBoy,
+      products: validatedProducts,
+      deliveryBoy: deliveryBoy._id,
     });
 
-    const savedCustomer = await newCustomer.save();
-    const populatedCustomer = await Customer.findById(savedCustomer._id)
-      .populate(
-        "products.product",
-        "productName price productType size productCode description"
-      )
-      .populate("deliveryBoy", "name phoneNumber email");
+    await customer.save();
 
     res.status(201).json({
       success: true,
       message: "Customer created successfully",
-      data: populatedCustomer,
+      data: customer,
     });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: "Phone number already exists",
-      });
-    }
-
-    // Handle validation errors specifically
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err) => err.message);
-      return res.status(400).json({
-        success: false,
-        message: "Validation error",
-        errors: errors,
-      });
-    }
-
+    console.error("Error creating customer:", error);
     res.status(500).json({
       success: false,
-      message: "Error creating customer",
+      message: "Failed to create customer",
       error: error.message,
     });
   }
 };
 
-// Get all customers
+// ✅ Get all customers
 const getAllCustomers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    let {
+      page = 1,
+      limit = 10,
+      search = "",
+      customerStatus,
+      productName,
+    } = req.query;
 
-    // Build filter object
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    // ---- Build filter ----
     const filter = {};
-    if (req.query.gender) filter.gender = req.query.gender;
-    if (req.query.deliveryBoy) filter.deliveryBoy = req.query.deliveryBoy;
-    if (req.query.name) {
-      filter.name = { $regex: req.query.name, $options: "i" };
+
+    if (customerStatus) {
+      filter.customerStatus = customerStatus;
     }
-    if (req.query.phoneNumber) {
-      filter.phoneNumber = { $regex: req.query.phoneNumber };
-    }
-    if (req.query.search) {
+
+    if (search) {
       filter.$or = [
-        { name: { $regex: req.query.search, $options: "i" } },
-        { phoneNumber: { $regex: req.query.search, $options: "i" } },
-        { address: { $regex: req.query.search, $options: "i" } },
+        { name: { $regex: search, $options: "i" } },
+        { phoneNumber: { $regex: search, $options: "i" } },
       ];
     }
-    // Product-wise filtering
-    if (req.query.product) {
-      filter["products.product"] = req.query.product;
-    }
-    if (req.query.size) {
-      filter["products.size"] = req.query.size;
-    }
-    if (req.query.subscriptionPlan) {
-      filter["products.subscriptionPlan"] = req.query.subscriptionPlan;
-    }
-    if (req.query.deliveryDays) {
-      filter["products.deliveryDays"] = req.query.deliveryDays;
-    }
 
-    const customers = await Customer.find(filter)
-      .populate({
-        path: "products.product",
-        select: "productName price   size",
-        match: {
-          ...(req.query.productType && { productType: req.query.productType }),
-          ...(req.query.productCategory && {
-            category: req.query.productCategory,
-          }),
-        },
-      })
-      .populate("deliveryBoy", "name phoneNumber email")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    // ---- Query DB ----
+    const [totalCustomers, customers] = await Promise.all([
+      Customer.countDocuments(filter),
+      Customer.find(filter)
+        .populate({
+          path: "products.product",
+          select: "productName price size",
+          match: productName
+            ? { productName: { $regex: productName, $options: "i" } }
+            : {},
+        })
+        .populate("deliveryBoy", "name phoneNumber email")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+    ]);
 
-    // Filter out customers who have no products after population (due to productType/category filter)
+    // ✅ Filter customers with valid products
     const filteredCustomers = customers.filter((customer) =>
-      customer.products.some((product) => product.product !== null)
+      customer.products.some((p) => p.product !== null)
     );
 
-    const totalCustomers = await Customer.countDocuments(filter);
+    //✅Only Required Fields
+    const formattedCustomers = filteredCustomers.map((c) => {
+      const firstProduct = c.products[0]?.product;
+      return {
+        _id:c._id,
+        customerStatus: c.customerStatus,
+        image:c.image,
+        customerName: c.name,
+        phoneNumber: c.phoneNumber,
+        productName: firstProduct ? firstProduct.productName : "",
+        size: firstProduct ? firstProduct.size : "",
+        subscriptionPlan: c.products[0]?.subscriptionPlan || "",
+        deliveryDays: c.products[0]?.deliveryDays || "",
+      };
+    });
+    // ---- Pagination meta ----
+    const totalPages = Math.ceil(totalCustomers / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      data: filteredCustomers,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(totalCustomers / limit),
-        totalCustomers,
-        hasNext: page < Math.ceil(totalCustomers / limit),
-        hasPrev: page > 1,
-      },
+      message: "All Customers fetched successfully",
+      totalCustomers,
+      totalPages,
+      currentPage: page,
+      previous: hasPrevious,
+      next: hasNext,
+      customers: formattedCustomers,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("getAllCustomers Error:", error);
+    return res.status(500).json({
       success: false,
       message: "Error fetching customers",
       error: error.message,
     });
   }
 };
+
 
 // Get single customer by ID
 const getCustomerById = async (req, res) => {

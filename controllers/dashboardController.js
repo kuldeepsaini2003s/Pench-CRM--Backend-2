@@ -7,7 +7,7 @@ const Customer = require("../models/coustomerModel");
 const { formatDate, normalizeDate } = require("../utils/dateUtils");
 const { checkSubscriptionStatus } = require("../helper/helperFuctions");
 
-exports.TotalSales = catchAsync(async (req, res, next) => {
+const TotalSales = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
 
@@ -130,7 +130,7 @@ exports.TotalSales = catchAsync(async (req, res, next) => {
 });
 
 //  Get Low Stock Products (stock < 10)
-exports.getLowStockProducts = catchAsync(async (req, res, next) => {
+const getLowStockProducts = catchAsync(async (req, res, next) => {
   const products = await Product.find(
     { stock: { $lt: 10 } },
     { productName: 1, productCode: 1, stock: 1, size: 1, _id: 1 }
@@ -148,7 +148,7 @@ exports.getLowStockProducts = catchAsync(async (req, res, next) => {
 });
 
 // 3. Get Active Subscriptions
-exports.getActiveSubscriptions = catchAsync(async (req, res, next) => {
+const getActiveSubscriptions = catchAsync(async (req, res, next) => {
   const { customerId } = req.query;
   const match = {};
 
@@ -222,7 +222,7 @@ exports.getActiveSubscriptions = catchAsync(async (req, res, next) => {
 
 // 5. Get Top &lowest Products by Sales
 
-exports.getTopAndLowestProducts = catchAsync(async (req, res, next) => {
+const getTopAndLowestProducts = catchAsync(async (req, res, next) => {
   let { startDate, endDate } = req.query;
 
   // Prepare match stage
@@ -293,7 +293,7 @@ exports.getTopAndLowestProducts = catchAsync(async (req, res, next) => {
 
 
 
-exports.getPendingPayments = catchAsync(async (req, res, next) => {
+const getPendingPayments = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
 
@@ -339,7 +339,7 @@ exports.getPendingPayments = catchAsync(async (req, res, next) => {
 });
 
 // 📌 Get New Onboard Customers (first delivery)
-exports.getNewOnboardCustomers = catchAsync(async (req, res, next) => {
+const getNewOnboardCustomers = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
 
@@ -392,3 +392,12 @@ exports.getNewOnboardCustomers = catchAsync(async (req, res, next) => {
     },
   });
 });
+
+module.exports = {
+  TotalSales,
+  getLowStockProducts,
+  getActiveSubscriptions,
+  getTopAndLowestProducts,
+  getPendingPayments,
+  getNewOnboardCustomers,
+};

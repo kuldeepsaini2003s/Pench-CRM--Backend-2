@@ -7,9 +7,14 @@ const customerSchema = new mongoose.Schema(
       required: [true, "Customer name is required"],
     },
     phoneNumber: {
-      type: String,
+      type: Number,
       required: [true, "Phone number is required"],
-      match: [/^[0-9]{10}$/, "Please enter a valid 10-digit phone number"],
+      validate: {
+        validator: function (v) {
+          return /^\d{10}$/.test(v); // Ensure exactly 10 digits
+        },
+        message: "Phone number must be exactly 10 digits",
+      },
       unique: true,
     },
     image: {
@@ -99,6 +104,11 @@ const customerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    customerStatus:{
+      type:String,
+      enum:["Active","Inactive"],
+      default:"Active"
+    }
   },
   { timestamps: true }
 );
