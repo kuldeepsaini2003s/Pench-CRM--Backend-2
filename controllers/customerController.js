@@ -188,10 +188,12 @@ const getAllCustomers = async (req, res) => {
         phoneNumber: c.phoneNumber,
         productName: firstProduct ? firstProduct.productName : "",
         size: firstProduct ? firstProduct.size : "",
+        price: firstProduct ? firstProduct.price : "",
         subscriptionPlan: c.products[0]?.subscriptionPlan || "",
         deliveryDays: c.products[0]?.deliveryDays || "",
       };
     });
+    console.log("formattedCustomers", formattedCustomers);
 
     // ---- Pagination meta ----
     const totalPages = Math.ceil(totalCustomers / limit);
@@ -245,6 +247,7 @@ const getCustomerById = async (req, res) => {
 
     res.status(200).json({
       success: true,
+      message: "Customer By Id fetched successfully",
       data: customer,
     });
   } catch (error) {
@@ -297,13 +300,13 @@ const updateCustomer = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       message: "Customer updated successfully",
       data: updatedCustomer,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error updating customer",
       error: error.message,

@@ -9,7 +9,7 @@ const {
   getOrders,
   getOrdersByDateRange,
   getOrderStatistics,
-} = require("../controllers/delhiveryBoyController");
+} = require("../controllers/deliveryBoyController");
 const {
   verifyDeliveryBoyToken,
 } = require("../middlewares/deliveryBoy.middleware");

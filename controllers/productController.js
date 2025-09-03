@@ -142,7 +142,7 @@ const getAllProducts = async (req, res) => {
       // description: p.description,
       // productType: p.productType,
       size: p.size,
-      // price: p.price,
+      price: p.price,
       stockAvailable: p.stock,
       productCode: p.productCode,
       isDeleted:p.isDeleted
@@ -698,6 +698,8 @@ const getTopSellingProductAndTotalProductSold = async (req, res) => {
     });
   }
 };
+
+
  
 module.exports = {
   createProduct,

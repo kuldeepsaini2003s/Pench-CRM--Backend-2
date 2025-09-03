@@ -16,7 +16,7 @@ const generateToken = (id) => {
 };
 
 // 📌 Register Delivery Boy
-exports.registerDeliveryBoy = async (req, res) => {
+const registerDeliveryBoy = async (req, res) => {
   try {
     const { name, email, phoneNumber, area, password } = req.body;
 
@@ -46,7 +46,7 @@ exports.registerDeliveryBoy = async (req, res) => {
 };
 
 // 📌 Login Delivery Boy
-exports.loginDeliveryBoy = async (req, res) => {
+const loginDeliveryBoy = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -80,7 +80,7 @@ exports.loginDeliveryBoy = async (req, res) => {
 
 // 📌 Get All Delivery Boys
 // ✅ Get all delivery boys with optional filters
-exports.getAllDeliveryBoys = async (req, res) => {
+const getAllDeliveryBoys = async (req, res) => {
   try {
     const { name, area, phoneNumber, page = 1, limit = 10 } = req.query;
 
@@ -116,7 +116,7 @@ exports.getAllDeliveryBoys = async (req, res) => {
 };
 
 // 📌 Get Single Delivery Boy
-exports.getDeliveryBoyProfile = async (req, res) => {
+const getDeliveryBoyProfile = async (req, res) => {
   try {
     const deliveryBoy = await DeliveryBoy.findById(req.deliveryBoy._id);
 
@@ -133,7 +133,7 @@ exports.getDeliveryBoyProfile = async (req, res) => {
 };
 
 // 📌 Update Delivery Boy
-exports.updateDeliveryBoy = async (req, res) => {
+const updateDeliveryBoy = async (req, res) => {
   try {
     const deliveryBoy = await DeliveryBoy.findByIdAndUpdate(
       req.deliveryBoy._id,
@@ -157,7 +157,7 @@ exports.updateDeliveryBoy = async (req, res) => {
 };
 
 // 📌 Delete Delivery Boy
-exports.deleteDeliveryBoy = async (req, res) => {
+const deleteDeliveryBoy = async (req, res) => {
   try {
     const deliveryBoy = await DeliveryBoy.findByIdAndDelete(req.params.id);
     if (!deliveryBoy) {
@@ -171,7 +171,7 @@ exports.deleteDeliveryBoy = async (req, res) => {
   }
 };
 
-exports.getOrders = async (req, res) => {
+const getOrders = async (req, res) => {
   try {
     const {
       customerId,
@@ -401,7 +401,7 @@ exports.getOrders = async (req, res) => {
 };
 
 // Get orders for a date range
-exports.getOrdersByDateRange = async (req, res) => {
+const getOrdersByDateRange = async (req, res) => {
   try {
     const { deliveryBoyId } = req.params;
     const { startDate, endDate } = req.query;
@@ -477,14 +477,14 @@ exports.getOrdersByDateRange = async (req, res) => {
     console.error("Error fetching orders by date range:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Failed to fetch orders by date range",
       error: error.message,
     });
   }
 };
 
 // Get order statistics for delivery boy
-// exports.getOrderStatistics = async (req, res) => {
+// const getOrderStatistics = async (req, res) => {
 //   try {
 //     const { deliveryBoyId } = req.params;
 //     const { month, year } = req.query;
@@ -517,3 +517,15 @@ exports.getOrdersByDateRange = async (req, res) => {
 //     });
 //   }
 // };
+
+module.exports = {
+  registerDeliveryBoy,
+  loginDeliveryBoy,
+  getAllDeliveryBoys,
+  getDeliveryBoyProfile,
+  updateDeliveryBoy,
+  deleteDeliveryBoy,
+  getOrders,
+  getOrdersByDateRange,
+  // getOrderStatistics,
+};

@@ -9,7 +9,7 @@ const {
   deleteDeliveryHistory,
   updateDeliveryStatus,
   getTodayOrdersSummary
-} = require("../controllers/delhiveryHistoryController");
+} = require("../controllers/deliveryHistoryController");
 
 // Create new delivery history
 router.post("/createdeliveryhistory", createDeliveryHistory);

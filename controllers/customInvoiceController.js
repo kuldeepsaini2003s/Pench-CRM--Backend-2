@@ -1,4 +1,4 @@
-const Invoice = require("../models/custumInvoiceModel");
+const Invoice = require("../models/invoicesModel");
 const ErrorHandler = require("../utils/errorhendler");
 const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 const { generateInvoicePDF } = require("../service/pdfService");
