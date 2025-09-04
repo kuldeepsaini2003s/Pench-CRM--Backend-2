@@ -483,40 +483,7 @@ const getOrdersByDateRange = async (req, res) => {
   }
 };
 
-// Get order statistics for delivery boy
-// const getOrderStatistics = async (req, res) => {
-//   try {
-//     const { deliveryBoyId } = req.params;
-//     const { month, year } = req.query;
 
-//     if (!mongoose.Types.ObjectId.isValid(deliveryBoyId)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid delivery boy ID format",
-//       });
-//     }
-
-//     // Implementation for order statistics
-//     // This would include total orders, completed orders, pending orders, etc.
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Order statistics endpoint - to be implemented",
-//       data: {
-//         deliveryBoyId,
-//         month,
-//         year,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Error fetching order statistics:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Internal server error",
-//       error: error.message,
-//     });
-//   }
-// };
 
 module.exports = {
   registerDeliveryBoy,

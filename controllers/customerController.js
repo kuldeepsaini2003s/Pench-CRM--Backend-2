@@ -640,7 +640,7 @@ const getSubscriptionPlan = async (req, res) => {
 //✅ DropDown Api for Payment Method
 const getPaymentMethods = async (req, res) => {
   try {
-    const paymentMethods = await Invoice.schema.path("paymentMethod").enumValues;
+    const paymentMethods = await Customer.schema.path("paymentMethod").enumValues;
     res.status(200).json({
       success: true,
       message:"Payment Methods fetched successfully",
@@ -658,7 +658,7 @@ const getPaymentMethods = async (req, res) => {
 //✅ DropDown Api for Payment Status
 const getPaymentStatus = async (req, res) => {
   try {
-    const paymentStatus = await Invoice.schema.path("paymentStatus").enumValues;
+    const paymentStatus = await Customer.schema.path("paymentStatus").enumValues;
     res.status(200).json({
       success: true,
       message:"Payment Status fetched successfully",
