@@ -9,9 +9,16 @@ const Product = require("../models/productModel");
 // ✅ Create Customer
 const createCustomer = async (req, res) => {
   try {
-    const { name, phoneNumber, gender, address, deliveryBoyName, products } = req.body;
+    const { name, phoneNumber, address, deliveryBoyName, products, paymentMethod, paymentStatus } = req.body;
 
-    // 1. DeliveryBoy validate
+    if (!name || !phoneNumber || !address || !deliveryBoyName || !products || !paymentMethod || !paymentStatus) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
+    }
+
+    // 🔹 DeliveryBoy validate
     const deliveryBoy = await DeliveryBoy.findOne({ name: deliveryBoyName });
     if (!deliveryBoy) {
       const allDeliveryBoys = await DeliveryBoy.find({}, "name");
@@ -22,15 +29,14 @@ const createCustomer = async (req, res) => {
       });
     }
 
-    // ✅ helper to parse "dd/mm/yyyy"
+    // 🔹 helper to parse "dd/mm/yyyy"
     const parseDDMMYYYYtoDate = (dateStr) => {
       if (!dateStr) return null;
       const [day, month, year] = dateStr.split("/");
       return new Date(`${year}-${month}-${day}`);
     };
 
-
-    // ✅ helper to format Date -> dd/mm/yyyy
+    // 🔹 helper to format Date -> dd/mm/yyyy
     const formatDateToDDMMYYYY = (dateObj) => {
       if (!dateObj) return null;
       const d = new Date(dateObj);
@@ -40,41 +46,86 @@ const createCustomer = async (req, res) => {
       return `${day}/${month}/${year}`;
     };
 
-    // 2. Validate Products
+    // 🔹 Validate Products
     const validatedProducts = [];
     for (let item of products) {
-      const { productName, price, productSize, quantity, subscriptionPlan, deliveryDays, customDeliveryDates, startDate, endDate, totalPrice } = item;
+      const {
+        productName,
+        price,
+        productSize,
+        quantity,
+        subscriptionPlan,
+        deliveryDays,
+        customDeliveryDates,
+        startDate,
+        endDate,
+        totalPrice,
+      } = item;
 
-      // Product find by name
+      // Check all fields
+      if (
+        !productName ||
+        !price ||
+        !productSize ||
+        !quantity ||
+        !subscriptionPlan ||
+        !totalPrice
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "All product fields are required",
+        });
+      }
+
+      // 🔹 Product validate
       const productDoc = await Product.findOne({ productName });
       if (!productDoc) {
         const allProducts = await Product.find({}, "productName");
         return res.status(400).json({
           success: false,
-          message: `Invalid product name: ${productName}, please select from dropdown`,
+          message: `Invalid product name: ${productName}. Please select from dropdown.`,
           availableProducts: allProducts.map((p) => p.productName),
         });
       }
 
-
-      //✅ productSize validate
+      // 🔹 productSize validate
       if (!productDoc.size.includes(productSize)) {
         return res.status(400).json({
           success: false,
           message: `Invalid size "${productSize}" for ${productName}. Please select from dropdown.`,
-          availableSizes: productDoc.size, // dropdown options
+          availableSizes: productDoc.size,
         });
       }
 
-   
-      if(subscriptionPlan !=="Monthly" && deliveryDays){
+      // 🔹 deliveryDays validation
+      if (subscriptionPlan !== "Monthly" && deliveryDays) {
         return res.status(400).json({
           success: false,
           message: `deliveryDays is only allowed for Monthly subscription. You used "${subscriptionPlan}".`,
         });
       }
 
-      // ✅ Parse dates before saving
+      // 🔹 Payment Method validation
+      const validPaymentMethods = ["Cash", "UPI"];
+      if (!validPaymentMethods.includes(paymentMethod)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid payment method "${paymentMethod}". Please select from dropdown.`,
+          availablePaymentMethod: validPaymentMethods,
+        });
+      }
+
+      // 🔹 Payment Status validation
+      const validPaymentStatus = ["Paid", "Partially Paid", "Unpaid"];
+      if (!validPaymentStatus.includes(paymentStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid payment status "${paymentStatus}". Please select from dropdown.`,
+          availablePaymentStatus: validPaymentStatus,
+        });
+      }
+
+      // 🔹 Parse Dates
       const parsedCustomDates = Array.isArray(customDeliveryDates)
         ? customDeliveryDates.map((d) => parseDDMMYYYYtoDate(d))
         : [];
@@ -82,11 +133,14 @@ const createCustomer = async (req, res) => {
       let parsedStartDate = parseDDMMYYYYtoDate(startDate);
       let parsedEndDate = parseDDMMYYYYtoDate(endDate);
 
-      // ✅ If Monthly subscription & startDate is missing → take first custom date
-      if (subscriptionPlan === "Monthly" && !parsedStartDate && parsedCustomDates.length > 0) {
+      // If Monthly subscription & startDate missing → take first custom date
+      if (
+        subscriptionPlan === "Monthly" &&
+        !parsedStartDate &&
+        parsedCustomDates.length > 0
+      ) {
         parsedStartDate = parsedCustomDates[0];
       }
-
 
       validatedProducts.push({
         product: productDoc._id,
@@ -94,7 +148,7 @@ const createCustomer = async (req, res) => {
         price,
         quantity,
         subscriptionPlan,
-        deliveryDays,
+        deliveryDays: subscriptionPlan === "Monthly" ? deliveryDays : null,
         customDeliveryDates: parsedCustomDates,
         startDate: parsedStartDate,
         endDate: parsedEndDate,
@@ -102,25 +156,27 @@ const createCustomer = async (req, res) => {
       });
     }
 
-    // 3. Customer create
+    // 🔹 Customer create
     const customer = new Customer({
       name,
       phoneNumber,
-      gender,
       address,
       products: validatedProducts,
       deliveryBoy: deliveryBoy._id,
+      paymentMethod,
+      paymentStatus,
     });
 
     await customer.save();
 
-
-    // ✅ Format response before sending
+    // Format response with DD/MM/YYYY
     const formattedCustomer = {
       ...customer.toObject(),
       products: customer.products.map((p) => ({
         ...p.toObject(),
-        customDeliveryDates: p.customDeliveryDates.map((d) => formatDateToDDMMYYYY(d)),
+        customDeliveryDates: p.customDeliveryDates.map((d) =>
+          formatDateToDDMMYYYY(d)
+        ),
         startDate: formatDateToDDMMYYYY(p.startDate),
         endDate: formatDateToDDMMYYYY(p.endDate),
       })),
@@ -140,6 +196,7 @@ const createCustomer = async (req, res) => {
     });
   }
 };
+
 
 
 // ✅ Get all customers
@@ -580,6 +637,42 @@ const getSubscriptionPlan = async (req, res) => {
   }
 }
 
+//✅ DropDown Api for Payment Method
+const getPaymentMethods = async (req, res) => {
+  try {
+    const paymentMethods = await Invoice.schema.path("paymentMethod").enumValues;
+    res.status(200).json({
+      success: true,
+      message:"Payment Methods fetched successfully",
+      paymentMethods,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch payment methods",
+    });
+  }
+}
+
+//✅ DropDown Api for Payment Status
+const getPaymentStatus = async (req, res) => {
+  try {
+    const paymentStatus = await Invoice.schema.path("paymentStatus").enumValues;
+    res.status(200).json({
+      success: true,
+      message:"Payment Status fetched successfully",
+      paymentStatus,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch payment status",
+    });
+  }
+}
+
 module.exports = {
   createCustomer,
   getAllCustomers,
@@ -590,4 +683,6 @@ module.exports = {
   createCustomOrder,
   getDeliveryDays,
   getSubscriptionPlan,
+  getPaymentMethods,
+  getPaymentStatus,
 };

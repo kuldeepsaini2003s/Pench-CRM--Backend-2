@@ -114,16 +114,18 @@ const customerSchema = new mongoose.Schema(
       enum:["Active","Inactive"],
       default:"Active"
     },
-    // paymentMethod:{
-    //   type:String,
-    //   enum:["Cash","UPI"],
-    //   default:"Cash"
-    // },
-    // paymentStatus:{
-    //   type:String,
-    //   enum:["Paid","Partially Paid","Unpaid"],
-    //   default:"Pending"
-    // },
+    paymentMethod:{
+      type:String,
+      enum:["Cash","UPI"],
+      required:true,
+  
+    },
+    paymentStatus:{
+      type:String,
+      enum:["Paid","Partially Paid","Unpaid"],
+      required:true,
+    
+    },
   },
   { timestamps: true }
 );
