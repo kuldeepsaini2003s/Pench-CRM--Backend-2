@@ -1,4 +1,4 @@
-const DeliveryHistory = require("../models/delhiveryHistory");
+const DeliveryHistory = require("../models/deliveryHistory");
 const Payment = require("../models/paymentModel");
 const catchAsync = require("../middlewares/catchAsyncErrors");
 const ErrorHandler = require("../utils/errorhendler");

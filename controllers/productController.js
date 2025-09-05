@@ -1,5 +1,5 @@
 const Product = require("../models/productModel");
-const DeliveryHistory = require("../models/delhiveryHistory");
+const DeliveryHistory = require("../models/deliveryHistory");
 const {
   startOfWeek,
   endOfWeek,

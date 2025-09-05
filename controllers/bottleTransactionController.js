@@ -1,5 +1,5 @@
 const BottleTransaction = require("../models/bottleTransactionModel");
-const DeliveryBoy = require("../models/delhiveryBoyModel");
+const DeliveryBoy = require("../models/deliveryBoyModel");
 
 // ✅ Create new transaction (assign bottles with sizes)
 exports.createTransaction = async (req, res) => {

@@ -1,8 +1,8 @@
 const Customer = require("../models/coustomerModel");
-const DeliveryHistory = require("../models/delhiveryHistory");
+const DeliveryHistory = require("../models/deliveryHistory");
 const CustomerCustomOrder = require("../models/customerCustomOrder");
 const mongoose = require("mongoose");
-const DeliveryBoy = require("../models/delhiveryBoyModel");
+const DeliveryBoy = require("../models/deliveryBoyModel");
 const Product = require("../models/productModel");
 
 

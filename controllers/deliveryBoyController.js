@@ -1,4 +1,4 @@
-const DeliveryBoy = require("../models/delhiveryBoyModel");
+const DeliveryBoy = require("../models/deliveryBoyModel");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const Customer = require("../models/coustomerModel");

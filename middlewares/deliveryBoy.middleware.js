@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const DeliveryBoyModel = require("../models/delhiveryBoyModel");
+const DeliveryBoyModel = require("../models/deliveryBoyModel");
 
 const verifyDeliveryBoyToken = async (req, res, next) => {
   try {
