@@ -134,7 +134,7 @@ const getAllDeliveryBoys = async (req, res) => {
     const [totalDeliveryBoys, deliveryBoys] = await Promise.all([
       DeliveryBoy.countDocuments(filter),
       DeliveryBoy.find(filter)
-      .select("+encryptedPassword")
+      .select("-encryptedPassword -password")
         .skip((page - 1) * limit)
         .limit(limit)
         .sort(sort),
