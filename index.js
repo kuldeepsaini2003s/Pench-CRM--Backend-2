@@ -52,7 +52,7 @@ const swaggerSpec = swaggerJsdoc(options);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const adminRoutes = require("./routes/adminRoutes");
-const coustomerRoutes = require("./routes/coustomerRoutes");
+const coustomerRoutes = require("./routes/customerRoutes");
 const deliveryBoyRoutes = require("./routes/deliveryBoyRoutes");
 const bottleRoutes = require("./routes/bottleTransactionRoutes");
 const deliveryHistoryRoutes = require("./routes/deliveryHistoryRoutes");

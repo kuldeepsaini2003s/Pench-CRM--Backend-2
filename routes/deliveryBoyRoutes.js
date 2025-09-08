@@ -10,6 +10,7 @@ const {
   getOrdersByDateRange,
   getDeliveryBoyById,
   getOrderStatistics,
+  getOrdersByDeliveryBoy,
 } = require("../controllers/deliveryBoyController");
 
 const {upload} = require("../config/cloudinary");
@@ -36,5 +37,8 @@ router.put("/delete/:id", deleteDeliveryBoy);
 router.get("/getOrders", getOrders);
 router.get("/range/:deliveryBoyId", getOrdersByDateRange);
 // router.get('/stats/:deliveryBoyId', getOrderStatistics);
+
+router.get("/getOrdersByDeliveryBoy",  verifyDeliveryBoyToken,  getOrdersByDeliveryBoy);
+
 
 module.exports = router;

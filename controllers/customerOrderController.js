@@ -2,10 +2,9 @@
 const CustomerOrders = require("../models/customerOrderModel");
 const Customer = require("../models/customerModel")
 const{ generateOrderNumber }=require("../utils/generateOrderNumber")
+const mongoose = require("mongoose");
 
- 
- 
-//////////// Create Automatic Orders for Customer - Called during customer creation
+// Create automatic orders for a customer based on their subscription plan and start date
 const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
   try {
     const customer = await Customer.findById(customerId).populate(
@@ -47,7 +46,8 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
         totalAmount += itemTotalPrice;
  
         orderItems.push({
-          product: product.product._id,
+          _id: product.product._id,
+          productName: product.product.productName,
           price: product.price,
           productSize: product.productSize,
           quantity: product.quantity,
@@ -83,8 +83,6 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
     };
   }
 };
- 
-
 
 const getAllOrders = async (req, res) => {
   try {
