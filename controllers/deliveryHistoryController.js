@@ -1,5 +1,5 @@
 const DeliveryHistory = require("../models/deliveryHistory");
-const Customer = require("../models/coustomerModel");
+const Customer = require("../models/customerModel");
 const DeliveryBoy = require("../models/deliveryBoyModel");
 const Payment = require("../models/paymentModel");
 const Product = require("../models/productModel");

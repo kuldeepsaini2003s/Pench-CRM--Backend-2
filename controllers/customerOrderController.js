@@ -1,9 +1,92 @@
 
-const CustomerCustomOrder = require("../models/customerCustomOrder");
+const CustomerOrders = require("../models/customerOrderModel");
+const Customer = require("../models/customerModel")
+const{ generateOrderNumber }=require("../utils/generateOrderNumber")
+
+ 
+ 
+//////////// Create Automatic Orders for Customer - Called during customer creation
+const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
+  try {
+    const customer = await Customer.findById(customerId).populate(
+      "products.product"
+    );
+ 
+    if (!customer || !customer.products || customer.products.length === 0) {
+      return { success: false, message: "No products found for customer" };
+    }
+ 
+    const deliveryDate = customer.startDate;
+ 
+    const ordersCreated = [];
+ 
+    let shouldDeliver = false;
+ 
+    if (
+      customer.subscriptionPlan === "Monthly" ||
+      customer.subscriptionPlan === "Alternate Days"
+    ) {
+      shouldDeliver = true; // Always deliver on start date for these plans
+    } else if (customer.subscriptionPlan === "Custom Date") {
+      // For custom date, check if start date is in custom delivery dates
+      shouldDeliver =
+        customer.customDeliveryDates &&
+        customer.customDeliveryDates.includes(deliveryDate);
+    }
+ 
+    if (shouldDeliver) {
+      const orderNumber = await generateOrderNumber();
+      const orderItems = [];
+      let totalAmount = 0;
+ 
+      // Create order items for all products
+      for (const product of customer.products) {
+        if (!product.product) continue;
+ 
+        const itemTotalPrice = product.quantity * parseFloat(product.price);
+        totalAmount += itemTotalPrice;
+ 
+        orderItems.push({
+          product: product.product._id,
+          price: product.price,
+          productSize: product.productSize,
+          quantity: product.quantity,
+          totalPrice: itemTotalPrice,
+        });
+      }
+ 
+      const order = new CustomerOrders({
+        customer: customerId,
+        deliveryBoy: deliveryBoyId,
+        deliveryDate: deliveryDate, // Use customer's start date directly
+        products: orderItems,
+        orderNumber,
+        totalAmount,
+        status: "Scheduled",
+      });
+ 
+      await order.save();
+      ordersCreated.push(order);
+    }
+ 
+    return {
+      success: true,
+      message: `Created ${ordersCreated.length} automatic orders for start date: ${deliveryDate}`,
+      orders: ordersCreated,
+    };
+  } catch (error) {
+    console.error("Error creating automatic orders:", error);
+    return {
+      success: false,
+      message: "Error creating automatic orders",
+      error: error.message,
+    };
+  }
+};
+ 
 
 
-
-exports.getAllOrders = async (req, res) => {
+const getAllOrders = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -46,7 +129,7 @@ exports.getAllOrders = async (req, res) => {
 };
 
 // Get single order by ID
-exports.getOrderById = async (req, res) => {
+const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -83,7 +166,7 @@ exports.getOrderById = async (req, res) => {
 };
 
 // Update order
-exports.updateOrder = async (req, res) => {
+const updateOrder = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -126,7 +209,7 @@ exports.updateOrder = async (req, res) => {
 };
 
 // Delete order
-exports.deleteOrder = async (req, res) => {
+const deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -160,7 +243,7 @@ exports.deleteOrder = async (req, res) => {
 };
 
 // Get orders by customer ID
-exports.getOrdersByCustomer = async (req, res) => {
+const getOrdersByCustomer = async (req, res) => {
   try {
     const { customerId } = req.params;
     const page = parseInt(req.query.page) || 1;
@@ -202,5 +285,12 @@ exports.getOrdersByCustomer = async (req, res) => {
   }
 };
 
-
+module.exports = {
+  createAutomaticOrdersForCustomer,
+  getAllOrders,
+  getOrderById,
+  updateOrder,
+  deleteOrder,
+  getOrdersByCustomer,
+};
 

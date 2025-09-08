@@ -3,7 +3,7 @@ const ErrorHandler = require("../utils/errorhendler");
 const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 const { generateInvoicePDF } = require("../service/pdfService");
 const { uploadBufferToCloudinary } = require("../service/cloudinaryService");
-const Customer = require("../models/coustomerModel");
+const Customer = require("../models/customerModel");
 
 // ✅ Create Invoice
 const createCustomerInvoice = async (req, res) => {

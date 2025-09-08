@@ -3,7 +3,7 @@ const Payment = require("../models/paymentModel");
 const catchAsync = require("../middlewares/catchAsyncErrors");
 const ErrorHandler = require("../utils/errorhendler");
 const Product = require("../models/productModel");
-const Customer = require("../models/coustomerModel");
+const Customer = require("../models/customerModel");
 const { formatDate, normalizeDate } = require("../utils/dateUtils");
 const { checkSubscriptionStatus } = require("../helper/helperFuctions");
 

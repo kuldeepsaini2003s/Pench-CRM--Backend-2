@@ -61,7 +61,7 @@ const productRoutes = require("./routes/productRoutes");
 const CreateInvoiceRoutes = require("./routes/customInvoiceRoute");
 const customerInvoce = require("./routes/customerInvoce");
 
-const customOrderRoutes = require("./routes/customCoustomerRoutes");
+const customOrderRoutes = require("./routes/customerOrderRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 
 app.use("/api/admin", adminRoutes);

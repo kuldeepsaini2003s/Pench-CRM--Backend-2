@@ -1,17 +1,16 @@
 const express = require("express");
 const router = express.Router();
 const {
-  createOrder,
-  getAllOrders,
+  createAutomaticOrdersForCustomer,  getAllOrders,
   getOrderById,
   updateOrder,
   deleteOrder,
   getOrdersByCustomer,
 
-} = require("../controllers/customerCustomOrderController");
+} = require("../controllers/customerOrderController");
 
 // Basic CRUD routes
-// router.post("/", createOrder);
+router.post("/createAutomaticOrders", createAutomaticOrdersForCustomer);
 router.get("/", getAllOrders);
 // router.get("/stats", getOrderStats);
 router.get("/:id", getOrderById);

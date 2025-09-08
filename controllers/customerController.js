@@ -1,25 +1,46 @@
-const Customer = require("../models/coustomerModel");
+const Customer = require("../models/customerModel")
 const DeliveryHistory = require("../models/deliveryHistory");
-const CustomerCustomOrder = require("../models/customerCustomOrder");
+const CustomerCustomOrder = require("../models/customerOrderModel");
 const mongoose = require("mongoose");
 const DeliveryBoy = require("../models/deliveryBoyModel");
 const Product = require("../models/productModel");
+const {createAutomaticOrdersForCustomer} = require("./customerOrderController")
+const {  shouldDeliverOnDate,  formatDateToDDMMYYYY,  parseDDMMYYYYtoDate,} = require("../utils/parsedDateAndDay");
 
 
 // ✅ Create Customer
 const createCustomer = async (req, res) => {
   try {
-    const { name, phoneNumber, address, deliveryBoyName, products, paymentMethod, paymentStatus } = req.body;
-
-    if (!name || !phoneNumber || !address || !deliveryBoyName || !products || !paymentMethod || !paymentStatus) {
+    const {
+      name,
+      phoneNumber,
+      address,
+      deliveryBoyName,
+      products,
+      startDate,
+      subscriptionPlan,
+      customDeliveryDates,
+      paymentMethod,
+      paymentStatus,
+    } = req.body;
+ 
+    if (
+      !name ||
+      !phoneNumber ||
+      !address ||
+      !deliveryBoyName ||
+      !products ||
+      !subscriptionPlan
+    ) {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
       });
     }
-
-    // 🔹 DeliveryBoy validate
+ 
+    // DeliveryBoy validate
     const deliveryBoy = await DeliveryBoy.findOne({ name: deliveryBoyName });
+ 
     if (!deliveryBoy) {
       const allDeliveryBoys = await DeliveryBoy.find({}, "name");
       return res.status(400).json({
@@ -28,57 +49,45 @@ const createCustomer = async (req, res) => {
         availableDeliveryBoys: allDeliveryBoys.map((d) => d.name),
       });
     }
-
-    // 🔹 helper to parse "dd/mm/yyyy"
-    const parseDDMMYYYYtoDate = (dateStr) => {
-      if (!dateStr) return null;
-      const [day, month, year] = dateStr.split("/");
-      return new Date(`${year}-${month}-${day}`);
-    };
-
-    // 🔹 helper to format Date -> dd/mm/yyyy
-    const formatDateToDDMMYYYY = (dateObj) => {
-      if (!dateObj) return null;
-      const d = new Date(dateObj);
-      const day = String(d.getDate()).padStart(2, "0");
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const year = d.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
-
-    // 🔹 Validate Products
+ 
+    // Payment Status validation
+    const validPaymentStatus = ["Paid", "Partially Paid", "Unpaid"];
+ 
+    if (paymentStatus && !validPaymentStatus.includes(paymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid payment status "${paymentStatus}". Please select from dropdown.`,
+        availablePaymentStatus: validPaymentStatus,
+      });
+    }
+ 
+    // Payment Method validation
+    const validPaymentMethods = ["Cash", "UPI"];
+ 
+    if (paymentMethod && !validPaymentMethods.includes(paymentMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid payment method "${paymentMethod}". Please select from dropdown.`,
+        availablePaymentMethod: validPaymentMethods,
+      });
+    }
+ 
+    // Validate Products
     const validatedProducts = [];
+ 
     for (let item of products) {
-      const {
-        productName,
-        price,
-        productSize,
-        quantity,
-        subscriptionPlan,
-        deliveryDays,
-        customDeliveryDates,
-        startDate,
-        endDate,
-        totalPrice,
-      } = item;
-
-      // Check all fields
-      if (
-        !productName ||
-        !price ||
-        !productSize ||
-        !quantity ||
-        !subscriptionPlan ||
-        !totalPrice
-      ) {
+      const { productName, price, productSize, quantity, totalPrice } = item;
+ 
+      if (!productName || !price || !productSize || !quantity || !totalPrice) {
         return res.status(400).json({
           success: false,
           message: "All product fields are required",
         });
       }
-
-      // 🔹 Product validate
+ 
+      // Product validate
       const productDoc = await Product.findOne({ productName });
+ 
       if (!productDoc) {
         const allProducts = await Product.find({}, "productName");
         return res.status(400).json({
@@ -87,8 +96,8 @@ const createCustomer = async (req, res) => {
           availableProducts: allProducts.map((p) => p.productName),
         });
       }
-
-      // 🔹 productSize validate
+ 
+      // productSize validate
       if (!productDoc.size.includes(productSize)) {
         return res.status(400).json({
           success: false,
@@ -96,96 +105,82 @@ const createCustomer = async (req, res) => {
           availableSizes: productDoc.size,
         });
       }
-
-      // 🔹 deliveryDays validation
-      if (subscriptionPlan !== "Monthly" && deliveryDays) {
-        return res.status(400).json({
-          success: false,
-          message: `deliveryDays is only allowed for Monthly subscription. You used "${subscriptionPlan}".`,
-        });
-      }
-
-      // 🔹 Payment Method validation
-      const validPaymentMethods = ["Cash", "UPI"];
-      if (!validPaymentMethods.includes(paymentMethod)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid payment method "${paymentMethod}". Please select from dropdown.`,
-          availablePaymentMethod: validPaymentMethods,
-        });
-      }
-
-      // 🔹 Payment Status validation
-      const validPaymentStatus = ["Paid", "Partially Paid", "Unpaid"];
-      if (!validPaymentStatus.includes(paymentStatus)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid payment status "${paymentStatus}". Please select from dropdown.`,
-          availablePaymentStatus: validPaymentStatus,
-        });
-      }
-
-      // 🔹 Parse Dates
-      const parsedCustomDates = Array.isArray(customDeliveryDates)
-        ? customDeliveryDates.map((d) => parseDDMMYYYYtoDate(d))
-        : [];
-
-      let parsedStartDate = parseDDMMYYYYtoDate(startDate);
-      let parsedEndDate = parseDDMMYYYYtoDate(endDate);
-
-      // If Monthly subscription & startDate missing → take first custom date
-      if (
-        subscriptionPlan === "Monthly" &&
-        !parsedStartDate &&
-        parsedCustomDates.length > 0
-      ) {
-        parsedStartDate = parsedCustomDates[0];
-      }
-
+ 
       validatedProducts.push({
         product: productDoc._id,
         productSize,
         price,
         quantity,
-        subscriptionPlan,
-        deliveryDays: subscriptionPlan === "Monthly" ? deliveryDays : null,
-        customDeliveryDates: parsedCustomDates,
-        startDate: parsedStartDate,
-        endDate: parsedEndDate,
         totalPrice,
       });
     }
-
+ 
+    const parsedCustomDates = Array.isArray(customDeliveryDates)
+      ? customDeliveryDates
+      : [];
+ 
+    let finalStartDate, finalEndDate;
+ 
+    if (subscriptionPlan === "Custom Date") {
+      // For Custom Date: start = first custom date, end = last custom date
+      if (parsedCustomDates.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Custom delivery dates are required for Custom Date subscription plan",
+        });
+      }
+      finalStartDate = parsedCustomDates[0];
+      finalEndDate = parsedCustomDates[parsedCustomDates.length - 1];
+    } else {
+      // For Monthly and Alternate Days: start = provided date or today, end = month end
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+ 
+      finalStartDate = startDate || formatDateToDDMMYYYY(today);
+ 
+      // Calculate month end date
+      const parsedStartDate = parseDDMMYYYYtoDate(finalStartDate);
+      const monthEndDate = new Date(
+        parsedStartDate.getFullYear(),
+        parsedStartDate.getMonth() + 1,
+        0
+      );
+      finalEndDate = formatDateToDDMMYYYY(monthEndDate);
+    }
+ 
     // 🔹 Customer create
     const customer = new Customer({
       name,
       phoneNumber,
       address,
+      subscriptionPlan,
+      customDeliveryDates: parsedCustomDates,
+      startDate: finalStartDate,
+      endDate: finalEndDate,
       products: validatedProducts,
       deliveryBoy: deliveryBoy._id,
       paymentMethod,
       paymentStatus,
     });
-
+ 
     await customer.save();
-
-    // Format response with DD/MM/YYYY
-    const formattedCustomer = {
-      ...customer.toObject(),
-      products: customer.products.map((p) => ({
-        ...p.toObject(),
-        customDeliveryDates: p.customDeliveryDates.map((d) =>
-          formatDateToDDMMYYYY(d)
-        ),
-        startDate: formatDateToDDMMYYYY(p.startDate),
-        endDate: formatDateToDDMMYYYY(p.endDate),
-      })),
-    };
-
+ 
+    // Create automatic orders for start date
+    try {
+      const orderResult = await createAutomaticOrdersForCustomer(
+        customer._id,
+        deliveryBoy._id
+      );
+      console.log("Order creation result:", orderResult);
+    } catch (orderError) {
+      console.error("Error creating automatic orders:", orderError);
+    }
+ 
     res.status(201).json({
       success: true,
       message: "Customer created successfully",
-      data: formattedCustomer,
+      data: customer,
     });
   } catch (error) {
     console.error("Error creating customer:", error);
@@ -196,6 +191,7 @@ const createCustomer = async (req, res) => {
     });
   }
 };
+ 
 
 
 

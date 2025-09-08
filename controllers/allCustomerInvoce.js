@@ -1,4 +1,4 @@
-const Customer = require("../models/coustomerModel");
+const Customer = require("../models/customerModel");
 const ErrorHandler = require("../utils/errorhendler");
 const catchAsyncErrors = require("../middlewares/catchAsyncErrors");
 const Invoice = require("../models/invoicesModel");

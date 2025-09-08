@@ -22,13 +22,29 @@ const customerSchema = new mongoose.Schema(
      default:
      "https://static.vecteezy.com/system/resources/previews/020/911/740/non_2x/user-profile-icon-profile-avatar-user-icon-male-icon-face-icon-profile-icon-free-png.png",
     },
-    gender: {
-      type: String,
-      enum: ["Male", "Female", "Other"],
-    },
     address: {
       type: String,
       required: [true, "Address is required"],
+    },
+
+    subscriptionPlan: {
+      type: String,
+      enum: ["Monthly", "Custom Date", "Alternate Days"],
+      // required: true,
+    },
+
+    customDeliveryDates: {
+      type: [String],
+      default: [],
+    },
+    startDate: {
+      type: String,
+      default: Date.now,
+    },
+
+    endDate: {
+      type: String,
+      default: Date.now,
     },
 
     // ✅ Subscription products
@@ -53,37 +69,6 @@ const customerSchema = new mongoose.Schema(
           required: true,
           min: [1, "Quantity must be at least 1"],
         },
-
-        subscriptionPlan: {
-          type: String,
-          enum: ["Monthly", "One Day", "Alternate Days"],
-          // required: true,
-        },
-
-        deliveryDays: {
-          type: String,
-          enum: [
-            "Daily",
-            "Alternate Days",
-            "Monday to Friday",
-            "Weekends",
-            "Custom Date",
-          ],
-          default: "Daily",
-        },
-        customDeliveryDates: {
-          type: [Date],
-          default: [],
-        },
-        startDate: {
-          type: Date,
-          default: Date.now,
-        },
-
-        endDate: {
-          type: Date,
-          default: Date.now,
-        },
         totalPrice: {
           type: Number,
           required: true,
@@ -92,7 +77,7 @@ const customerSchema = new mongoose.Schema(
     ],
 
     absentDays: {
-      type: [Date],
+      type: [String],
       default: [],
     },
 
@@ -117,13 +102,13 @@ const customerSchema = new mongoose.Schema(
     paymentMethod:{
       type:String,
       enum:["Cash","UPI"],
-      required:true,
+      default:"Cash",
   
     },
     paymentStatus:{
       type:String,
       enum:["Paid","Partially Paid","Unpaid"],
-      required:true,
+      default:"Unpaid"
     
     },
     isVerified:{

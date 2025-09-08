@@ -1,12 +1,14 @@
 const DeliveryBoy = require("../models/deliveryBoyModel");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
-const Customer = require("../models/coustomerModel");
-const CustomerCustomOrder = require("../models/customerCustomOrder");
+const Customer = require("../models/customerModel");
+const CustomerCustomOrder = require("../models/customerOrderModel");
 const {
   formatOrderResponse,
   shouldDeliverOnDate,
 } = require("../utils/dateUtils");
+const bcrypt = require("bcrypt");
+const { encrypt } = require("../utils/decrypt");
 
 // Generate JWT
 const generateToken = (id) => {
@@ -52,33 +54,46 @@ const loginDeliveryBoy = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const deliveryBoy = await DeliveryBoy.findOne({ email }).select(
-      "+password"
-    );
+    // Fetch password explicitly (since select:false is set for password)
+    const deliveryBoy = await DeliveryBoy.findOne({ email }).select("+password");
+    console.log("deliveryBoy", deliveryBoy)
     if (!deliveryBoy) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid email or password" });
     }
 
+    // Compare entered password with hashed password
     const isMatch = await deliveryBoy.comparePassword(password);
+    console.log("isMatch", isMatch)
     if (!isMatch) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid email or password" });
     }
 
+    // Generate JWT token
     const token = generateToken(deliveryBoy._id);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       token,
-      deliveryBoy,
+      deliveryBoy: {
+        _id: deliveryBoy._id,
+        name: deliveryBoy.name,
+        email: deliveryBoy.email,
+        phoneNumber: deliveryBoy.phoneNumber,
+        area: deliveryBoy.area,
+        profileImage: deliveryBoy.profileImage,
+        // ⚠️ Do NOT send hashed/encrypted password in login response
+      },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Login error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 
 // ✅ Get all delivery boys 
@@ -119,6 +134,7 @@ const getAllDeliveryBoys = async (req, res) => {
     const [totalDeliveryBoys, deliveryBoys] = await Promise.all([
       DeliveryBoy.countDocuments(filter),
       DeliveryBoy.find(filter)
+      .select("+encryptedPassword")
         .skip((page - 1) * limit)
         .limit(limit)
         .sort(sort),
@@ -143,26 +159,45 @@ const getAllDeliveryBoys = async (req, res) => {
 };
 
 // ✅ Get Delivery Boy By Id
-const getDeliveryBoyById = async(req, res) =>{
+const getDeliveryBoyById = async (req, res) => {
   try {
-    const {id} = req.params
-    const deliveryBoy = await DeliveryBoy.findById(id)
+    const { id } = req.params;
 
-    if(!deliveryBoy){
-      return res.status(404).json({success: false, message: "Delivery boy not found"})
+    // Include encryptedPassword in query
+    const deliveryBoy = await DeliveryBoy.findById(id).select("+encryptedPassword");
+
+    if (!deliveryBoy) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery boy not found",
+      });
     }
-    
+
+    // Get plain password from encryptedPassword
+    let plainPassword = null;
+    try {
+      plainPassword = deliveryBoy.getPlainPassword();
+    } catch (err) {
+      console.error("Error decrypting password:", err.message);
+    }
+
     return res.status(200).json({
-      success: true, 
+      success: true,
       message: "Delivery Boy By Id Fetch Successfully",
-      deliveryBoy
-    })
-    
+      deliveryBoy: {
+        ...deliveryBoy.toObject(),
+        plainPassword, // ✅ Plain password added here
+      },
+    });
+
   } catch (error) {
-    console.log(error)
-    return res.status(500).json({success: false, message: error.message})
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
-}
+};
 
 // ✅ Get Single Delivery Boy
 const getDeliveryBoyProfile = async (req, res) => {
@@ -188,27 +223,49 @@ const getDeliveryBoyProfile = async (req, res) => {
 // 📌 Update Delivery Boy
 const updateDeliveryBoy = async (req, res) => {
   try {
-      const {id} = req.params
-      if(!id){
-        return res.status(404).json({success: false, message: "Delivery boy not found"})
-      }
-      const{name, email, phoneNumber, area, password} = req.body
-      const profileImage = req?.file?.path
+    const { id } = req.params;
 
-      const updateData={}
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid delivery boy ID." });
+    }
 
-      if(name) updateData.name = name
-      if(email) updateData.email = email
-      if(phoneNumber) updateData.phoneNumber = phoneNumber
-      if(area) updateData.area = area
-      if(password) updateData.password = password
-      if(profileImage) updateData.profileImage = profileImage
+    const { name, email, phoneNumber, area, password } = req.body;
+    const profileImage = req?.file?.path;
 
-      const updatedDeliveryBoy = await DeliveryBoy.findByIdAndUpdate(id, updateData, { new: true,runValidators:true  })
+    // Fetch existing delivery boy
+    const deliveryBoy = await DeliveryBoy.findById(id).select("+encryptedPassword");
+    if (!deliveryBoy) {
+      return res.status(404).json({ success: false, message: "Delivery boy not found" });
+    }
 
-      return res.status(200).json({ success: true, message: "Delivery Boy Updated successfully", updatedDeliveryBoy });
+    // Update fields if provided
+    if (name) deliveryBoy.name = name;
+    if (email) deliveryBoy.email = email;
+    if (phoneNumber) deliveryBoy.phoneNumber = phoneNumber;
+    if (area) deliveryBoy.area = area;
+    if (profileImage) deliveryBoy.profileImage = profileImage;
+
+    // Handle password update properly
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      deliveryBoy.password = hashedPassword;
+      deliveryBoy.encryptedPassword = encrypt(password); // Store encrypted plain version
+    }
+
+    // Save with validation
+    await deliveryBoy.save({ validateBeforeSave: true });
+
+    return res.status(200).json({
+      success: true,
+      message: "Delivery Boy updated successfully",
+      deliveryBoy,
+    });
   } catch (error) {
-   return  res.status(500).json({ success: false, message: error.message });
+    console.error("Error updating delivery boy:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
 
