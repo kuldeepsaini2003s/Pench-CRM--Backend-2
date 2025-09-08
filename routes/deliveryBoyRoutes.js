@@ -8,6 +8,7 @@ const {
   getDeliveryBoyProfile,
   getOrders,
   getOrdersByDateRange,
+  getDeliveryBoyById,
   getOrderStatistics,
 } = require("../controllers/deliveryBoyController");
 const {
@@ -25,8 +26,9 @@ router.get(
   verifyDeliveryBoyToken,
   getDeliveryBoyProfile
 );
+router.get("/getDeliveryBoyById/:id", getDeliveryBoyById);
 router.put("/updateDeliveryBoyProfile", verifyDeliveryBoyToken, updateDeliveryBoy);
-router.delete("/delete/:id", deleteDeliveryBoy);
+router.put("/delete/:id", deleteDeliveryBoy);
 
 // Order routes
 router.get("/getOrders", getOrders);

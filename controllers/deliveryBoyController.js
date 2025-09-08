@@ -78,42 +78,88 @@ const loginDeliveryBoy = async (req, res) => {
   }
 };
 
-// 📌 Get All Delivery Boys
-// ✅ Get all delivery boys with optional filters
+
+// ✅ Get all delivery boys 
 const getAllDeliveryBoys = async (req, res) => {
   try {
-    const { name, area, phoneNumber, page = 1, limit = 10 } = req.query;
+    let { page = 1, limit = 10, search = "", sortField = "", sortOrder = "desc" } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
 
     // Build filter object
-    const filter = {};
-    if (name) filter.name = { $regex: name, $options: "i" }; // case-insensitive search
-    if (area) filter.area = { $regex: area, $options: "i" };
-    if (phoneNumber)
-      filter.phoneNumber = { $regex: phoneNumber, $options: "i" };
+    const filter = {isDeleted: false};
+    if (search) {
+      if (!isNaN(search)) {
+        // 🔹 search is numeric, match exact phone number
+        filter.$or = [
+          { name: { $regex: search, $options: "i" } },
+          { phoneNumber: Number(search) },  // ✅ exact match for number
+          { area: { $regex: search, $options: "i" } },
+        ];
+      } else {
+        // 🔹 search is string, apply regex only on text fields
+        filter.$or = [
+          { name: { $regex: search, $options: "i" } },
+          { area: { $regex: search, $options: "i" } },
+        ];
+      }
+    }
 
-    // Convert page & limit to numbers
-    const pageNumber = parseInt(page, 10);
-    const limitNumber = parseInt(limit, 10);
-    const skip = (pageNumber - 1) * limitNumber;
+    // Sorting
+    let sort = {};
+    if (sortField) {
+      sort[sortField] = sortOrder === "asc" ? 1 : -1;
+    } else {
+      sort = { createdAt: -1 };
+    }
 
     // Fetch data with pagination
-    const [deliveryBoys, total] = await Promise.all([
-      DeliveryBoy.find(filter).skip(skip).limit(limitNumber),
+    const [totalDeliveryBoys, deliveryBoys] = await Promise.all([
       DeliveryBoy.countDocuments(filter),
+      DeliveryBoy.find(filter)
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .sort(sort),
     ]);
+
+    const totalPages = Math.ceil(totalDeliveryBoys / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
 
     res.status(200).json({
       success: true,
-      count: deliveryBoys.length,
-      total,
-      currentPage: pageNumber,
-      totalPages: Math.ceil(total / limitNumber),
+      totalDeliveryBoys,
+      currentPage: page,
+      totalPages,
+      hasPrevious,
+      hasNext,
       deliveryBoys,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+const getDeliveryBoyById = async(req, res) =>{
+  try {
+    const {id} = req.params
+    const deliveryBoy = await DeliveryBoy.findById(id)
+
+    if(!deliveryBoy){
+      return res.status(404).json({success: false, message: "Delivery boy not found"})
+    }
+    
+    return res.status(200).json({
+      success: true, 
+      message: "Delivery Boy By Id Fetch Successfully",
+      deliveryBoy
+    })
+    
+  } catch (error) {
+    console.log(error)
+    return res.status(500).json({success: false, message: error.message})
+  }
+}
 
 // 📌 Get Single Delivery Boy
 const getDeliveryBoyProfile = async (req, res) => {
@@ -159,13 +205,14 @@ const updateDeliveryBoy = async (req, res) => {
 // 📌 Delete Delivery Boy
 const deleteDeliveryBoy = async (req, res) => {
   try {
-    const deliveryBoy = await DeliveryBoy.findByIdAndDelete(req.params.id);
+    const{id} = req.params
+    const deliveryBoy = await DeliveryBoy.findByIdAndUpdate(id, { isDeleted: true });
     if (!deliveryBoy) {
       return res
         .status(404)
         .json({ success: false, message: "Delivery boy not found" });
     }
-    res.status(200).json({ success: true, message: "Deleted successfully" });
+   return res.status(200).json({ success: true, message: "Delivery Boy Deleted successfully" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -494,5 +541,6 @@ module.exports = {
   deleteDeliveryBoy,
   getOrders,
   getOrdersByDateRange,
+  getDeliveryBoyById,
   // getOrderStatistics,
 };

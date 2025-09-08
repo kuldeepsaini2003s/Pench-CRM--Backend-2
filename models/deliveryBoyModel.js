@@ -17,7 +17,7 @@ const deliveryBoySchema = new mongoose.Schema(
       match: [/\S+@\S+\.\S+/, "Please enter a valid email address"],
     },
     phoneNumber: {
-      type: String,
+      type: Number,
       required: [true, "Phone number is required"],
       unique: true,
       match: [/^[0-9]{10}$/, "Phone number must be 10 digits"],
@@ -32,8 +32,16 @@ const deliveryBoySchema = new mongoose.Schema(
       minlength: [6, "Password must be at least 6 characters"],
       select: false,
     },
+    profileImage:{
+      type:String,
+      default:
+        "https://static.vecteezy.com/system/resources/previews/020/911/740/non_2x/user-profile-icon-profile-avatar-user-icon-male-icon-face-icon-profile-icon-free-png.png",
+    },
 
-
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
 
   },
   {
