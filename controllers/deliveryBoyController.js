@@ -2,7 +2,7 @@ const DeliveryBoy = require("../models/deliveryBoyModel");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const Customer = require("../models/customerModel");
-const CustomerCustomOrder = require("../models/customerOrderModel");
+const CustomerOrders = require("../models/customerOrderModel");
 const {
   formatOrderResponse,
   shouldDeliverOnDate,
@@ -55,8 +55,10 @@ const loginDeliveryBoy = async (req, res) => {
     const { email, password } = req.body;
 
     // Fetch password explicitly (since select:false is set for password)
-    const deliveryBoy = await DeliveryBoy.findOne({ email }).select("+password");
-    console.log("deliveryBoy", deliveryBoy)
+    const deliveryBoy = await DeliveryBoy.findOne({ email }).select(
+      "+password"
+    );
+
     if (!deliveryBoy) {
       return res
         .status(400)
@@ -65,7 +67,7 @@ const loginDeliveryBoy = async (req, res) => {
 
     // Compare entered password with hashed password
     const isMatch = await deliveryBoy.comparePassword(password);
-    console.log("isMatch", isMatch)
+    
     if (!isMatch) {
       return res
         .status(400)
@@ -94,23 +96,27 @@ const loginDeliveryBoy = async (req, res) => {
   }
 };
 
-
-
-// ✅ Get all delivery boys 
+// ✅ Get all delivery boys
 const getAllDeliveryBoys = async (req, res) => {
   try {
-    let { page = 1, limit = 10, search = "", sortField = "", sortOrder = "desc" } = req.query;
+    let {
+      page = 1,
+      limit = 10,
+      search = "",
+      sortField = "",
+      sortOrder = "desc",
+    } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
 
     // Build filter object
-    const filter = {isDeleted: false};
+    const filter = { isDeleted: false };
     if (search) {
       if (!isNaN(search)) {
         // 🔹 search is numeric, match exact phone number
         filter.$or = [
           { name: { $regex: search, $options: "i" } },
-          { phoneNumber: Number(search) },  // ✅ exact match for number
+          { phoneNumber: Number(search) }, // ✅ exact match for number
           { area: { $regex: search, $options: "i" } },
         ];
       } else {
@@ -134,7 +140,7 @@ const getAllDeliveryBoys = async (req, res) => {
     const [totalDeliveryBoys, deliveryBoys] = await Promise.all([
       DeliveryBoy.countDocuments(filter),
       DeliveryBoy.find(filter)
-      .select("+encryptedPassword")
+        .select("+encryptedPassword")
         .skip((page - 1) * limit)
         .limit(limit)
         .sort(sort),
@@ -164,7 +170,9 @@ const getDeliveryBoyById = async (req, res) => {
     const { id } = req.params;
 
     // Include encryptedPassword in query
-    const deliveryBoy = await DeliveryBoy.findById(id).select("+encryptedPassword");
+    const deliveryBoy = await DeliveryBoy.findById(id).select(
+      "+encryptedPassword"
+    );
 
     if (!deliveryBoy) {
       return res.status(404).json({
@@ -189,7 +197,6 @@ const getDeliveryBoyById = async (req, res) => {
         plainPassword, // ✅ Plain password added here
       },
     });
-
   } catch (error) {
     console.error(error);
     return res.status(500).json({
@@ -202,19 +209,25 @@ const getDeliveryBoyById = async (req, res) => {
 // ✅ Get Single Delivery Boy
 const getDeliveryBoyProfile = async (req, res) => {
   try {
-      const deliveryBoy = req.deliveryBoy._id
-      if(!deliveryBoy){
-        return res.status(404).json({success: false, message: "Delivery boy not found"})
-      }
-      const deliveryBoyProfile = await DeliveryBoy.findById(deliveryBoy).select("-password")
-      if(!deliveryBoyProfile){
-        return res.status(404).json({success: false, message: "Delivery boy not found"})
-      }
-      return res.status(200).json({
-        success: true, 
-        message: "Delivery Boy Profile Fetch Successfully",
-        deliveryBoyProfile
-      })
+    const deliveryBoy = req.deliveryBoy._id;
+    if (!deliveryBoy) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Delivery boy not found" });
+    }
+    const deliveryBoyProfile = await DeliveryBoy.findById(deliveryBoy).select(
+      "-password"
+    );
+    if (!deliveryBoyProfile) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Delivery boy not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Delivery Boy Profile Fetch Successfully",
+      deliveryBoyProfile,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -227,16 +240,22 @@ const updateDeliveryBoy = async (req, res) => {
 
     // Validate ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: "Invalid delivery boy ID." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid delivery boy ID." });
     }
 
     const { name, email, phoneNumber, area, password } = req.body;
     const profileImage = req?.file?.path;
 
     // Fetch existing delivery boy
-    const deliveryBoy = await DeliveryBoy.findById(id).select("+encryptedPassword");
+    const deliveryBoy = await DeliveryBoy.findById(id).select(
+      "+encryptedPassword"
+    );
     if (!deliveryBoy) {
-      return res.status(404).json({ success: false, message: "Delivery boy not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Delivery boy not found" });
     }
 
     // Update fields if provided
@@ -265,21 +284,27 @@ const updateDeliveryBoy = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating delivery boy:", error);
-    return res.status(500).json({ success: false, message: "Internal server error." });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error." });
   }
 };
 
 // 📌 Delete Delivery Boy
 const deleteDeliveryBoy = async (req, res) => {
   try {
-    const{id} = req.params
-    const deliveryBoy = await DeliveryBoy.findByIdAndUpdate(id, { isDeleted: true });
+    const { id } = req.params;
+    const deliveryBoy = await DeliveryBoy.findByIdAndUpdate(id, {
+      isDeleted: true,
+    });
     if (!deliveryBoy) {
       return res
         .status(404)
         .json({ success: false, message: "Delivery boy not found" });
     }
-   return res.status(200).json({ success: true, message: "Delivery Boy Deleted successfully" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Delivery Boy Deleted successfully" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -597,7 +622,49 @@ const getOrdersByDateRange = async (req, res) => {
   }
 };
 
+const getOrdersByDeliveryBoy = async (req, res) => {
+  try {
+    const deliveryBoyId = req.deliveryBoy._id;
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;    
+
+    if (!mongoose.Types.ObjectId.isValid(deliveryBoyId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid delivery boy ID",
+      });
+    }
+  
+    const filter = { deliveryBoy: deliveryBoyId };
+
+    const orders = await CustomerOrders.find(filter)
+      .populate("customer", "name phoneNumber address image")      
+      .sort({ deliveryDate: 1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const totalOrders = await CustomerOrders.countDocuments(filter);
+
+    res.status(200).json({
+      success: true,
+      message: `Found ${orders.length} orders for delivery boy`,
+      data: orders,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalOrders / limit),
+        totalOrders,  
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching delivery boy orders",
+      error: error.message,
+    });
+  }
+};
 
 module.exports = {
   registerDeliveryBoy,
@@ -609,5 +676,5 @@ module.exports = {
   getOrders,
   getOrdersByDateRange,
   getDeliveryBoyById,
-  // getOrderStatistics,
+  getOrdersByDeliveryBoy,
 };

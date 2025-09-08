@@ -3,9 +3,13 @@ const mongoose = require("mongoose");
 // Subdocument for each product inside an order - matches customer.products structure
 const productOrderSchema = new mongoose.Schema(
   {
-    product: {
+    _id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
+      required: true,
+    },
+    productName: {
+      type: String,
       required: true,
     },
     price: {
@@ -67,7 +71,7 @@ const customerOrdersSchema = new mongoose.Schema(
       default: "Pending",
     },
 
-    products: [productOrderSchema], // 👈 array of products with reference + extra fields    
+    products: [productOrderSchema],
 
     // Financial
     totalAmount: {
@@ -83,13 +87,17 @@ const customerOrdersSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "Scheduled",
-        "Out for Delivery",
-        "Delivered",
-        "Failed",
+        "Pending",        
+        "Delivered",        
         "Cancelled",
+        "Returned"
       ],
-      default: "Scheduled",
+      default: "Pending",
+    },
+
+    bottlesReturned: {
+      type: Number,
+      default: 0,
     },
   },
   { timestamps: true }
