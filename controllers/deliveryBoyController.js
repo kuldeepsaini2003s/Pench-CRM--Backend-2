@@ -140,7 +140,7 @@ const getAllDeliveryBoys = async (req, res) => {
     const [totalDeliveryBoys, deliveryBoys] = await Promise.all([
       DeliveryBoy.countDocuments(filter),
       DeliveryBoy.find(filter)
-        .select("+encryptedPassword")
+      .select("-encryptedPassword -password")
         .skip((page - 1) * limit)
         .limit(limit)
         .sort(sort),
@@ -169,6 +169,13 @@ const getDeliveryBoyById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid delivery boy ID.",
+      });
+    }
+
     // Include encryptedPassword in query
     const deliveryBoy = await DeliveryBoy.findById(id).select(
       "+encryptedPassword"
@@ -181,24 +188,37 @@ const getDeliveryBoyById = async (req, res) => {
       });
     }
 
-    // Get plain password from encryptedPassword
-    let plainPassword = null;
+    // Try to decrypt plain password
+    let plainPassword;
     try {
-      plainPassword = deliveryBoy.getPlainPassword();
+      if (deliveryBoy.encryptedPassword) {
+        plainPassword = deliveryBoy.getPlainPassword();
+      } else {
+        plainPassword = deliveryBoy.password; // fallback hashed password
+      }
     } catch (err) {
       console.error("Error decrypting password:", err.message);
+      plainPassword = deliveryBoy.password; // fallback hashed password
     }
 
     return res.status(200).json({
       success: true,
       message: "Delivery Boy By Id Fetch Successfully",
-      deliveryBoy: {
-        ...deliveryBoy.toObject(),
-        plainPassword, // ✅ Plain password added here
+      data: {
+        id: deliveryBoy._id,
+        name: deliveryBoy.name,
+        email: deliveryBoy.email,
+        password: plainPassword, // ✅ Plaintext password
+        phoneNumber: deliveryBoy.phoneNumber,
+        area: deliveryBoy.area,
+        profileImage: deliveryBoy.profileImage,
+        isDeleted: deliveryBoy.isDeleted,
+        createdAt: deliveryBoy.createdAt,
+        updatedAt: deliveryBoy.updatedAt,
       },
     });
   } catch (error) {
-    console.error(error);
+    console.error("Error in getDeliveryBoyById:", error);
     return res.status(500).json({
       success: false,
       message: error.message,
@@ -265,13 +285,8 @@ const updateDeliveryBoy = async (req, res) => {
     if (area) deliveryBoy.area = area;
     if (profileImage) deliveryBoy.profileImage = profileImage;
 
-    // Handle password update properly
     if (password) {
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      deliveryBoy.password = hashedPassword;
-      deliveryBoy.encryptedPassword = encrypt(password); // Store encrypted plain version
+      deliveryBoy.password = password; // sirf plain assign karo
     }
 
     // Save with validation
