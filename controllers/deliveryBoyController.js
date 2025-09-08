@@ -19,6 +19,7 @@ const generateToken = (id) => {
 const registerDeliveryBoy = async (req, res) => {
   try {
     const { name, email, phoneNumber, area, password } = req.body;
+    const profileImage = req.file.path;
 
     const existing = await DeliveryBoy.findOne({ email });
     if (existing) {
@@ -33,6 +34,7 @@ const registerDeliveryBoy = async (req, res) => {
       phoneNumber,
       area,
       password,
+      profileImage,
     });
 
     res.status(201).json({
@@ -140,6 +142,7 @@ const getAllDeliveryBoys = async (req, res) => {
   }
 };
 
+// ✅ Get Delivery Boy By Id
 const getDeliveryBoyById = async(req, res) =>{
   try {
     const {id} = req.params
@@ -161,18 +164,22 @@ const getDeliveryBoyById = async(req, res) =>{
   }
 }
 
-// 📌 Get Single Delivery Boy
+// ✅ Get Single Delivery Boy
 const getDeliveryBoyProfile = async (req, res) => {
   try {
-    const deliveryBoy = await DeliveryBoy.findById(req.deliveryBoy._id);
-
-    if (!deliveryBoy) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Delivery boy not found" });
-    }
-
-    res.status(200).json({ success: true, deliveryBoy });
+      const deliveryBoy = req.deliveryBoy._id
+      if(!deliveryBoy){
+        return res.status(404).json({success: false, message: "Delivery boy not found"})
+      }
+      const deliveryBoyProfile = await DeliveryBoy.findById(deliveryBoy).select("-password")
+      if(!deliveryBoyProfile){
+        return res.status(404).json({success: false, message: "Delivery boy not found"})
+      }
+      return res.status(200).json({
+        success: true, 
+        message: "Delivery Boy Profile Fetch Successfully",
+        deliveryBoyProfile
+      })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -181,24 +188,27 @@ const getDeliveryBoyProfile = async (req, res) => {
 // 📌 Update Delivery Boy
 const updateDeliveryBoy = async (req, res) => {
   try {
-    const deliveryBoy = await DeliveryBoy.findByIdAndUpdate(
-      req.deliveryBoy._id,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
+      const deliveryBoy = req.deliveryBoy._id
+      if(!deliveryBoy){
+        return res.status(404).json({success: false, message: "Delivery boy not found"})
       }
-    );
-    if (!deliveryBoy) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Delivery boy not found" });
-    }
-    res
-      .status(200)
-      .json({ success: true, message: "Updated successfully", deliveryBoy });
+      const{name, email, phoneNumber, area, password} = req.body
+      const profileImage = req?.file?.path
+
+      const updateData={}
+
+      if(name) updateData.name = name
+      if(email) updateData.email = email
+      if(phoneNumber) updateData.phoneNumber = phoneNumber
+      if(area) updateData.area = area
+      if(password) updateData.password = password
+      if(profileImage) updateData.profileImage = profileImage
+
+      const updatedDeliveryBoy = await DeliveryBoy.findByIdAndUpdate(deliveryBoy, updateData, { new: true,runValidators:true  })
+
+      return res.status(200).json({ success: true, message: "Delivery Boy Updated successfully", updatedDeliveryBoy });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+   return  res.status(500).json({ success: false, message: error.message });
   }
 };
 

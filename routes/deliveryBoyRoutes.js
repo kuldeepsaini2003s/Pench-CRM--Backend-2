@@ -11,6 +11,8 @@ const {
   getDeliveryBoyById,
   getOrderStatistics,
 } = require("../controllers/deliveryBoyController");
+
+const {upload} = require("../config/cloudinary");
 const {
   verifyDeliveryBoyToken,
 } = require("../middlewares/deliveryBoy.middleware");
@@ -18,7 +20,7 @@ const {
 const router = express.Router();
 
 // Auth routes
-router.post("/register", registerDeliveryBoy);
+router.post("/register", upload.single("profileImage"), registerDeliveryBoy);
 router.post("/login", loginDeliveryBoy);
 router.get("/getAllDeliveryBoy", getAllDeliveryBoys);
 router.get(
@@ -27,7 +29,7 @@ router.get(
   getDeliveryBoyProfile
 );
 router.get("/getDeliveryBoyById/:id", getDeliveryBoyById);
-router.put("/updateDeliveryBoyProfile", verifyDeliveryBoyToken, updateDeliveryBoy);
+router.put("/updateDeliveryBoyProfile", verifyDeliveryBoyToken, upload.single("profileImage"), updateDeliveryBoy);
 router.put("/delete/:id", deleteDeliveryBoy);
 
 // Order routes
