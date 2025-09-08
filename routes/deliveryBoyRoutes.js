@@ -29,7 +29,7 @@ router.get(
   getDeliveryBoyProfile
 );
 router.get("/getDeliveryBoyById/:id", getDeliveryBoyById);
-router.put("/updateDeliveryBoyProfile", verifyDeliveryBoyToken, upload.single("profileImage"), updateDeliveryBoy);
+router.put("/updateDeliveryBoyProfile/:id", upload.single("profileImage"), updateDeliveryBoy);
 router.put("/delete/:id", deleteDeliveryBoy);
 
 // Order routes

@@ -188,8 +188,8 @@ const getDeliveryBoyProfile = async (req, res) => {
 // 📌 Update Delivery Boy
 const updateDeliveryBoy = async (req, res) => {
   try {
-      const deliveryBoy = req.deliveryBoy._id
-      if(!deliveryBoy){
+      const {id} = req.params
+      if(!id){
         return res.status(404).json({success: false, message: "Delivery boy not found"})
       }
       const{name, email, phoneNumber, area, password} = req.body
@@ -204,7 +204,7 @@ const updateDeliveryBoy = async (req, res) => {
       if(password) updateData.password = password
       if(profileImage) updateData.profileImage = profileImage
 
-      const updatedDeliveryBoy = await DeliveryBoy.findByIdAndUpdate(deliveryBoy, updateData, { new: true,runValidators:true  })
+      const updatedDeliveryBoy = await DeliveryBoy.findByIdAndUpdate(id, updateData, { new: true,runValidators:true  })
 
       return res.status(200).json({ success: true, message: "Delivery Boy Updated successfully", updatedDeliveryBoy });
   } catch (error) {
