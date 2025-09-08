@@ -7,7 +7,7 @@ router.post("/createCustomer", createCustomer);
 router.get("/getAllCustomers", getAllCustomers);
 router.get("/getCustomerById/:id", getCustomerById);
 router.put("/update/:id", updateCustomer);
-router.delete("/delete/:id", deleteCustomer);
+router.put("/delete/:id", deleteCustomer);
 router.post("/makeAbsentDays/:id", makeAbsentDays);
 router.post("/makeCustomOrders", createCustomOrder);
 router.get("/getDeliveryDays", getDeliveryDays);

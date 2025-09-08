@@ -126,18 +126,14 @@ const customerSchema = new mongoose.Schema(
       required:true,
     
     },
+    isVerified:{
+      type:Boolean,
+      default:false
+    }
   },
   { timestamps: true }
 );
 
-// ✅ Virtual populate for delivery history
-// customerSchema.virtual("deliveryHistory", {
-//   ref: "DeliveryHistory",
-//   localField: "_id",
-//   foreignField: "customer",
-// });
 
-// customerSchema.set("toJSON", { virtuals: true });
-// customerSchema.set("toObject", { virtuals: true });
 
 module.exports = mongoose.model("Customer", customerSchema);

@@ -214,7 +214,7 @@ const getAllCustomers = async (req, res) => {
     limit = parseInt(limit);
 
     // ---- Build filter ----
-    const filter = {};
+    const filter = {isDeleted:false};
 
     if (customerStatus) filter.customerStatus = customerStatus;
     console.log("customerStatus", customerStatus);
@@ -267,6 +267,7 @@ const getAllCustomers = async (req, res) => {
         price: firstProduct ? firstProduct.price : "",
         subscriptionPlan: c.products[0]?.subscriptionPlan || "",
         deliveryDays: c.products[0]?.deliveryDays || "",
+        isDeleted: c.isDeleted,
       };
     });
     console.log("formattedCustomers", formattedCustomers);
@@ -402,7 +403,7 @@ const deleteCustomer = async (req, res) => {
       });
     }
 
-    const deletedCustomer = await Customer.findByIdAndDelete(id);
+    const deletedCustomer = await Customer.findByIdAndUpdate(id,{isDeleted:true});
 
     if (!deletedCustomer) {
       return res.status(404).json({
@@ -411,12 +412,12 @@ const deleteCustomer = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       message: "Customer deleted successfully",
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error deleting customer",
       error: error.message,
