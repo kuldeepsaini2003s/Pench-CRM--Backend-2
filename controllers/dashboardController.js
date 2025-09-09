@@ -148,77 +148,90 @@ const getLowStockProducts = catchAsync(async (req, res, next) => {
 });
 
 // 3. Get Active Subscriptions
-const getActiveSubscriptions = catchAsync(async (req, res, next) => {
-  const { customerId } = req.query;
-  const match = {};
+const getActiveSubscriptions = async (req, res) => {
+  try {
+    let { page = 1, limit = 10, search = "", sortOrder = "desc" } = req.query;
 
-  if (customerId) match._id = customerId;
-  const customers = await Customer.find(match)
-    .select("name phoneNumber address userProfile products")
-    .populate({
-      path: "products.product",
-      select: "productName size productCode",
-    })
-    .lean();
+    page = parseInt(page);
+    limit = parseInt(limit);
 
-  if (!customers || customers.length === 0) {
-    return next(new ErrorHandler("No customers found", 404));
-  }
+    // ---- Build filter ----
+    const filter = { subscriptionStatus: "active" };
 
-  const subscriptions = [];
-  for (const c of customers) {
-    if (!Array.isArray(c.products) || c.products.length === 0) {
-      subscriptions.push({
-        id: c._id,
-        fullName: c.name,
-        phoneNumber: c.phoneNumber,
-        address: c.address,
-        userProfile: c.userProfile,
-        productType: "N/A",
-        productSize: "N/A",
-        productCode: "N/A",
-        quantity: 0,
-        startDate: null,
-        endDate: null,
-        subscription: "N/A",
-        deliveryDays: [],
-        status: "Inactive",
-      });
-      continue;
+    // 🔍 Search filter
+    if (search) {
+      const regex = new RegExp(search, "i"); // case-insensitive
+      if (!isNaN(search)) {
+        // If numeric search, check phoneNumber also
+        filter.$or = [
+          { name: regex },
+          { phoneNumber: Number(search) },
+          { subscriptionStatus: regex },
+        ];
+      } else {
+        filter.$or = [
+          { name: regex },
+          { subscriptionStatus: regex },
+        ];
+      }
     }
 
-    for (const p of c.products) {
-      const status = checkSubscriptionStatus(p);
+    // ---- Sort order ----
+    const sortOption = sortOrder === "asc" ? 1 : -1;
 
-      subscriptions.push({
-        id: c._id,
-        fullName: c.name,
-        phoneNumber: c.phoneNumber,
-        address: c.address,
-        userProfile: c.userProfile,
-        productType: p.product?.productName || "N/A",
-        productSize: p.product?.size || "N/A",
-        productCode: p.product?.productCode || "N/A",
-        quantity: p.quantity,
-        startDate: p.startDate ? formatDate(p.startDate) : null,
-        endDate: p.endDate ? formatDate(p.endDate) : null,
-        subscription: p.subscriptionPlan,
-        deliveryDays: p.deliveryDays,
-        status,
+    // ---- Query DB ----
+    const [totalActiveSubscribedCustomers, customers] = await Promise.all([
+      Customer.countDocuments(filter),
+      Customer.find(filter)
+        .select("image name phoneNumber subscriptionStatus subscriptionPlan createdAt")
+        .sort({ createdAt: sortOption })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    if (!customers || customers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No active subscriptions found",
       });
     }
-  }
 
-  if (subscriptions.length === 0) {
-    return next(new ErrorHandler("No active subscriptions found", 404));
-  }
+    // ✅ Format response
+    const subscriptions = customers.map((c) => ({
+      image: c.image,
+      customerName: c.name,
+      phoneNumber: c.phoneNumber,
+      subscriptionStatus: c.subscriptionStatus,
+      subscriptionPlan: c.subscriptionPlan,
+    }));
 
-  res.status(200).json({
-    success: true,
-    count: subscriptions.length,
-    data: subscriptions,
-  });
-});
+    // ---- Pagination meta ----
+    const totalPages = Math.ceil(totalActiveSubscribedCustomers / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
+
+    return res.status(200).json({
+      success: true,
+      message: "Active subscriptions fetched successfully",
+      totalActiveSubscribedCustomers,
+      totalPages,
+      currentPage: page,
+      previous: hasPrevious,
+      next: hasNext,
+      customers: subscriptions,
+    });
+  } catch (err) {
+    console.error("getActiveSubscriptions Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch active subscriptions",
+      error: err.message,
+    });
+  }
+};
+
+
 
 // 5. Get Top &lowest Products by Sales
 
