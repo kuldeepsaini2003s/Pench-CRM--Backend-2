@@ -85,7 +85,7 @@ const createCustomer = async (req, res) => {
     }
 
     // Payment Method validation
-    const validPaymentMethods = ["Cash", "UPI"];
+    const validPaymentMethods = ["COD", "Online"];
 
     if (paymentMethod && !validPaymentMethods.includes(paymentMethod)) {
       return res.status(400).json({
