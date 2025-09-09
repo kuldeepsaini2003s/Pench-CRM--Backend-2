@@ -102,8 +102,8 @@ const customerSchema = new mongoose.Schema(
     },
     paymentMethod:{
       type:String,
-      enum:["Cash","UPI"],
-      default:"Cash",
+      enum:["COD","Online"],
+      default:"COD",
   
     },
     paymentStatus:{

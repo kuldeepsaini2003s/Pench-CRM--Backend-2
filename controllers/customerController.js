@@ -683,9 +683,8 @@ const getDeliveryDays = async (req, res) => {
 //✅ DropDown Api for subscriptionPlan
 const getSubscriptionPlan = async (req, res) => {
   try {
-    const subscriptionPlan = await Customer.schema.path(
-      "products.0.subscriptionPlan"
-    ).enumValues;
+    const subscriptionPlan = await Customer.schema.path("subscriptionPlan")
+      .enumValues;
     return res.status(200).json({
       success: true,
       message: "Subscription plan fetched successfully",
