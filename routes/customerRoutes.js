@@ -13,21 +13,23 @@ const {
   getPaymentStatus,
   addProductToCustomer,
   removeProductFromCustomer,
+  updateCustomerProduct,
 } = require("../controllers/customerController");
+const { upload } = require("../config/cloudinary");
 
 // CRUD routes
 router.post("/createCustomer", createCustomer);
 router.get("/getAllCustomers", getAllCustomers);
 router.get("/getCustomerById/:id", getCustomerById);
-router.put("/update/:id", updateCustomer);
+router.put("/update/:id", upload.single("customerImage"), updateCustomer);
 router.put("/delete/:id", deleteCustomer);
 router.post("/makeAbsentDays/:id", makeAbsentDays);
-// router.post("/additionalOrder", additionalOrder);
 router.get("/getDeliveryDays", getDeliveryDays);
 router.get("/getSubscriptionPlan", getSubscriptionPlan);
 router.get("/payment-methods", getPaymentMethods);
 router.get("/payment-status", getPaymentStatus);
 router.post("/addProduct/:id", addProductToCustomer);
-router.delete("/removeProduct/:id", removeProductFromCustomer);
+router.post("/removeProduct/:id", removeProductFromCustomer);
+router.put("/updateCustomerProduct/:customerId", updateCustomerProduct)
 
 module.exports = router;

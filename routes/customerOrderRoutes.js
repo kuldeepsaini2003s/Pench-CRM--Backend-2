@@ -6,6 +6,7 @@ const {
   updateOrder,
   deleteOrder,
   getOrdersByCustomer,
+  createAdditionalOrder,
 
 } = require("../controllers/customerOrderController");
 
@@ -21,5 +22,6 @@ router.delete("/:id", deleteOrder);
 router.get("/customer/:customerId", getOrdersByCustomer);
 // router.patch("/:id/status", updateOrderStatus);
 // router.patch("/:id/assign-delivery-boy", assignDeliveryBoy);
+router.post("/additionalOrder", createAdditionalOrder);
 
 module.exports = router;
