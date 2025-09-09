@@ -67,7 +67,7 @@ const loginDeliveryBoy = async (req, res) => {
 
     // Compare entered password with hashed password
     const isMatch = await deliveryBoy.comparePassword(password);
-    
+
     if (!isMatch) {
       return res
         .status(400)
@@ -140,7 +140,7 @@ const getAllDeliveryBoys = async (req, res) => {
     const [totalDeliveryBoys, deliveryBoys] = await Promise.all([
       DeliveryBoy.countDocuments(filter),
       DeliveryBoy.find(filter)
-      .select("-encryptedPassword -password")
+        .select("-encryptedPassword -password")
         .skip((page - 1) * limit)
         .limit(limit)
         .sort(sort),
@@ -458,7 +458,7 @@ const getOrders = async (req, res) => {
       .limit(pageSize);
 
     // Find custom orders with filters
-    const customOrders = await CustomerCustomOrder.find({
+    const customOrders = await CustomerOrders.find({
       ...customOrderFilter,
       ...(Object.keys(dateFilter).length > 0 && { date: dateFilter }),
     })
@@ -473,7 +473,7 @@ const getOrders = async (req, res) => {
 
     // Get total counts for pagination
     const totalCustomers = await Customer.countDocuments(customerFilter);
-    const totalCustomOrders = await CustomerCustomOrder.countDocuments({
+    const totalCustomOrders = await CustomerOrders.countDocuments({
       ...customOrderFilter,
       ...(Object.keys(dateFilter).length > 0 && { date: dateFilter }),
     });
@@ -489,9 +489,8 @@ const getOrders = async (req, res) => {
     // Prepare response
     const response = {
       success: true,
-      message: `Orders${
-        date ? ` for ${targetDateForDelivery.toDateString()}` : ""
-      }`,
+      message: `Orders${date ? ` for ${targetDateForDelivery.toDateString()}` : ""
+        }`,
       data: {
         date: targetDateForDelivery,
         filters: {
@@ -641,9 +640,9 @@ const getOrdersByDeliveryBoy = async (req, res) => {
   try {
     const deliveryBoyId = req.deliveryBoy._id;
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;    
+    let { page = 1, limit = 10 } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
 
     if (!mongoose.Types.ObjectId.isValid(deliveryBoyId)) {
       return res.status(400).json({
@@ -651,35 +650,46 @@ const getOrdersByDeliveryBoy = async (req, res) => {
         message: "Invalid delivery boy ID",
       });
     }
-  
+
+    // ---- Build filter ----
     const filter = { deliveryBoy: deliveryBoyId };
 
-    const orders = await CustomerOrders.find(filter)
-      .populate("customer", "name phoneNumber address image")      
-      .sort({ deliveryDate: 1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    // ---- Query DB ----
+    const [totalOrders, orders] = await Promise.all([
+      CustomerOrders.countDocuments(filter),
+      CustomerOrders.find(filter)
+        .populate("customer", "name phoneNumber address image")
+        .sort({ deliveryDate: 1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+    ]);
 
-    const totalOrders = await CustomerOrders.countDocuments(filter);
+    // ---- Pagination meta ----
+    const totalPages = Math.ceil(totalOrders / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: `Found ${orders.length} orders for delivery boy`,
-      data: orders,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(totalOrders / limit),
-        totalOrders,  
-      },
+      totalOrders,
+      totalPages,
+      currentPage: page,
+      previous: hasPrevious,
+      next: hasNext,
+      orders, // ✅ renamed from "data" for consistency with getAllCustomers
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("getOrdersByDeliveryBoy Error:", error);
+    return res.status(500).json({
       success: false,
       message: "Error fetching delivery boy orders",
       error: error.message,
     });
   }
 };
+
+
 
 module.exports = {
   registerDeliveryBoy,
