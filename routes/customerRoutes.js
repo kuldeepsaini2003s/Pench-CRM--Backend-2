@@ -6,7 +6,7 @@ const {
   getCustomerById,
   updateCustomer,
   deleteCustomer,
-  makeAbsentDays,  
+  makeAbsentDays,
   getDeliveryDays,
   getSubscriptionPlan,
   getPaymentMethods,
@@ -14,6 +14,7 @@ const {
   addProductToCustomer,
   removeProductFromCustomer,
   updateCustomerProduct,
+  updateSubscriptionStatus,
 } = require("../controllers/customerController");
 const { upload } = require("../config/cloudinary");
 
@@ -30,6 +31,7 @@ router.get("/payment-methods", getPaymentMethods);
 router.get("/payment-status", getPaymentStatus);
 router.post("/addProduct/:id", addProductToCustomer);
 router.post("/removeProduct/:id", removeProductFromCustomer);
-router.put("/updateCustomerProduct/:customerId", updateCustomerProduct)
+router.put("/updateCustomerProduct/:customerId", updateCustomerProduct);
+router.put("/updateSubscriptionStatus/:id", updateSubscriptionStatus);
 
 module.exports = router;

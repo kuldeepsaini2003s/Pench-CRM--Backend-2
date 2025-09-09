@@ -51,13 +51,13 @@ const customerOrdersSchema = new mongoose.Schema(
       required: true,
     },
     deliveryDate: {
-      type: String, // Store as dd/mm/yyyy format
+      type: String, // Store as dd-mm-yyyy format
       default: () => {
         const today = new Date();
         const day = String(today.getDate()).padStart(2, "0");
         const month = String(today.getMonth() + 1).padStart(2, "0");
         const year = today.getFullYear();
-        return `${day}/${month}/${year}`;
+        return `${day}-${month}-${year}`;
       },
     },
     paymentMethod: {
@@ -86,12 +86,7 @@ const customerOrdersSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: [
-        "Pending",        
-        "Delivered",        
-        "Cancelled",
-        "Returned"
-      ],
+      enum: ["Pending", "Delivered", "Cancelled", "Returned"],
       default: "Pending",
     },
 

@@ -9,7 +9,7 @@ const {
 } = require("./customerOrderController");
 const {
   formatDateToDDMMYYYY,
-  parseDDMMYYYYtoDate,
+  parseUniversalDate,
 } = require("../utils/parsedDateAndDay");
 
 // Helper function to calculate end date for alternate days subscription
@@ -45,6 +45,7 @@ const createCustomer = async (req, res) => {
       customDeliveryDates,
       paymentMethod,
       paymentStatus,
+      subscriptionStatus,
     } = req.body;
 
     if (
@@ -53,7 +54,8 @@ const createCustomer = async (req, res) => {
       !address ||
       !deliveryBoyName ||
       !products ||
-      !subscriptionPlan
+      !subscriptionPlan ||
+      !subscriptionStatus
     ) {
       return res.status(400).json({
         success: false,
@@ -92,6 +94,15 @@ const createCustomer = async (req, res) => {
         success: false,
         message: `Invalid payment method "${paymentMethod}". Please select from dropdown.`,
         availablePaymentMethod: validPaymentMethods,
+      });
+    }
+
+    // Subscription Status validation
+    if (!["Active", "Inactive"].includes(subscriptionStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid subscription status "${subscriptionStatus}". Please select from dropdown.`,
+        availableSubscriptionStatus: ["Active", "Inactive"],
       });
     }
 
@@ -153,17 +164,36 @@ const createCustomer = async (req, res) => {
             "Custom delivery dates are required for Custom Date subscription plan",
         });
       }
-      finalStartDate = parsedCustomDates[0];
-      finalEndDate = parsedCustomDates[parsedCustomDates.length - 1];
+
+      const formattedCustomDates = parsedCustomDates.map((date) => {
+        const parsedDate = parseUniversalDate(date);
+        return parsedDate ? formatDateToDDMMYYYY(parsedDate) : date;
+      });
+      finalStartDate = formattedCustomDates[0];
+      finalEndDate = formattedCustomDates[formattedCustomDates.length - 1];
     } else {
       // For Monthly and Alternate Days: start = provided date or today
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      finalStartDate = startDate || formatDateToDDMMYYYY(today);
+      if (startDate) {
+        // Parse the provided start date and format to dd-mm-yyyy
+        const parsedStartDate = parseUniversalDate(startDate);
+        if (parsedStartDate) {
+          finalStartDate = formatDateToDDMMYYYY(parsedStartDate);
+        } else {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid date format. Please use dd-mm-yyyy or dd/mm/yyyy format",
+          });
+        }
+      } else {
+        finalStartDate = formatDateToDDMMYYYY(today);
+      }
 
       if (subscriptionPlan === "Alternate Days") {
-        const parsedStartDate = parseDDMMYYYYtoDate(finalStartDate);
+        const parsedStartDate = parseUniversalDate(finalStartDate);
         const lastDeliveryDay = calculateAlternateDaysEndDate(parsedStartDate);
 
         // Create end date with the last delivery day
@@ -175,7 +205,7 @@ const createCustomer = async (req, res) => {
         finalEndDate = formatDateToDDMMYYYY(endDate);
       } else {
         // For Monthly: end = month end
-        const parsedStartDate = parseDDMMYYYYtoDate(finalStartDate);
+        const parsedStartDate = parseUniversalDate(finalStartDate);
         const monthEndDate = new Date(
           parsedStartDate.getFullYear(),
           parsedStartDate.getMonth() + 1,
@@ -191,11 +221,18 @@ const createCustomer = async (req, res) => {
       phoneNumber,
       address,
       subscriptionPlan,
-      customDeliveryDates: parsedCustomDates,
+      customDeliveryDates:
+        subscriptionPlan === "Custom Date"
+          ? parsedCustomDates.map((date) => {
+              const parsedDate = parseUniversalDate(date);
+              return parsedDate ? formatDateToDDMMYYYY(parsedDate) : date;
+            })
+          : parsedCustomDates,
       startDate: finalStartDate,
       endDate: finalEndDate,
       products: validatedProducts,
       deliveryBoy: deliveryBoy._id,
+      subscriptionStatus,
       paymentMethod,
       paymentStatus,
     });
@@ -425,7 +462,7 @@ const updateCustomer = async (req, res) => {
         if (subscriptionPlan === "Alternate Days") {
           const startDate =
             customer.startDate || formatDateToDDMMYYYY(new Date());
-          const parsedStartDate = parseDDMMYYYYtoDate(startDate);
+          const parsedStartDate = parseUniversalDate(startDate);
           const lastDeliveryDay =
             calculateAlternateDaysEndDate(parsedStartDate);
 
@@ -438,7 +475,7 @@ const updateCustomer = async (req, res) => {
         } else if (subscriptionPlan === "Monthly") {
           const startDate =
             customer.startDate || formatDateToDDMMYYYY(new Date());
-          const parsedStartDate = parseDDMMYYYYtoDate(startDate);
+          const parsedStartDate = parseUniversalDate(startDate);
           const monthEndDate = new Date(
             parsedStartDate.getFullYear(),
             parsedStartDate.getMonth() + 1,
@@ -453,8 +490,14 @@ const updateCustomer = async (req, res) => {
       if (subscriptionPlan === "Custom Date") {
         const existingDates = customer.customDeliveryDates || [];
 
+        // Parse and format new custom dates to dd-mm-yyyy
+        const formattedCustomDates = customDeliveryDates.map((date) => {
+          const parsedDate = parseUniversalDate(date);
+          return parsedDate ? formatDateToDDMMYYYY(parsedDate) : date;
+        });
+
         const mergedDates = [
-          ...new Set([...existingDates, ...customDeliveryDates]),
+          ...new Set([...existingDates, ...formattedCustomDates]),
         ];
         customerUpdates.endDate = mergedDates[mergedDates.length - 1];
         customerUpdates.customDeliveryDates = mergedDates;
@@ -971,6 +1014,57 @@ const updateCustomerProduct = async (req, res) => {
   }
 };
 
+// Update Subscription Status
+const updateSubscriptionStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { subscriptionStatus } = req.body;
+
+    if (!subscriptionStatus) {
+      return res.status(400).json({
+        success: false,
+        message: "subscriptionStatus is required",
+      });
+    }
+
+    if (!["Active", "Inactive"].includes(subscriptionStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid subscription status "${subscriptionStatus}". Please select from dropdown.`,
+        availableSubscriptionStatus: ["Active", "Inactive"],
+      });
+    }
+
+    const customer = await Customer.findByIdAndUpdate(
+      id,
+      { subscriptionStatus },
+      { new: true }
+    );
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Subscription status updated successfully",
+      data: customer,
+    });
+  } catch (error) {
+    console.error("Error updating subscription status:", error);
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error updating subscription status",
+        error: error.message,
+      });
+  }
+};
+
 module.exports = {
   createCustomer,
   getAllCustomers,
@@ -985,4 +1079,5 @@ module.exports = {
   addProductToCustomer,
   removeProductFromCustomer,
   updateCustomerProduct,
+  updateSubscriptionStatus,
 };

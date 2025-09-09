@@ -4,6 +4,10 @@ const { generateOrderNumber } = require("../utils/generateOrderNumber");
 const mongoose = require("mongoose");
 const Product = require("../models/productModel");
 const DeliveryBoy = require("../models/deliveryBoyModel");
+const {
+  parseUniversalDate,
+  formatDateToDDMMYYYY,
+} = require("../utils/parsedDateAndDay");
 
 // Create automatic orders for a customer based on their subscription plan and start date
 const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
@@ -304,6 +308,21 @@ const createAdditionalOrder = async (req, res) => {
       });
     }
 
+    // Parse and format the date to dd-mm-yyyy
+    let formattedDate = date;
+    if (date) {
+      const parsedDate = parseUniversalDate(date);
+      if (parsedDate) {
+        formattedDate = formatDateToDDMMYYYY(parsedDate);
+      } else {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid date format. Please use dd-mm-yyyy or dd/mm/yyyy format",
+        });
+      }
+    }
+
     const customer = await Customer.findOne({ name: customerName });
     const deliveryBoy = await DeliveryBoy.findOne({ name: deliveryBoyName });
 
@@ -388,7 +407,7 @@ const createAdditionalOrder = async (req, res) => {
       const newOrder = new CustomerOrders({
         customer: customer._id,
         orderNumber: await generateOrderNumber(),
-        deliveryDate: date,
+        deliveryDate: formattedDate,
         products: products.map((item) => {
           return { ...item, _id: item._id };
         }),
