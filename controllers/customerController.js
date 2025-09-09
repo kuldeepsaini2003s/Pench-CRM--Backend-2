@@ -787,10 +787,10 @@ const getSubscriptionStatus = async(req, res) =>{
 // ✅Add product To customer subscription
 const addProductToCustomer = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { customerId } = req.params;
     const { productName, price, productSize, quantity } = req.body;
 
-    const customer = await Customer.findById(id);
+    const customer = await Customer.findById(customerId);
 
     if (!customer) {
       return res.status(404).json({
@@ -871,10 +871,10 @@ const addProductToCustomer = async (req, res) => {
 // ✅ Remove product from customer subscription
 const removeProductFromCustomer = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { customerId } = req.params;
     const { productName } = req.body;
 
-    const customer = await Customer.findById(id);
+    const customer = await Customer.findById(customerId);
 
     if (!customer) {
       return res.status(404).json({

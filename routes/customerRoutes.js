@@ -30,8 +30,8 @@ router.get("/getSubscriptionPlan", getSubscriptionPlan);
 router.get("/payment-methods", getPaymentMethods);
 router.get("/payment-status", getPaymentStatus);
 router.get("/subscription-status", getSubscriptionStatus);
-router.post("/addProduct/:id", addProductToCustomer);
-router.post("/removeProduct/:id", removeProductFromCustomer);
+router.post("/addProduct/:customerId", addProductToCustomer);
+router.post("/removeProduct/:customerId", removeProductFromCustomer);
 router.put("/updateCustomerProduct/:customerId", updateCustomerProduct)
 
 module.exports = router;
