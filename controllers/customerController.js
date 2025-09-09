@@ -821,6 +821,7 @@ const addProductToCustomer = async (req, res) => {
     const existingProduct = customer.products.find(
       (p) => p.product.toString() === product._id.toString()
     );
+    console.log("existingProduct", existingProduct);
 
     if (existingProduct) {
       return res.status(400).json({
@@ -851,7 +852,7 @@ const addProductToCustomer = async (req, res) => {
 
     await customer.save();
 
-    const updatedCustomer = await Customer.findById(id);
+    const updatedCustomer = await Customer.findById(customerId);
 
     return res.status(200).json({
       success: true,
@@ -907,7 +908,7 @@ const removeProductFromCustomer = async (req, res) => {
 
     await customer.save();
 
-    const updatedCustomer = await Customer.findById(id);
+    const updatedCustomer = await Customer.findById(customerId);
 
     return res.status(200).json({
       success: true,
