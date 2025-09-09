@@ -8,10 +8,28 @@ const {
   createAutomaticOrdersForCustomer,
 } = require("./customerOrderController");
 const {
-  shouldDeliverOnDate,
   formatDateToDDMMYYYY,
   parseDDMMYYYYtoDate,
 } = require("../utils/parsedDateAndDay");
+
+// Helper function to calculate end date for alternate days subscription
+const calculateAlternateDaysEndDate = (startDate) => {
+  const start = new Date(startDate);
+  const year = start.getFullYear();
+  const month = start.getMonth();
+
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+
+  const deliveryDates = [];
+
+  for (let day = start.getDate(); day <= lastDayOfMonth; day += 2) {
+    deliveryDates.push(day);
+  }
+
+  const lastDeliveryDate = deliveryDates[deliveryDates.length - 1];
+
+  return lastDeliveryDate;
+};
 
 // ✅ Create Customer
 const createCustomer = async (req, res) => {
@@ -138,20 +156,33 @@ const createCustomer = async (req, res) => {
       finalStartDate = parsedCustomDates[0];
       finalEndDate = parsedCustomDates[parsedCustomDates.length - 1];
     } else {
-      // For Monthly and Alternate Days: start = provided date or today, end = month end
+      // For Monthly and Alternate Days: start = provided date or today
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       finalStartDate = startDate || formatDateToDDMMYYYY(today);
 
-      // Calculate month end date
-      const parsedStartDate = parseDDMMYYYYtoDate(finalStartDate);
-      const monthEndDate = new Date(
-        parsedStartDate.getFullYear(),
-        parsedStartDate.getMonth() + 1,
-        0
-      );
-      finalEndDate = formatDateToDDMMYYYY(monthEndDate);
+      if (subscriptionPlan === "Alternate Days") {
+        const parsedStartDate = parseDDMMYYYYtoDate(finalStartDate);
+        const lastDeliveryDay = calculateAlternateDaysEndDate(parsedStartDate);
+
+        // Create end date with the last delivery day
+        const endDate = new Date(
+          parsedStartDate.getFullYear(),
+          parsedStartDate.getMonth(),
+          lastDeliveryDay
+        );
+        finalEndDate = formatDateToDDMMYYYY(endDate);
+      } else {
+        // For Monthly: end = month end
+        const parsedStartDate = parseDDMMYYYYtoDate(finalStartDate);
+        const monthEndDate = new Date(
+          parsedStartDate.getFullYear(),
+          parsedStartDate.getMonth() + 1,
+          0
+        );
+        finalEndDate = formatDateToDDMMYYYY(monthEndDate);
+      }
     }
 
     // 🔹 Customer create
@@ -336,30 +367,12 @@ const updateCustomer = async (req, res) => {
       name,
       phoneNumber,
       address,
-      customerStatus,
-      paymentMethod,
-      paymentStatus,
-      deliveryBoyId,
-      // Product update fields
-      productName,
-      productSize,
-      quantity,
-      price,
       subscriptionPlan,
-      deliveryDays,
-      startDate,
       customDeliveryDates,
-    } = req.body;
+    } = req?.body;
 
-    // Validate customer ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid customer ID",
-      });
-    }
+    const customerImage = req?.file;
 
-    // Find the customer
     const customer = await Customer.findById(id);
 
     if (!customer) {
@@ -369,10 +382,6 @@ const updateCustomer = async (req, res) => {
       });
     }
 
-    // Store original delivery boy for comparison
-    const originalDeliveryBoy = customer.deliveryBoy;
-
-    // Validate phone number uniqueness if updating
     if (phoneNumber && phoneNumber !== customer.phoneNumber) {
       const existingCustomer = await Customer.findOne({
         phoneNumber: phoneNumber,
@@ -387,209 +396,90 @@ const updateCustomer = async (req, res) => {
       }
     }
 
-    // Validate delivery boy if provided
-    if (deliveryBoyId) {
-      const deliveryBoy = await DeliveryBoy.findById(deliveryBoyId);
-      if (!deliveryBoy) {
-        return res.status(404).json({
-          success: false,
-          message: "Delivery boy not found",
-        });
-      }
-    }
-
-    // Validate subscription plan if provided
     if (
       subscriptionPlan &&
-      !["Monthly", "One Day", "Alternate Days"].includes(subscriptionPlan)
+      !["Monthly", "Custom Date", "Alternate Days"].includes(subscriptionPlan)
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Invalid subscription plan. Must be Monthly, One Day, or Alternate Days",
+          "Invalid subscription plan. Must be Monthly, Custom Date, or Alternate Days",
       });
     }
 
-    // Validate delivery days if provided
-    if (
-      deliveryDays &&
-      ![
-        "Daily",
-        "Alternate Days",
-        "Monday to Friday",
-        "Weekends",
-        "Custom Date",
-      ].includes(deliveryDays)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid delivery days",
-      });
-    }
-
-    // Validate subscription plan vs delivery days
-    if (subscriptionPlan && deliveryDays) {
-      if (subscriptionPlan !== "Monthly" && deliveryDays) {
-        return res.status(400).json({
-          success: false,
-          message: "deliveryDays is only allowed for Monthly subscription",
-        });
-      }
-    }
-
-    // Set delivery days based on subscription plan (if subscription plan is being updated)
-    let finalDeliveryDays = deliveryDays;
-    if (subscriptionPlan) {
-      if (subscriptionPlan === "One Day") {
-        finalDeliveryDays = "Daily";
-      } else if (subscriptionPlan === "Alternate Days") {
-        finalDeliveryDays = "Alternate Days";
-      } else if (subscriptionPlan === "Monthly") {
-        finalDeliveryDays = deliveryDays || "Daily"; // Default to Daily if not provided
-      }
-    }
-
-    // Prepare customer field updates
     const customerUpdates = {};
+
     if (name) customerUpdates.name = name;
     if (phoneNumber) customerUpdates.phoneNumber = phoneNumber;
     if (address) customerUpdates.address = address;
-    if (customerStatus) customerUpdates.customerStatus = customerStatus;
-    if (paymentMethod) customerUpdates.paymentMethod = paymentMethod;
-    if (paymentStatus) customerUpdates.paymentStatus = paymentStatus;
-    if (deliveryBoyId) customerUpdates.deliveryBoy = deliveryBoyId;
 
-    // Handle product updates if productName is provided
-    let productUpdates = {};
-    if (productName) {
-      // Find the product by name
-      const product = await Product.findOne({ productName });
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: "Product not found",
-        });
-      }
+    if (subscriptionPlan) {
+      customerUpdates.subscriptionPlan = subscriptionPlan;
 
-      // Find the product in customer's products array
-      const productIndex = customer.products.findIndex(
-        (p) => p.product.toString() === product._id.toString()
-      );
+      if (
+        subscriptionPlan === "Monthly" ||
+        subscriptionPlan === "Alternate Days"
+      ) {
+        customerUpdates.customDeliveryDates = [];
 
-      if (productIndex === -1) {
-        return res.status(404).json({
-          success: false,
-          message: "Product not found in customer's products",
-        });
-      }
+        if (subscriptionPlan === "Alternate Days") {
+          const startDate =
+            customer.startDate || formatDateToDDMMYYYY(new Date());
+          const parsedStartDate = parseDDMMYYYYtoDate(startDate);
+          const lastDeliveryDay =
+            calculateAlternateDaysEndDate(parsedStartDate);
 
-      // Validate product size if provided
-      if (productSize && !product.size.includes(productSize)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid product size. Available sizes: ${product.size.join(
-            ", "
-          )}`,
-        });
-      }
-
-      // Build product updates
-      if (productSize) {
-        productUpdates[`products.${productIndex}.productSize`] = productSize;
-      }
-
-      if (quantity) {
-        if (quantity < 1) {
-          return res.status(400).json({
-            success: false,
-            message: "Quantity must be at least 1",
-          });
-        }
-        productUpdates[`products.${productIndex}.quantity`] = quantity;
-      }
-      if (price) {
-        productUpdates[`products.${productIndex}.price`] = price;
-      }
-      if (subscriptionPlan) {
-        productUpdates[`products.${productIndex}.subscriptionPlan`] =
-          subscriptionPlan;
-
-        // Set delivery days based on subscription plan
-        if (subscriptionPlan === "One Day") {
-          productUpdates[`products.${productIndex}.deliveryDays`] = "Daily";
-        } else if (subscriptionPlan === "Alternate Days") {
-          productUpdates[`products.${productIndex}.deliveryDays`] =
-            "Alternate Days";
-        } else if (subscriptionPlan === "Monthly") {
-          productUpdates[`products.${productIndex}.deliveryDays`] =
-            finalDeliveryDays || "Daily";
-        }
-      }
-      if (deliveryDays && subscriptionPlan === "Monthly") {
-        productUpdates[`products.${productIndex}.deliveryDays`] = deliveryDays;
-      }
-
-      // Handle start date and calculate end date
-      if (startDate || subscriptionPlan) {
-        const currentProduct = customer.products[productIndex];
-        const currentSubscriptionPlan =
-          subscriptionPlan || currentProduct.subscriptionPlan;
-        const currentDeliveryDays =
-          finalDeliveryDays || currentProduct.deliveryDays;
-
-        // Calculate start and end dates based on subscription plan
-        const { startDate: calculatedStartDate, endDate: calculatedEndDate } =
-          calculateSubscriptionDates(
-            currentSubscriptionPlan,
-            currentDeliveryDays,
-            startDate
+          const endDate = new Date(
+            parsedStartDate.getFullYear(),
+            parsedStartDate.getMonth(),
+            lastDeliveryDay
           );
-
-        // Use provided start date or calculated start date
-        const finalStartDate = startDate || calculatedStartDate;
-        const finalEndDate = calculatedEndDate;
-
-        productUpdates[`products.${productIndex}.startDate`] = finalStartDate;
-        productUpdates[`products.${productIndex}.endDate`] = finalEndDate;
+          customerUpdates.endDate = formatDateToDDMMYYYY(endDate);
+        } else if (subscriptionPlan === "Monthly") {
+          const startDate =
+            customer.startDate || formatDateToDDMMYYYY(new Date());
+          const parsedStartDate = parseDDMMYYYYtoDate(startDate);
+          const monthEndDate = new Date(
+            parsedStartDate.getFullYear(),
+            parsedStartDate.getMonth() + 1,
+            0
+          );
+          customerUpdates.endDate = formatDateToDDMMYYYY(monthEndDate);
+        }
       }
-      if (customDeliveryDates) {
-        // Keep custom delivery dates in dd/mm/yyyy format
-        productUpdates[`products.${productIndex}.customDeliveryDates`] =
-          customDeliveryDates;
+    }
+
+    if (customDeliveryDates && Array.isArray(customDeliveryDates)) {
+      if (subscriptionPlan === "Custom Date") {
+        const existingDates = customer.customDeliveryDates || [];
+
+        const mergedDates = [
+          ...new Set([...existingDates, ...customDeliveryDates]),
+        ];
+        customerUpdates.endDate = mergedDates[mergedDates.length - 1];
+        customerUpdates.customDeliveryDates = mergedDates;
       }
-
-      // Recalculate total price if quantity or price changed
-      const currentProduct = customer.products[productIndex];
-      const newQuantity = quantity || currentProduct.quantity;
-      const newPrice = price || currentProduct.price;
-      productUpdates[`products.${productIndex}.totalPrice`] =
-        newQuantity * newPrice;
     }
 
-    // Apply all updates
-    const allUpdates = { ...customerUpdates, ...productUpdates };
-    if (Object.keys(allUpdates).length > 0) {
-      await Customer.findByIdAndUpdate(id, { $set: allUpdates });
+    if (customerImage) customerUpdates.image = customerImage?.path;
+
+    const updatedCustomer = await Customer.findByIdAndUpdate(
+      id,
+      customerUpdates,
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedCustomer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
     }
 
-    // Update dependent records if delivery boy changed
-    if (
-      deliveryBoyId &&
-      originalDeliveryBoy &&
-      deliveryBoyId.toString() !== originalDeliveryBoy.toString()
-    ) {
-      await updateDeliveryBoyInExistingOrders(id, deliveryBoyId);
-    }
-
-    // Fetch updated customer with populated data
-    const updatedCustomer = await Customer.findById(id)
-      .populate("products.product", "productName price size")
-      .populate("deliveryBoy", "name");
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Customer updated successfully",
-      data: updatedCustomer,
+      updatedCustomer: updatedCustomer,
     });
   } catch (error) {
     console.error("Error updating customer:", error);
@@ -771,62 +661,6 @@ const makeAbsentDays = async (req, res) => {
   }
 };
 
-//✅ Create Additional Order
-const createAdditionalOrder = async (req, res) => {
-  try {
-    const { customer, date, products, deliveryBoy } = req.body;
-
-    // Validation
-    if (!customer || !products || products.length === 0 || !grandTotal) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer, products, and required fields",
-      });
-    }
-
-    for (let item of products) {
-      const { productName, price, productSize, quantity, totalPrice } = item;
-      if (!productName || !price || !productSize || !quantity || !totalPrice) {
-        return res.status(400).json({
-          success: false,
-          message: "All product fields are required",
-        });
-      }
-
-      // Product validate
-      const productDoc = await Prodcut.findOne({name})
-    }
-
-
-
-    const newOrder = new CustomerOrders({
-      customer,
-      date,
-      products,
-      deliveryBoy,
-    });
-
-    const savedOrder = await newOrder.save();
-
-    const populatedOrder = await CustomerOrders.findById(savedOrder._id)
-      .populate("customer", "name phoneNumber address")
-      .populate("products.product", "productName price size") // 👈 only ref is populated
-      .populate("deliveryBoy", "name phone");
-
-    res.status(201).json({
-      success: true,
-      message: "Order created successfully",
-      data: populatedOrder,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error creating order",
-      error: error.message,
-    });
-  }
-};
-
 //✅ DropDown Api For deliveryDays
 const getDeliveryDays = async (req, res) => {
   try {
@@ -904,31 +738,14 @@ const getPaymentStatus = async (req, res) => {
   }
 };
 
+// Add product To customer subscription
 const addProductToCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      productName,
-      price,
-      productSize,
-      quantity,
-      subscriptionPlan,
-      deliveryDays,
-      startDate,
-      endDate,
-      customDeliveryDates,
-    } = req.body;
+    const { productName, price, productSize, quantity } = req.body;
 
-    // Validate customer ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid customer ID",
-      });
-    }
-
-    // Find the customer
     const customer = await Customer.findById(id);
+
     if (!customer) {
       return res.status(404).json({
         success: false,
@@ -936,23 +753,16 @@ const addProductToCustomer = async (req, res) => {
       });
     }
 
-    // Validate required fields
-    if (
-      !productName ||
-      !price ||
-      !productSize ||
-      !quantity ||
-      !subscriptionPlan
-    ) {
+    if (!productName || !price || !productSize || !quantity) {
       return res.status(400).json({
         success: false,
         message:
-          "productName, price, productSize, quantity, and subscriptionPlan are required",
+          "productName, price, productSize, quantity, and totalPrice are required",
       });
     }
 
-    // Find the product
     const product = await Product.findOne({ productName });
+
     if (!product) {
       const allProducts = await Product.find({}, "productName");
       return res.status(404).json({
@@ -962,7 +772,6 @@ const addProductToCustomer = async (req, res) => {
       });
     }
 
-    // Check if product already exists in customer's subscription
     const existingProduct = customer.products.find(
       (p) => p.product.toString() === product._id.toString()
     );
@@ -974,7 +783,6 @@ const addProductToCustomer = async (req, res) => {
       });
     }
 
-    // Validate product size
     if (!product.size.includes(productSize)) {
       return res.status(400).json({
         success: false,
@@ -983,160 +791,32 @@ const addProductToCustomer = async (req, res) => {
       });
     }
 
-    // Validate subscription plan
-    if (!["Monthly", "One Day", "Alternate Days"].includes(subscriptionPlan)) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Invalid subscription plan. Must be Monthly, Daily, or Alternate Days",
-      });
-    }
-
-    // Validate delivery days
-    if (
-      deliveryDays &&
-      ![
-        "Daily",
-        "Alternate Days",
-        "Monday to Friday",
-        "Weekends",
-        "Custom Date",
-      ].includes(deliveryDays)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid delivery days",
-      });
-    }
-
-    // Validate subscription plan vs delivery days
-    if (subscriptionPlan !== "Monthly" && deliveryDays) {
-      return res.status(400).json({
-        success: false,
-        message: "deliveryDays is only allowed for Monthly subscription",
-      });
-    }
-
-    // Set delivery days based on subscription plan
-    let finalDeliveryDays = deliveryDays;
-    if (subscriptionPlan === "One Day") {
-      finalDeliveryDays = "Daily";
-    } else if (subscriptionPlan === "Alternate Days") {
-      finalDeliveryDays = "Alternate Days";
-    } else if (subscriptionPlan === "Monthly") {
-      finalDeliveryDays = deliveryDays || "Daily"; // Default to Daily if not provided
-    }
-
-    // Parse dates with new logic - keep in dd/mm/yyyy format
-    const finalStartDate = startDate || formatDateToDDMMYYYY(new Date()); // Let the calculation function handle default
-
-    // Calculate start and end dates based on subscription plan
-    const { startDate: calculatedStartDate, endDate: calculatedEndDate } =
-      calculateSubscriptionDates(
-        subscriptionPlan,
-        finalDeliveryDays,
-        finalStartDate
-      );
-
-    // Use provided start date or calculated start date
-    const finalStartDateToUse = finalStartDate || calculatedStartDate;
-    const finalEndDateToUse = endDate || calculatedEndDate;
-
-    // Keep custom delivery dates in dd/mm/yyyy format
-    const parsedCustomDates = customDeliveryDates || [];
-
-    // Calculate total price
     const totalPrice = quantity * price;
 
-    // Create new product object
     const newProduct = {
       product: product._id,
       price: price,
       productSize: productSize,
       quantity: quantity,
-      startDate: finalStartDateToUse,
-      endDate: finalEndDateToUse,
       totalPrice: totalPrice,
     };
 
-    // Add product to customer
     customer.products.push(newProduct);
+
     await customer.save();
 
-    // Check if new product should be delivered tomorrow and add to existing orders
-    try {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0);
+    const updatedCustomer = await Customer.findById(id);
 
-      // Check if the new product should be delivered tomorrow
-      const shouldDeliverTomorrow = shouldDeliverOnDate(
-        customer,
-        newProduct,
-        tomorrow
-      );
-
-      if (shouldDeliverTomorrow) {
-        // Find existing orders for tomorrow for this customer
-        const existingOrders = await customerOrders.find({
-          customer: id,
-          deliveryDate: {
-            $gte: tomorrow,
-            $lt: new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000), // Next day
-          },
-          status: { $in: ["Scheduled", "Out for Delivery"] },
-        });
-
-        // Add the new product to existing orders
-        for (const order of existingOrders) {
-          // Check if product already exists in this order
-          const productExists = order.products.some(
-            (p) => p.product.toString() === product._id.toString()
-          );
-
-          if (!productExists) {
-            // Add new product to the order
-            order.products.push({
-              product: product._id,
-              deliveryQuantity: quantity,
-              quantity: quantity,
-              price: price,
-              totalPrice: totalPrice,
-            });
-
-            // Recalculate total amount
-            order.totalAmount = order.products.reduce(
-              (sum, item) => sum + item.totalPrice,
-              0
-            );
-
-            await order.save();
-          }
-        }
-      }
-    } catch (orderUpdateError) {
-      console.error(
-        "Error updating existing orders with new product:",
-        orderUpdateError
-      );
-      // Don't fail the product addition if order update fails
-    }
-
-    // Fetch updated customer with populated data
-    const updatedCustomer = await Customer.findById(id)
-      .populate("products.product", "productName price size")
-      .populate("deliveryBoy", "name");
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Product added to customer subscription successfully",
-      data: updatedCustomer,
+      message: "New Product added successfully to customer subscription",
+      addedNewProduct: updatedCustomer,
     });
   } catch (error) {
-    console.error("Error adding product to customer:", error);
-    res.status(500).json({
+    console.error("Error adding product to customer subscription:", error);
+    return res.status(500).json({
       success: false,
-      message: "Error adding product to customer",
+      message: "Error adding product to customer subscription",
       error: error.message,
     });
   }
@@ -1148,16 +828,8 @@ const removeProductFromCustomer = async (req, res) => {
     const { id } = req.params;
     const { productName } = req.body;
 
-    // Validate customer ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid customer ID",
-      });
-    }
-
-    // Find the customer
     const customer = await Customer.findById(id);
+
     if (!customer) {
       return res.status(404).json({
         success: false,
@@ -1165,8 +837,8 @@ const removeProductFromCustomer = async (req, res) => {
       });
     }
 
-    // Find the product
     const product = await Product.findOne({ productName });
+
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -1174,7 +846,6 @@ const removeProductFromCustomer = async (req, res) => {
       });
     }
 
-    // Find the product in customer's products array
     const productIndex = customer.products.findIndex(
       (p) => p.product.toString() === product._id.toString()
     );
@@ -1182,29 +853,120 @@ const removeProductFromCustomer = async (req, res) => {
     if (productIndex === -1) {
       return res.status(404).json({
         success: false,
-        message: "Product not found in customer's subscription",
+        message: "Product not found for this customer subscription",
       });
     }
 
-    // Remove the product
     customer.products.splice(productIndex, 1);
+
     await customer.save();
 
-    // Fetch updated customer with populated data
-    const updatedCustomer = await Customer.findById(id)
-      .populate("products.product", "productName price size description")
-      .populate("deliveryBoy", "name phoneNumber email address");
+    const updatedCustomer = await Customer.findById(id);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Product removed from customer subscription successfully",
-      data: updatedCustomer,
+      removedProduct: updatedCustomer,
     });
   } catch (error) {
-    console.error("Error removing product from customer:", error);
-    res.status(500).json({
+    console.error("Error removing product from customer subscription:", error);
+    return res.status(500).json({
       success: false,
-      message: "Error removing product from customer",
+      message: "Error removing product from customer subscription",
+      error: error.message,
+    });
+  }
+};
+
+// Update existing product of customer
+const updateCustomerProduct = async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const { quantity, price, productName, productSize } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    const customer = await Customer.findById(customerId);
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    let product = null;
+    let productIndex = -1;
+
+    if (productName) {
+      product = await Product.findOne({ productName });
+
+      if (!product) {
+        const allProducts = await Product.find({}, "productName");
+        return res.status(404).json({
+          success: false,
+          message: `Product "${productName}" not found. Please select from available products.`,
+          availableProducts: allProducts.map((p) => p.productName),
+        });
+      }
+
+      // Find the product in customer's products array
+      productIndex = customer.products.findIndex(
+        (p) => p.product.toString() === product._id.toString()
+      );
+
+      if (productIndex === -1) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found in customer's products",
+        });
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "productName is required to identify which product to update",
+      });
+    }
+
+    if (productSize && !product.size.includes(productSize)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid product size "${productSize}" for "${productName}". Please select from available sizes.`,
+        availableSizes: product.size,
+      });
+    }
+
+    const currentProduct = customer.products[productIndex];
+
+    if (quantity) currentProduct.quantity = quantity;
+    if (price) currentProduct.price = price;
+    if (productSize) currentProduct.productSize = productSize;
+    if (product) currentProduct.product = product._id;
+
+    // Recalculate totalPrice if quantity or price changed
+    if (quantity || price) {
+      const newQuantity = quantity || currentProduct.quantity;
+      const newPrice = price || currentProduct.price;
+      currentProduct.totalPrice = newQuantity * parseFloat(newPrice);
+    }
+
+    await customer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer product updated successfully",
+      updatedProduct: customer,
+    });
+  } catch (error) {
+    console.error("Error updating customer product:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating customer product",
       error: error.message,
     });
   }
@@ -1223,4 +985,5 @@ module.exports = {
   getPaymentStatus,
   addProductToCustomer,
   removeProductFromCustomer,
+  updateCustomerProduct,
 };
