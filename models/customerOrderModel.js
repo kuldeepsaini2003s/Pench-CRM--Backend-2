@@ -62,8 +62,8 @@ const customerOrdersSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["Cash", "Card", "Online"],
-      default: "Cash",
+      enum: ["COD", "Online"],
+      default: "COD",
     },
     paymentStatus: {
       type: String,

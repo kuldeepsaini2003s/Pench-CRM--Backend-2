@@ -63,7 +63,7 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
         products: orderItems,
         orderNumber,
         totalAmount,
-        status: "Scheduled",
+        status: "Pending",
       });
 
       await order.save();
@@ -97,7 +97,7 @@ const getAllOrders = async (req, res) => {
     if (req.query.customer) filter.customer = req.query.customer;
     if (req.query.deliveryBoy) filter.deliveryBoy = req.query.deliveryBoy;
 
-    const orders = await CustomerCustomOrder.find(filter)
+    const orders = await CustomerOrders.find(filter)
       .populate("customer", "name phoneNumber address ")
       .populate("product", "productName price size")
       .populate("deliveryBoy", "name phone")
@@ -105,7 +105,7 @@ const getAllOrders = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    const totalOrders = await CustomerCustomOrder.countDocuments(filter);
+    const totalOrders = await CustomerOrders.countDocuments(filter);
 
     res.status(200).json({
       success: true,
