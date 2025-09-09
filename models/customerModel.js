@@ -32,6 +32,11 @@ const customerSchema = new mongoose.Schema(
       enum: ["Monthly", "Custom Date", "Alternate Days"],
       required: true,
     },
+    subscriptionStatus: {
+      type: String,
+      enum: ["active", "inactive"],
+      required: true,
+    },
 
     customDeliveryDates: {
       type: [String],

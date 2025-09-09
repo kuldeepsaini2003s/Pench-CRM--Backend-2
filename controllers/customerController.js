@@ -737,7 +737,26 @@ const getPaymentStatus = async (req, res) => {
   }
 };
 
-// Add product To customer subscription
+//✅DropDown Api For Subscription Status
+const getSubscriptionStatus = async(req, res) =>{
+  try {
+    const subscriptionStatus = await Customer.schema.path("subscriptionStatus")
+      .enumValues;
+    res.status(200).json({
+      success: true,
+      message: "All Subscription Status fetched successfully",
+      subscriptionStatus,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch subscription status",
+    });
+  }
+}
+
+// ✅Add product To customer subscription
 const addProductToCustomer = async (req, res) => {
   try {
     const { id } = req.params;
@@ -821,7 +840,7 @@ const addProductToCustomer = async (req, res) => {
   }
 };
 
-// Remove product from customer subscription
+// ✅ Remove product from customer subscription
 const removeProductFromCustomer = async (req, res) => {
   try {
     const { id } = req.params;
@@ -877,7 +896,7 @@ const removeProductFromCustomer = async (req, res) => {
   }
 };
 
-// Update existing product of customer
+// ✅Update existing product of customer
 const updateCustomerProduct = async (req, res) => {
   try {
     const { customerId } = req.params;
@@ -982,6 +1001,7 @@ module.exports = {
   getSubscriptionPlan,
   getPaymentMethods,
   getPaymentStatus,
+  getSubscriptionStatus,
   addProductToCustomer,
   removeProductFromCustomer,
   updateCustomerProduct,
