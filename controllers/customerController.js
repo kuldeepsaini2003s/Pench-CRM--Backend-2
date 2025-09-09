@@ -42,6 +42,7 @@ const createCustomer = async (req, res) => {
       products,
       startDate,
       subscriptionPlan,
+      subscriptionStatus,
       customDeliveryDates,
       paymentMethod,
       paymentStatus,
@@ -53,7 +54,8 @@ const createCustomer = async (req, res) => {
       !address ||
       !deliveryBoyName ||
       !products ||
-      !subscriptionPlan
+      !subscriptionPlan ||
+      !subscriptionStatus
     ) {
       return res.status(400).json({
         success: false,
@@ -92,6 +94,16 @@ const createCustomer = async (req, res) => {
         success: false,
         message: `Invalid payment method "${paymentMethod}". Please select from dropdown.`,
         availablePaymentMethod: validPaymentMethods,
+      });
+    }
+
+    const validSubscriptionStatus = ["active", "inactive"];
+
+    if (subscriptionStatus && !validSubscriptionStatus.includes(subscriptionStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid subscription status "${subscriptionStatus}". Please select from dropdown.`,
+        availableSubscriptionStatus: validSubscriptionStatus,
       });
     }
 
@@ -191,6 +203,7 @@ const createCustomer = async (req, res) => {
       phoneNumber,
       address,
       subscriptionPlan,
+      subscriptionStatus,
       customDeliveryDates: parsedCustomDates,
       startDate: finalStartDate,
       endDate: finalEndDate,
@@ -368,10 +381,11 @@ const updateCustomer = async (req, res) => {
       phoneNumber,
       address,
       subscriptionPlan,
+      subscriptionStatus,
       customDeliveryDates,
     } = req?.body;
 
-    const customerImage = req?.file;
+    const image = req?.file;
 
     const customer = await Customer.findById(id);
 
@@ -404,6 +418,17 @@ const updateCustomer = async (req, res) => {
         success: false,
         message:
           "Invalid subscription plan. Must be Monthly, Custom Date, or Alternate Days",
+      });
+    }
+
+    if (
+      subscriptionStatus &&
+      !["active", "inactive"].includes(subscriptionStatus)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid subscription status. Must be active or inactive",
       });
     }
 
@@ -448,6 +473,9 @@ const updateCustomer = async (req, res) => {
         }
       }
     }
+    if (subscriptionStatus) {
+      customerUpdates.subscriptionStatus = subscriptionStatus;
+    }
 
     if (customDeliveryDates && Array.isArray(customDeliveryDates)) {
       if (subscriptionPlan === "Custom Date") {
@@ -461,7 +489,7 @@ const updateCustomer = async (req, res) => {
       }
     }
 
-    if (customerImage) customerUpdates.image = customerImage?.path;
+    if (image) customerUpdates.image = image?.path;
 
     const updatedCustomer = await Customer.findByIdAndUpdate(
       id,

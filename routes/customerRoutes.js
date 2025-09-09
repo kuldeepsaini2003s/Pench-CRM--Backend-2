@@ -22,7 +22,7 @@ const { upload } = require("../config/cloudinary");
 router.post("/createCustomer", createCustomer);
 router.get("/getAllCustomers", getAllCustomers);
 router.get("/getCustomerById/:id", getCustomerById);
-router.put("/update/:id", upload.single("customerImage"), updateCustomer);
+router.put("/update/:id", upload.single("image"), updateCustomer);
 router.put("/delete/:id", deleteCustomer);
 router.post("/makeAbsentDays/:id", makeAbsentDays);
 router.get("/getDeliveryDays", getDeliveryDays);
