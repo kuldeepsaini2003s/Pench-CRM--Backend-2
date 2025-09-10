@@ -9,6 +9,7 @@ const {
 } = require("../utils/dateUtils");
 const bcrypt = require("bcrypt");
 const { encrypt } = require("../utils/decrypt");
+const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 
 // Generate JWT
 const generateToken = (id) => {
@@ -489,8 +490,9 @@ const getOrders = async (req, res) => {
     // Prepare response
     const response = {
       success: true,
-      message: `Orders${date ? ` for ${targetDateForDelivery.toDateString()}` : ""
-        }`,
+      message: `Orders${
+        date ? ` for ${targetDateForDelivery.toDateString()}` : ""
+      }`,
       data: {
         date: targetDateForDelivery,
         filters: {
@@ -644,40 +646,59 @@ const getOrdersByDeliveryBoy = async (req, res) => {
     page = parseInt(page);
     limit = parseInt(limit);
 
-    if (!mongoose.Types.ObjectId.isValid(deliveryBoyId)) {
-      return res.status(400).json({
+    const deliveryBoy = await DeliveryBoy.findById(deliveryBoyId);
+
+    if (!deliveryBoy) {
+      return res.status(404).json({
         success: false,
-        message: "Invalid delivery boy ID",
+        message: "Delivery boy not found",
       });
     }
 
-    // ---- Build filter ----
-    const filter = { deliveryBoy: deliveryBoyId };
+    const today = new Date();
+    const todayFormatted = formatDateToDDMMYYYY(today);
 
-    // ---- Query DB ----
+    const filter = {
+      deliveryBoy: deliveryBoyId,
+      deliveryDate: todayFormatted,
+    };
+
     const [totalOrders, orders] = await Promise.all([
       CustomerOrders.countDocuments(filter),
       CustomerOrders.find(filter)
         .populate("customer", "name phoneNumber address image")
-        .sort({ deliveryDate: 1, createdAt: -1 })
+        .populate("products._id", "productImage")
+        .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
     ]);
 
-    // ---- Pagination meta ----
+    const transformedOrders = orders.map((order) => ({
+      ...order.toObject(),
+      products: order.products.map((product) => ({
+        _id: product._id._id,
+        productImage: product._id.productImage,
+        productName: product.productName,
+        price: product.price,
+        productSize: product.productSize,
+        quantity: product.quantity,
+        totalPrice: product.totalPrice,
+      })),
+    }));
+
     const totalPages = Math.ceil(totalOrders / limit);
     const hasPrevious = page > 1;
     const hasNext = page < totalPages;
 
     return res.status(200).json({
       success: true,
-      message: `Found ${orders.length} orders for delivery boy`,
+      message: `Found ${transformedOrders.length} orders for today (${todayFormatted})`,
       totalOrders,
       totalPages,
       currentPage: page,
       previous: hasPrevious,
       next: hasNext,
-      orders, // ✅ renamed from "data" for consistency with getAllCustomers
+      orders: transformedOrders,
     });
   } catch (error) {
     console.error("getOrdersByDeliveryBoy Error:", error);
@@ -688,8 +709,6 @@ const getOrdersByDeliveryBoy = async (req, res) => {
     });
   }
 };
-
-
 
 module.exports = {
   registerDeliveryBoy,
