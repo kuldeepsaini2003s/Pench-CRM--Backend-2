@@ -54,8 +54,12 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 const adminRoutes = require("./routes/adminRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const deliveryBoyRoutes = require("./routes/deliveryBoyRoutes");
+
 const bottleTrackingRoutes = require("./routes/bottleTrackingRoutes");
 const deliveryHistoryRoutes = require("./routes/deliveryHistoryRoutes");
+const bottleRoutes = require("./routes/bottleTransactionRoutes");
+const deliveryManagementRoutes = require("./routes/deliveryManagementRoutes");
+
 const productRoutes = require("./routes/productRoutes");
 const CreateInvoiceRoutes = require("./routes/customInvoiceRoute");
 const customerInvoce = require("./routes/customerInvoce");
@@ -69,6 +73,8 @@ app.use("/api/customer", customerRoutes);
 app.use("/api/deliveryBoy", deliveryBoyRoutes);
 app.use("/api/bottleTracking", bottleTrackingRoutes);
 app.use("/api/deliveryHistory", deliveryHistoryRoutes);
+app.use("/api/bottle", bottleRoutes);
+app.use("/api/deliveryManagement", deliveryManagementRoutes);
 app.use("/api/product", productRoutes);
 
 // app.use("/invoice", CreateInvoiceRoutes);

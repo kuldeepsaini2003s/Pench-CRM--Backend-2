@@ -640,7 +640,7 @@ const getOrdersByDateRange = async (req, res) => {
 
 const getOrdersByDeliveryBoy = async (req, res) => {
   try {
-    const deliveryBoyId = req.deliveryBoy._id;
+    const deliveryBoyId = req?.deliveryBoy?._id;
 
     let { page = 1, limit = 10 } = req.query;
     page = parseInt(page);
@@ -676,13 +676,13 @@ const getOrdersByDeliveryBoy = async (req, res) => {
     const transformedOrders = orders.map((order) => ({
       ...order.toObject(),
       products: order.products.map((product) => ({
-        _id: product._id._id,
-        productImage: product._id.productImage,
-        productName: product.productName,
-        price: product.price,
-        productSize: product.productSize,
-        quantity: product.quantity,
-        totalPrice: product.totalPrice,
+        _id: product?._id?._id,
+        productImage: product?.productImage,
+        productName: product?.productName,
+        price: product?.price,
+        productSize: product?.productSize,
+        quantity: product?.quantity,
+        totalPrice: product?.totalPrice,
       })),
     }));
 

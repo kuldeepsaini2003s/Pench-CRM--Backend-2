@@ -89,7 +89,6 @@ const customerOrdersSchema = new mongoose.Schema(
       enum: [
         "Pending",        
         "Delivered",        
-        "Cancelled",
         "Returned"
       ],
       default: "Pending",
