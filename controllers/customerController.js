@@ -99,7 +99,10 @@ const createCustomer = async (req, res) => {
 
     const validSubscriptionStatus = ["active", "inactive"];
 
-    if (subscriptionStatus && !validSubscriptionStatus.includes(subscriptionStatus)) {
+    if (
+      subscriptionStatus &&
+      !validSubscriptionStatus.includes(subscriptionStatus)
+    ) {
       return res.status(400).json({
         success: false,
         message: `Invalid subscription status "${subscriptionStatus}". Please select from dropdown.`,
@@ -247,70 +250,98 @@ const getAllCustomers = async (req, res) => {
       page = 1,
       limit = 10,
       search = "",
-      customerStatus,
       productName,
+      productSize,
     } = req.query;
 
     page = parseInt(page);
     limit = parseInt(limit);
 
-    // ---- Build filter ----
-    const filter = { isDeleted: false };
-
-    if (customerStatus) filter.customerStatus = customerStatus;
-    console.log("customerStatus", customerStatus);
+    let filter = {};
 
     if (search) {
-      const regex = new RegExp(search, "i");
-      if (!isNaN(search)) {
-        filter.$or = [{ name: regex }, { phoneNumber: Number(search) }];
+      const searchRegex = new RegExp(search, "i");
+      if (!isNaN(search)) {        
+        filter.$or = [
+          { name: searchRegex },
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $toString: "$phoneNumber" },
+                regex: search,
+                options: "i",
+              },
+            },
+          },
+        ];
       } else {
-        filter.$or = [{ name: regex }];
+        filter.$or = [{ name: searchRegex }];
       }
     }
 
-    // ---- Query DB ----
-    const [totalCustomers, customers] = await Promise.all([
-      Customer.countDocuments(filter),
-      Customer.find(filter)
-        .populate({
-          path: "products.product",
-          select: "productName price size",
-          match: productName
-            ? { productName: { $regex: productName, $options: "i" } }
-            : {},
-        })
-        .populate("deliveryBoy", "name phoneNumber email")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
-    ]);
+    if (productSize) {
+      filter["products"] = {
+        $elemMatch: {
+          product: { $exists: true, $ne: null },
+          ...(productSize && {
+            productSize: { $regex: productSize, $options: "i" },
+          }),
+        },
+      };
+    }
 
-    // ✅ Filter customers with valid products
-    const filteredCustomers = customers.filter((customer) =>
-      customer.products.some((p) => p.product !== null)
+    const customers = await Customer.find(filter)
+      .populate({
+        path: "products.product",
+        select: "productName",
+      })
+      .populate("deliveryBoy", "name")
+      .sort({ createdAt: -1 });
+    
+    let filteredCustomers = customers;
+    
+    if (productName) {
+      filteredCustomers = customers.filter((customer) => {
+        return customer.products.some((product) => {
+          return (
+            product.product &&
+            product.product.productName &&
+            product.product.productName
+              .toLowerCase()
+              .includes(productName.toLowerCase())
+          );
+        });
+      });
+    }
+    
+    const totalCustomers = filteredCustomers.length;
+    
+    const paginatedCustomers = filteredCustomers.slice(
+      (page - 1) * limit,
+      page * limit
     );
 
-    // ✅ Only Required Fields
-    const formattedCustomers = filteredCustomers.map((c) => {
-      const firstProduct = c.products[0]?.product;
+    const formattedCustomers = paginatedCustomers.map((customer) => {
       return {
-        _id: c._id,
-        customerStatus: c.customerStatus,
-        image: c.image,
-        customerName: c.name,
-        phoneNumber: c.phoneNumber,
-        productName: firstProduct ? firstProduct.productName : "",
-        size: firstProduct ? firstProduct.size : "",
-        price: firstProduct ? firstProduct.price : "",
-        subscriptionPlan: c.products[0]?.subscriptionPlan || "",
-        deliveryDays: c.products[0]?.deliveryDays || "",
-        isDeleted: c.isDeleted,
+        _id: customer?._id,
+        name: customer?.name,
+        phoneNumber: customer?.phoneNumber,
+        address: customer?.address,
+        image: customer?.image,
+        customerStatus: customer?.customerStatus,
+        subscriptionPlan: customer?.subscriptionPlan,
+        subscriptionStatus: customer?.subscriptionStatus,
+        products: customer?.products.map((product) => ({
+          _id: product?._id,
+          productName: product?.product?.productName,
+          productSize: product?.productSize,
+        })),
+        deliveryBoy: customer?.deliveryBoy?.name,
+        createdAt: customer?.createdAt,
+        updatedAt: customer?.updatedAt,
       };
     });
-    console.log("formattedCustomers", formattedCustomers);
 
-    // ---- Pagination meta ----
     const totalPages = Math.ceil(totalCustomers / limit);
     const hasPrevious = page > 1;
     const hasNext = page < totalPages;
@@ -427,8 +458,7 @@ const updateCustomer = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid subscription status. Must be active or inactive",
+        message: "Invalid subscription status. Must be active or inactive",
       });
     }
 
@@ -766,7 +796,7 @@ const getPaymentStatus = async (req, res) => {
 };
 
 //✅DropDown Api For Subscription Status
-const getSubscriptionStatus = async(req, res) =>{
+const getSubscriptionStatus = async (req, res) => {
   try {
     const subscriptionStatus = await Customer.schema.path("subscriptionStatus")
       .enumValues;
@@ -782,7 +812,7 @@ const getSubscriptionStatus = async(req, res) =>{
       message: "Failed to fetch subscription status",
     });
   }
-}
+};
 
 // ✅Add product To customer subscription
 const addProductToCustomer = async (req, res) => {
