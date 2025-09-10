@@ -188,6 +188,22 @@ const updateReturnedBottles = async (req, res) => {
 };
 
 // Get bottle count for a specific date
+// Helper function to map product size to bottle size
+const mapProductSizeToBottleSize = (productSize) => {
+  if (!productSize) return "1ltr";
+
+  const sizeStr = productSize.toString().toLowerCase();
+
+  if (sizeStr.includes("1/2")) {
+    return "1/2ltr";
+  }
+
+  if (sizeStr.includes("1l") || sizeStr.includes("1 l")) {
+    return "1ltr";
+  }
+
+  return "1ltr";
+};
 const getBottleCountForDate = async (req, res) => {
   try {
     const { date } = req.query;
@@ -340,22 +356,7 @@ const getBottleCountForDate = async (req, res) => {
   }
 };
 
-// Helper function to map product size to bottle size
-const mapProductSizeToBottleSize = (productSize) => {
-  if (!productSize) return "1ltr";
 
-  const sizeStr = productSize.toString().toLowerCase();
-
-  if (sizeStr.includes("1/2")) {
-    return "1/2ltr";
-  }
-
-  if (sizeStr.includes("1l") || sizeStr.includes("1 l")) {
-    return "1ltr";
-  }
-
-  return "1ltr";
-};
 
 module.exports = {
   createTransaction,
