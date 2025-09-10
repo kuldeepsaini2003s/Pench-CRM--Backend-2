@@ -290,7 +290,7 @@ const getOrdersByCustomer = async (req, res) => {
 const createAdditionalOrder = async (req, res) => {
   try {
     const { customerId } = req?.params;
-    const { date, products, deliveryBoyId } = req.body;
+    const { date, products, deliveryBoyId } = req.body;    
 
     // Validation
     if (!customerId || !products || products.length === 0 || !deliveryBoyId) {
@@ -338,10 +338,11 @@ const createAdditionalOrder = async (req, res) => {
         item._id = productDoc._id;
       }
     }
-    
+
     const existingOrder = await CustomerOrders.findOne({
       customer: customer._id,
       deliveryBoy: deliveryBoy._id,
+      deliveryDate: date,
       status: { $in: ["Pending"] },
     });
 
@@ -352,7 +353,7 @@ const createAdditionalOrder = async (req, res) => {
       const newProducts = products.map((item) => {
         return { ...item, _id: item._id };
       });
-      
+
       const duplicateProducts = [];
 
       for (const newProduct of newProducts) {
@@ -362,7 +363,7 @@ const createAdditionalOrder = async (req, res) => {
             existingProduct.productSize === newProduct.productSize
         );
 
-        if (existingProductIndex !== -1) {          
+        if (existingProductIndex !== -1) {
           const existingProduct = existingOrder.products[existingProductIndex];
           duplicateProducts.push({
             productName: existingProduct.productName,
@@ -372,17 +373,17 @@ const createAdditionalOrder = async (req, res) => {
           });
         }
       }
-      
+
       if (duplicateProducts.length > 0) {
         return res.status(400).json({
           success: false,
           message: "Product already ordered for this customer",
-          duplicateProducts: duplicateProducts,          
+          duplicateProducts: duplicateProducts,
         });
       }
-      
+
       existingOrder.products.push(...newProducts);
-      
+
       existingOrder.totalAmount = existingOrder.products.reduce(
         (total, product) => total + product.totalPrice,
         0
