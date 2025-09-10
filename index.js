@@ -63,6 +63,7 @@ const customerInvoce = require("./routes/customerInvoce");
 
 const customOrderRoutes = require("./routes/customerOrderRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const termsAndConditionRoutes = require("./routes/termsAndConditionRoutes");
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
@@ -76,6 +77,7 @@ app.use("/api/customers", customerInvoce);
 app.use("/api/invoices", CreateInvoiceRoutes);
 app.use("/api/customOrder", customOrderRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/termsAndCondition", termsAndConditionRoutes);
 
 app.get("/", (req, res) => {
   res.send("we are Pench Milk");
