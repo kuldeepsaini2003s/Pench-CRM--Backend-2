@@ -120,6 +120,10 @@ const customerSchema = new mongoose.Schema(
     isVerified:{
       type:Boolean,
       default:false
+    },
+    isDeleted:{
+      type:Boolean,
+      default:false
     }
   },
   { timestamps: true }

@@ -6,7 +6,7 @@ const Product = require("../models/productModel");
 const Customer = require("../models/customerModel");
 const { formatDate, normalizeDate } = require("../utils/dateUtils");
 const { checkSubscriptionStatus } = require("../helper/helperFuctions");
-
+const moment = require("moment");
 const TotalSales = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
@@ -351,60 +351,118 @@ const getPendingPayments = catchAsync(async (req, res, next) => {
   });
 });
 
-// 📌 Get New Onboard Customers (first delivery)
-const getNewOnboardCustomers = async (req, res, next) => {
-  const { page = 1, limit = 10 } = req.query;
-  const skip = (page - 1) * limit;
+//✅ Get New Onboard Customers (first delivery)
+const getNewOnboardCustomers = async (req, res) => {
+  try {
+    let { page = 1, limit = 10, productName = "", size = "", range = "prev" } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
+    const skip = (page - 1) * limit;
 
-  const deliveries = await DeliveryHistory.aggregate([
-    {
-      $sort: { date: 1 },
-    },
-    {
-      $group: {
-        _id: "$customer",
-        firstDelivery: { $first: "$$ROOT" },
+    // ✅ Get today's weekday
+    const today = moment().startOf("day");
+    const weekday = today.isoWeekday(); // 1 = Monday, 7 = Sunday
+
+    let startDate, endDate;
+
+    if (range === "prev") {
+      // 🔹 Last same weekday → Current weekday
+      startDate = moment(today).subtract(1, "week"); // last same weekday
+      endDate = today;
+    } else if (range === "next") {
+      // 🔹 Current weekday → Next same weekday
+      startDate = today;
+      endDate = moment(today).add(1, "week");
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid range. Use 'prev' or 'next'.",
+      });
+    }
+
+    // ---- Base filter ----
+    const filter = {
+      isDeleted: false,
+      createdAt: { $gte: startDate.toDate(), $lt: endDate.toDate() },
+    };
+
+    // ---- Product filter ----
+    let productMatch = {};
+    if (productName && productName.trim() !== "") {
+      productMatch.productName = { $regex: new RegExp(productName, "i") };
+    }
+    if (size && size.trim() !== "") {
+      productMatch.size = { $regex: new RegExp(size, "i") };
+    }
+
+    // ---- Count + Query ----
+    const [totalOnBoardedCustomers, customers] = await Promise.all([
+      Customer.countDocuments(filter),
+      Customer.find(filter)
+        .populate({
+          path: "products.product",
+          model: Product,
+          select: "productName size",
+          match: productMatch,
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    if (!customers || customers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No onboard customers found for this range",
+      });
+    }
+
+    // ---- Format Response ----
+    const response = customers
+      .map((customer) =>
+        customer.products
+          .filter((p) => p.product) 
+          .map((p) => ({
+            customerName: customer.name,
+            productName: p.product?.productName || "N/A",
+            size: p.productSize || p.product?.size || "N/A",
+            quantity: p.quantity,
+            date: moment(customer.createdAt).format("DD/MM/YYYY"),
+          }))
+      )
+      .flat();
+
+    // ---- Pagination ----
+    const totalPages = Math.ceil(totalOnBoardedCustomers / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
+
+    return res.status(200).json({
+      success: true,
+      message: "Onboard customers fetched successfully",
+      weekRange: {
+        from: startDate.format("DD/MM/YYYY"),
+        to: endDate.format("DD/MM/YYYY"),
       },
-    },
-    { $skip: skip },
-    { $limit: parseInt(limit) },
-  ]);
-
-  if (!deliveries || deliveries.length === 0) {
-    return next(new ErrorHandler("No onboard customers found", 404));
+      totalOnBoardedCustomers,
+      totalPages,
+      currentPage: page,
+      previous: hasPrevious,
+      next: hasNext,
+      customers: response,
+    });
+  } catch (error) {
+    console.error("getNewOnboardCustomers Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch onboard customers",
+      error: error.message,
+    });
   }
+};
 
-  // 🔹 Populate customer + product
-  const populated = await DeliveryHistory.populate(deliveries, [
-    { path: "firstDelivery.customer", select: "name" },
-    { path: "firstDelivery.products.product", select: "productName size" },
-  ]);
 
-  // 🔹 Response format
-  const response = populated
-    .map((d) => {
-      const delivery = d.firstDelivery;
-
-      return delivery?.products?.map((p) => ({
-        customerName: delivery.customer?.name || "Unknown",
-        productType: p.product?.productName || "N/A",
-        productSize: p.product?.size || "N/A",
-        quantity: p.quantity,
-        date: delivery.date,
-      }));
-    })
-    .flat();
-
-  res.status(200).json({
-    success: true,
-    count: response.length,
-    data: response,
-    pagination: {
-      currentPage: parseInt(page),
-      limit: parseInt(limit),
-    },
-  });
-}
 
 module.exports = {
   TotalSales,

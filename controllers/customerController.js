@@ -257,7 +257,7 @@ const getAllCustomers = async (req, res) => {
     page = parseInt(page);
     limit = parseInt(limit);
 
-    let filter = {};
+    let filter = {isDeleted:false};
 
     if (search) {
       const searchRegex = new RegExp(search, "i");
