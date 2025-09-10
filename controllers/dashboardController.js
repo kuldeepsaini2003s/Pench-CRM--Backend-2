@@ -352,7 +352,7 @@ const getPendingPayments = catchAsync(async (req, res, next) => {
 });
 
 // 📌 Get New Onboard Customers (first delivery)
-const getNewOnboardCustomers = catchAsync(async (req, res, next) => {
+const getNewOnboardCustomers = async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
 
@@ -404,7 +404,7 @@ const getNewOnboardCustomers = catchAsync(async (req, res, next) => {
       limit: parseInt(limit),
     },
   });
-});
+}
 
 module.exports = {
   TotalSales,
