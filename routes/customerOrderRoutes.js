@@ -22,6 +22,6 @@ router.delete("/:id", deleteOrder);
 router.get("/customer/:customerId", getOrdersByCustomer);
 // router.patch("/:id/status", updateOrderStatus);
 // router.patch("/:id/assign-delivery-boy", assignDeliveryBoy);
-router.post("/additionalOrder", createAdditionalOrder);
+router.post("/additionalOrder/:customerId", createAdditionalOrder);
 
 module.exports = router;

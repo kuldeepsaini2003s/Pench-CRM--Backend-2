@@ -289,23 +289,20 @@ const getOrdersByCustomer = async (req, res) => {
 // Create Additional Order
 const createAdditionalOrder = async (req, res) => {
   try {
-    const { customerName, date, products, deliveryBoyName } = req.body;
+    const { customerId } = req?.params;
+    const { date, products, deliveryBoyId } = req.body;
 
     // Validation
-    if (
-      !customerName ||
-      !products ||
-      products.length === 0 ||
-      !deliveryBoyName
-    ) {
+    if (!customerId || !products || products.length === 0 || !deliveryBoyId) {
       return res.status(400).json({
         success: false,
         message: "Customer, products, and deliveryBoy are required",
       });
     }
 
-    const customer = await Customer.findOne({ name: customerName });
-    const deliveryBoy = await DeliveryBoy.findOne({ name: deliveryBoyName });
+    const customer = await Customer.findById(customerId);
+
+    const deliveryBoy = await DeliveryBoy.findById(deliveryBoyId);
 
     if (!customer) {
       return res.status(400).json({
@@ -341,8 +338,7 @@ const createAdditionalOrder = async (req, res) => {
         item._id = productDoc._id;
       }
     }
-
-    // Check if there's an existing order for the same customer and delivery boy
+    
     const existingOrder = await CustomerOrders.findOne({
       customer: customer._id,
       deliveryBoy: deliveryBoy._id,
@@ -356,8 +352,9 @@ const createAdditionalOrder = async (req, res) => {
       const newProducts = products.map((item) => {
         return { ...item, _id: item._id };
       });
+      
+      const duplicateProducts = [];
 
-      // Check for duplicate products and merge quantities if same product and size
       for (const newProduct of newProducts) {
         const existingProductIndex = existingOrder.products.findIndex(
           (existingProduct) =>
@@ -365,18 +362,27 @@ const createAdditionalOrder = async (req, res) => {
             existingProduct.productSize === newProduct.productSize
         );
 
-        if (existingProductIndex !== -1) {
-          // Product already exists, add quantities and update total price
-          existingOrder.products[existingProductIndex].quantity +=
-            newProduct.quantity;
-          existingOrder.products[existingProductIndex].totalPrice +=
-            newProduct.totalPrice;
-        } else {
-          existingOrder.products.push(newProduct);
+        if (existingProductIndex !== -1) {          
+          const existingProduct = existingOrder.products[existingProductIndex];
+          duplicateProducts.push({
+            productName: existingProduct.productName,
+            productSize: existingProduct.productSize,
+            quantity: existingProduct.quantity,
+            price: existingProduct.price,
+          });
         }
       }
-
-      // Recalculate total amount
+      
+      if (duplicateProducts.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Product already ordered for this customer",
+          duplicateProducts: duplicateProducts,          
+        });
+      }
+      
+      existingOrder.products.push(...newProducts);
+      
       existingOrder.totalAmount = existingOrder.products.reduce(
         (total, product) => total + product.totalPrice,
         0
@@ -406,7 +412,7 @@ const createAdditionalOrder = async (req, res) => {
 
     const populatedOrder = await CustomerOrders.findById(savedOrder._id);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: isNewOrder
         ? "New order created successfully"
@@ -415,7 +421,7 @@ const createAdditionalOrder = async (req, res) => {
       isNewOrder: isNewOrder,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error creating order",
       error: error.message,
