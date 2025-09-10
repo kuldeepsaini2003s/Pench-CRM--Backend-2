@@ -7,6 +7,7 @@ const Customer = require("../models/customerModel");
 const { formatDate, normalizeDate } = require("../utils/dateUtils");
 const { checkSubscriptionStatus } = require("../helper/helperFuctions");
 const moment = require("moment");
+
 const TotalSales = catchAsync(async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;

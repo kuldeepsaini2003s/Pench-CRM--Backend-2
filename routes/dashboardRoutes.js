@@ -14,6 +14,6 @@ router.get("/top-lowest/product", getTopAndLowestProducts);
 router.get("/inventory/low-stock", getLowStockProducts);
 router.get("/active-subscriptions", getActiveSubscriptions);
 router.get("/payments/pending", getPendingPayments);
-router.get("/new-onboard", getNewOnboardCustomers);
+router.get("/newOnboardCustomers", getNewOnboardCustomers);
 
 module.exports = router;
