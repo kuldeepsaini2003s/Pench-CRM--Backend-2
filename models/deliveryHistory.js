@@ -60,8 +60,8 @@ const deliveryHistorySchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-       enum: ["Cash", "Card", "Online", "Other"],
-        default: "Other",
+       enum: ["Cash", "COD"],
+        default: "Cash",
     },
 
     bottleIssued: [
