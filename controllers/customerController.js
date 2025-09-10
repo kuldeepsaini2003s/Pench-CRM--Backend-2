@@ -9,7 +9,7 @@ const {
 } = require("./customerOrderController");
 const {
   formatDateToDDMMYYYY,
-  parseDDMMYYYYtoDate,
+  parseUniversalDate,
 } = require("../utils/parsedDateAndDay");
 
 // Helper function to calculate end date for alternate days subscription
@@ -178,7 +178,7 @@ const createCustomer = async (req, res) => {
       finalStartDate = startDate || formatDateToDDMMYYYY(today);
 
       if (subscriptionPlan === "Alternate Days") {
-        const parsedStartDate = parseDDMMYYYYtoDate(finalStartDate);
+        const parsedStartDate = parseUniversalDate(finalStartDate);
         const lastDeliveryDay = calculateAlternateDaysEndDate(parsedStartDate);
 
         // Create end date with the last delivery day
@@ -190,7 +190,7 @@ const createCustomer = async (req, res) => {
         finalEndDate = formatDateToDDMMYYYY(endDate);
       } else {
         // For Monthly: end = month end
-        const parsedStartDate = parseDDMMYYYYtoDate(finalStartDate);
+        const parsedStartDate = parseUniversalDate(finalStartDate);
         const monthEndDate = new Date(
           parsedStartDate.getFullYear(),
           parsedStartDate.getMonth() + 1,
@@ -257,11 +257,11 @@ const getAllCustomers = async (req, res) => {
     page = parseInt(page);
     limit = parseInt(limit);
 
-    let filter = {isDeleted:false};
+    let filter = { isDeleted: false };
 
     if (search) {
       const searchRegex = new RegExp(search, "i");
-      if (!isNaN(search)) {        
+      if (!isNaN(search)) {
         filter.$or = [
           { name: searchRegex },
           {
@@ -297,9 +297,9 @@ const getAllCustomers = async (req, res) => {
       })
       .populate("deliveryBoy", "name")
       .sort({ createdAt: -1 });
-    
+
     let filteredCustomers = customers;
-    
+
     if (productName) {
       filteredCustomers = customers.filter((customer) => {
         return customer.products.some((product) => {
@@ -313,9 +313,9 @@ const getAllCustomers = async (req, res) => {
         });
       });
     }
-    
+
     const totalCustomers = filteredCustomers.length;
-    
+
     const paginatedCustomers = filteredCustomers.slice(
       (page - 1) * limit,
       page * limit
@@ -480,7 +480,7 @@ const updateCustomer = async (req, res) => {
         if (subscriptionPlan === "Alternate Days") {
           const startDate =
             customer.startDate || formatDateToDDMMYYYY(new Date());
-          const parsedStartDate = parseDDMMYYYYtoDate(startDate);
+          const parsedStartDate = parseUniversalDate(startDate);
           const lastDeliveryDay =
             calculateAlternateDaysEndDate(parsedStartDate);
 
@@ -493,7 +493,7 @@ const updateCustomer = async (req, res) => {
         } else if (subscriptionPlan === "Monthly") {
           const startDate =
             customer.startDate || formatDateToDDMMYYYY(new Date());
-          const parsedStartDate = parseDDMMYYYYtoDate(startDate);
+          const parsedStartDate = parseUniversalDate(startDate);
           const monthEndDate = new Date(
             parsedStartDate.getFullYear(),
             parsedStartDate.getMonth() + 1,
@@ -982,6 +982,7 @@ const updateCustomerProduct = async (req, res) => {
 
     if (productName) {
       product = await Product.findOne({ productName });
+      console.log(productName);
 
       if (!product) {
         const allProducts = await Product.find({}, "productName");
@@ -996,6 +997,8 @@ const updateCustomerProduct = async (req, res) => {
       productIndex = customer.products.findIndex(
         (p) => p.product.toString() === product._id.toString()
       );
+
+      console.log("productIndex", productIndex);
 
       if (productIndex === -1) {
         return res.status(404).json({
