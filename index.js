@@ -9,10 +9,10 @@ const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
 const { initializeOrders } = require("./controllers/customerOrderController");
+
+// Middlewares
 app.use(express.json());
-
 app.use(cookieParser());
-
 app.use(
   cors({
     origin: "*",
@@ -20,8 +20,7 @@ app.use(
   })
 );
 
-
-
+// Swagger
 const options = {
   definition: {
     openapi: "3.0.0",
@@ -44,24 +43,22 @@ const options = {
       },
     },
   },
-  apis: ["./routes/*.js"], // path to your route files
+  apis: ["./routes/*.js"],
 };
 
 const swaggerSpec = swaggerJsdoc(options);
-
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+// Routes
 const adminRoutes = require("./routes/adminRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const deliveryBoyRoutes = require("./routes/deliveryBoyRoutes");
-
 const bottleTrackingRoutes = require("./routes/bottleTrackingRoutes");
 const deliveryManagementRoutes = require("./routes/deliveryManagementRoutes");
-
 const productRoutes = require("./routes/productRoutes");
 const CreateInvoiceRoutes = require("./routes/customInvoiceRoute");
 const customerInvoce = require("./routes/customerInvoce");
-const customOrderRoutes = require("./routes/customerOrderRoutes");
+const customerOrderRoutes = require("./routes/customerOrderRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const termsAndConditionRoutes = require("./routes/termsAndConditionRoutes");
 const helpAndSupportRoutes = require("./routes/helpAndSupportRoutes");
@@ -72,11 +69,9 @@ app.use("/api/deliveryBoy", deliveryBoyRoutes);
 app.use("/api/bottleTracking", bottleTrackingRoutes);
 app.use("/api/deliveryManagement", deliveryManagementRoutes);
 app.use("/api/product", productRoutes);
-
-// app.use("/invoice", CreateInvoiceRoutes);
 app.use("/api/customers", customerInvoce);
 app.use("/api/invoices", CreateInvoiceRoutes);
-app.use("/api/customOrder", customOrderRoutes);
+app.use("/api/customOrder", customerOrderRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/termsAndCondition", termsAndConditionRoutes);
 app.use("/api/helpAndSupport", helpAndSupportRoutes);
@@ -85,13 +80,14 @@ app.get("/", (req, res) => {
   res.send("we are Pench Milk");
 });
 
-db();
+// Connect DB then start server
+db().then(async () => {
+  console.log("✅ Database connected");
 
-// (async () => {
-//   await initializeOrders();
-// })();
+  // Run orders initialization only once at server start
+  await initializeOrders();
 
-// const htttpServer = http.createServer(app);
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  app.listen(port, () => {
+    console.log(`🚀 Server is running on port ${port}`);
+  });
 });

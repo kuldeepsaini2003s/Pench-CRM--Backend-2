@@ -5,6 +5,8 @@ const mongoose = require("mongoose");
 const Product = require("../models/productModel");
 const DeliveryBoy = require("../models/deliveryBoyModel");
 const moment = require("moment");
+
+
 // ✅ Create automatic orders for a customer based on their subscription plan and start date
 const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
   try {
@@ -85,48 +87,56 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
   }
 };
 
-//
+
 // Function for server start
 const initializeOrders = async () => {
   try {
     const today = moment().format("DD/MM/YYYY");
     const tomorrow = moment().add(1, "day").format("DD/MM/YYYY");
 
-    // -----------------------------
-    // 1️⃣ New customers → first-time orders (3 AM)
-    // -----------------------------
-    const newCustomers = await Customer.find({
-      subscriptionStatus: "active",
-      startDate: tomorrow, // First delivery is tomorrow
-    }).populate("products.product");
+    //✅ Prevent duplicate orders
+    const alreadyCreatedToday = await CustomerOrders.findOne({ deliveryDate: today });
+    const alreadyCreatedTomorrow = await CustomerOrders.findOne({ deliveryDate: tomorrow });
 
-    for (const customer of newCustomers) {
-      const deliveryBoy = await DeliveryBoy.findOne({ isDeleted: false });
-      if (!deliveryBoy) {
-        console.log(`No delivery boy available for customer ${customer.name} on ${tomorrow}`);
-        continue;
+    //✅ New customers → first-time orders (tomorrow delivery, run at 3 AM logic)
+    if (!alreadyCreatedTomorrow) {
+      const newCustomers = await Customer.find({
+        subscriptionStatus: "active",
+        startDate: tomorrow,
+      }).populate("products.product");
+
+      for (const customer of newCustomers) {
+        const deliveryBoy = await DeliveryBoy.findOne({ isDeleted: false });
+        if (!deliveryBoy) {
+          console.log(`No delivery boy available for customer ${customer.name} on ${tomorrow}`);
+          continue;
+        }
+        await createAutomaticOrdersForCustomer(customer._id, deliveryBoy._id);
+        console.log(`✅ First-time order created for NEW customer ${customer.name} for ${tomorrow}`);
       }
-      await createAutomaticOrdersForCustomer(customer._id, deliveryBoy._id);
-      console.log(`✅ First-time order created for NEW customer ${customer.name} for ${tomorrow}`);
+    } else {
+      console.log(`⏭️ Orders for ${tomorrow} already exist, skipping new customer order creation.`);
     }
 
-    // -----------------------------
-    // 2️⃣ Existing customers → daily orders (11 AM)
-    // -----------------------------
-    const existingCustomers = await Customer.find({
-      subscriptionStatus: "active",
-      startDate: { $lte: today },
-      endDate: { $gte: today },
-    }).populate("products.product");
+    //✅ Existing customers → daily orders (today delivery, run at 11 AM logic)
+    if (!alreadyCreatedToday) {
+      const existingCustomers = await Customer.find({
+        subscriptionStatus: "active",
+        startDate: { $lte: today },
+        endDate: { $gte: today },
+      }).populate("products.product");
 
-    for (const customer of existingCustomers) {
-      const deliveryBoy = await DeliveryBoy.findOne({ isDeleted: false });
-      if (!deliveryBoy) {
-        console.log(`No delivery boy available for customer ${customer.name} on ${today}`);
-        continue;
+      for (const customer of existingCustomers) {
+        const deliveryBoy = await DeliveryBoy.findOne({ isDeleted: false });
+        if (!deliveryBoy) {
+          console.log(`No delivery boy available for customer ${customer.name} on ${today}`);
+          continue;
+        }
+        await createAutomaticOrdersForCustomer(customer._id, deliveryBoy._id, today);
+        console.log(`✅ Daily order created for EXISTING customer ${customer.name} for ${today}`);
       }
-      await createAutomaticOrdersForCustomer(customer._id, deliveryBoy._id, today);
-      console.log(`✅ Daily order created for EXISTING customer ${customer.name} for ${today}`);
+    } else {
+      console.log(`⏭️ Orders for ${today} already exist, skipping existing customer order creation.`);
     }
 
     console.log("🎯 Orders initialization completed!");
@@ -136,47 +146,65 @@ const initializeOrders = async () => {
 };
 
 
+
 const getAllOrders = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    let { page = 1, limit = 10 } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
     const skip = (page - 1) * limit;
 
-    // Build filter object
+    // ---- Filter (currently no conditions, can be extended later)
     const filter = {};
-    if (req.query.status) filter.status = req.query.status;
-    if (req.query.customer) filter.customer = req.query.customer;
-    if (req.query.deliveryBoy) filter.deliveryBoy = req.query.deliveryBoy;
 
-    const orders = await CustomerOrders.find(filter)
-      .populate("customer", "name phoneNumber address ")
-      .populate("product", "productName price size")
-      .populate("deliveryBoy", "name phone")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    // ---- Fetch orders with pagination ----
+    const [totalOrders, orders] = await Promise.all([
+      CustomerOrders.countDocuments(filter),
+      CustomerOrders.find(filter)
+        .select("orderNumber deliveryDate status products")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+    ]);
 
-    const totalOrders = await CustomerOrders.countDocuments(filter);
+    // ---- Format response ----
+    const formattedOrders = orders.map((order) => ({
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      deliveryDate: order.deliveryDate,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      createdAt: order.createdAt,
+      products: order.products.map((p) => ({
+        productName: p.productName,
+        productSize: p.productSize,
+        quantity: p.quantity,
+      })),
+    }));
 
-   return res.status(200).json({
+    const totalPages = Math.ceil(totalOrders / limit);
+
+    return res.status(200).json({
       success: true,
-      data: orders,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(totalOrders / limit),
-        totalOrders,
-        hasNext: page < Math.ceil(totalOrders / limit),
-        hasPrev: page > 1,
-      },
+      message: "Orders fetched successfully",
+      totalOrders,
+      totalPages,
+      currentPage: page,
+      previous: page > 1,
+      next: page < totalPages,
+      orders: formattedOrders,
     });
   } catch (error) {
-   return res.status(500).json({
+    console.error("getAllOrders Error:", error);
+    return res.status(500).json({
       success: false,
       message: "Error fetching orders",
       error: error.message,
     });
   }
 };
+
+
 
 // Get single order by ID
 const getOrderById = async (req, res) => {
@@ -341,7 +369,7 @@ const getOrdersByCustomer = async (req, res) => {
 const createAdditionalOrder = async (req, res) => {
   try {
     const { customerId } = req?.params;
-    const { date, products, deliveryBoyId } = req.body;    
+    const { date, products, deliveryBoyId } = req.body;
 
     // Validation
     if (!customerId || !products || products.length === 0 || !deliveryBoyId) {

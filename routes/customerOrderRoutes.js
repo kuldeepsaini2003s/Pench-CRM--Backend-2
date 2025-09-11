@@ -12,7 +12,7 @@ const {
 
 // Basic CRUD routes
 router.post("/createAutomaticOrders", createAutomaticOrdersForCustomer);
-router.get("/", getAllOrders);
+router.get("/getAllOrders", getAllOrders);
 // router.get("/stats", getOrderStats);
 router.get("/:id", getOrderById);
 router.put("/:id", updateOrder);

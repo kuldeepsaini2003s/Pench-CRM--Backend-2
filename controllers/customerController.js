@@ -367,6 +367,10 @@ const getAllCustomers = async (req, res) => {
 const getCustomerById = async (req, res) => {
   try {
     const { id } = req.params;
+    let { page = 1, limit = 10, from, to } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -375,9 +379,10 @@ const getCustomerById = async (req, res) => {
       });
     }
 
+    // ---- Fetch customer ----
     const customer = await Customer.findById(id)
-      .populate("products.product", "productName price size  description")
-      .populate("deliveryBoy", "name phoneNumber email address");
+      .populate("products.product", "productName price size description")
+      .populate("deliveryBoy", "name");
 
     if (!customer) {
       return res.status(404).json({
@@ -386,12 +391,97 @@ const getCustomerById = async (req, res) => {
       });
     }
 
+    // ---- Format customer product info ----
+    const productNames = customer.products
+      .map((p) => p.product?.productName || "")
+      .filter((name) => name)
+      .join(", ");
+
+    const productSizes = customer.products
+      .map((p) => p.productSize || "")
+      .filter((size) => size)
+      .join(", ");
+
+    const productQuantities = customer.products
+      .map((p) => p.quantity || "")
+      .filter((qty) => qty !== "")
+      .join(", ");
+
+    const customerInfo = {
+      _id: customer._id,
+      name: customer.name,
+      phoneNumber: customer.phoneNumber,
+      address: customer.address,
+      subscriptionPlan: customer.subscriptionPlan,
+      deliveryBoy: customer.deliveryBoy,
+      productType: productNames,
+      productSize: productSizes,
+      quantity: productQuantities,
+    };
+
+    // ---- Build order filter ----
+    let orderFilter = { customer: id };
+
+    if (from || to) {
+      orderFilter.deliveryDate = {};
+
+      if (from) {
+        // Convert dd/mm/yyyy → Date
+        const [fDay, fMonth, fYear] = from.split("/");
+        orderFilter.deliveryDate.$gte = `${fDay}/${fMonth}/${fYear}`;
+      }
+      if (to) {
+        const [tDay, tMonth, tYear] = to.split("/");
+        orderFilter.deliveryDate.$lte = `${tDay}/${tMonth}/${tYear}`;
+      }
+    }
+
+    // ---- Count total orders ----
+    const totalOrders = await CustomerOrders.countDocuments(orderFilter);
+
+    // ---- Fetch paginated orders ----
+    const orders = await CustomerOrders.find(orderFilter)
+      .select("orderNumber deliveryDate status products")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const formattedOrders = orders.map((order) => ({
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      deliveryDate: order.deliveryDate,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      createdAt: order.createdAt,
+      products: order.products.map((p) => ({
+        productName: p.productName,
+        productSize: p.productSize,
+        quantity: p.quantity,
+      })),
+    }));
+
+    // ---- Pagination info ----
+    const totalPages = Math.ceil(totalOrders / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
+
+    // ---- Final response ----
     res.status(200).json({
       success: true,
-      message: "Customer By Id fetched successfully",
-      data: customer,
+      message: "Customer by Id fetched successfully",
+      data: {
+        customer: customerInfo,
+        totalOrders,
+        totalPages,
+        currentPage: page,
+        previous: hasPrevious,
+        next: hasNext,
+        orders: formattedOrders,
+      },
+     
     });
   } catch (error) {
+    console.error("getCustomerById Error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching customer",
@@ -399,6 +489,9 @@ const getCustomerById = async (req, res) => {
     });
   }
 };
+
+
+
 
 // ✅ Update customer
 const updateCustomer = async (req, res) => {
