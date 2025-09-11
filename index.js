@@ -21,6 +21,7 @@ app.use(
 );
 
 // Swagger
+
 const options = {
   definition: {
     openapi: "3.0.0",
@@ -56,8 +57,8 @@ const deliveryBoyRoutes = require("./routes/deliveryBoyRoutes");
 const bottleTrackingRoutes = require("./routes/bottleTrackingRoutes");
 const deliveryManagementRoutes = require("./routes/deliveryManagementRoutes");
 const productRoutes = require("./routes/productRoutes");
-const CreateInvoiceRoutes = require("./routes/customInvoiceRoute");
-const customerInvoce = require("./routes/customerInvoce");
+const customerInvoiceRoutes = require("./routes/customerInvoiceRoutes");
+const customOrderRoutes = require("./routes/customerOrderRoutes");
 const customerOrderRoutes = require("./routes/customerOrderRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const termsAndConditionRoutes = require("./routes/termsAndConditionRoutes");
@@ -69,9 +70,13 @@ app.use("/api/deliveryBoy", deliveryBoyRoutes);
 app.use("/api/bottleTracking", bottleTrackingRoutes);
 app.use("/api/deliveryManagement", deliveryManagementRoutes);
 app.use("/api/product", productRoutes);
-app.use("/api/customers", customerInvoce);
-app.use("/api/invoices", CreateInvoiceRoutes);
+
+
+app.use("/api/customerInvoice", customerInvoiceRoutes);
+app.use("/api/customOrder", customOrderRoutes);
+
 app.use("/api/customOrder", customerOrderRoutes);
+
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/termsAndCondition", termsAndConditionRoutes);
 app.use("/api/helpAndSupport", helpAndSupportRoutes);
