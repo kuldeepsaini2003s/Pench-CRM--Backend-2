@@ -7,7 +7,8 @@ const {
   deleteOrder,
   getOrdersByCustomer,
   createAdditionalOrder,
-
+  updateOrderStatus,
+  verifyPayment,
 } = require("../controllers/customerOrderController");
 
 // Basic CRUD routes
@@ -17,11 +18,11 @@ router.get("/getAllOrders", getAllOrders);
 router.get("/:id", getOrderById);
 router.put("/:id", updateOrder);
 router.delete("/:id", deleteOrder);
-
 // Specific functionality routes
 router.get("/customer/:customerId", getOrdersByCustomer);
-// router.patch("/:id/status", updateOrderStatus);
-// router.patch("/:id/assign-delivery-boy", assignDeliveryBoy);
+
 router.post("/additionalOrder/:customerId", createAdditionalOrder);
+router.put("/updateStatus/:orderId", updateOrderStatus);
+router.put("/verify-payment", verifyPayment);
 
 module.exports = router;

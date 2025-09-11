@@ -156,6 +156,7 @@ const getAllCustomerInvoices = async (req, res, next) => {
   });
 };
 
+// ✅ Search Customers
 const searchCustomers = async (req, res) => {
   try {
     const { customerName, phoneNumber } = req.query;
@@ -206,6 +207,7 @@ const searchCustomers = async (req, res) => {
 
     return res.json({
       success: true,
+      message: "Customers Information fetched successfully",
       customersData: customers.map((customer) => ({
         _id: customer._id,
         name: customer.name,
@@ -222,6 +224,7 @@ const searchCustomers = async (req, res) => {
   }
 };
 
+// ✅ Get Customer Data
 const getCustomerData = async (req, res) => {
   try {
     const { customerId } = req.params;

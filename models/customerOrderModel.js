@@ -87,8 +87,8 @@ const customerOrdersSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "Pending",        
-        "Delivered",        
+        "Pending",
+        "Delivered",
         "Returned"
       ],
       default: "Pending",
@@ -98,6 +98,20 @@ const customerOrdersSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    bottleReturnSize: {
+      type: String,
+    },
+
+    wantToPay: {
+      type: Boolean,
+      default: false,
+    },
+    razorpayLinkId: { type: String },
+    razorpayLinkStatus: { type: String },
+    razorpayPaymentId: { type: String },
+   
+
   },
   { timestamps: true }
 );

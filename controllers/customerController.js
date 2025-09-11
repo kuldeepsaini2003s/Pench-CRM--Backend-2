@@ -407,6 +407,11 @@ const getCustomerById = async (req, res) => {
       .filter((qty) => qty !== "")
       .join(", ");
 
+    const price = customer.products
+      .map((p) => p.price || "")
+      .filter((price) => price !== "")
+      .join(", ");
+
     const customerInfo = {
       _id: customer._id,
       name: customer.name,
@@ -417,6 +422,10 @@ const getCustomerById = async (req, res) => {
       productType: productNames,
       productSize: productSizes,
       quantity: productQuantities,
+      price: price,
+      paymentMethod: customer.paymentMethod,
+      paymentStatus: customer.paymentStatus,
+
     };
 
     // ---- Build order filter ----
@@ -457,6 +466,8 @@ const getCustomerById = async (req, res) => {
         productName: p.productName,
         productSize: p.productSize,
         quantity: p.quantity,
+        price:p.price,
+        totalPrice:p.totalPrice
       })),
     }));
 

@@ -59,7 +59,6 @@ const deliveryManagementRoutes = require("./routes/deliveryManagementRoutes");
 const productRoutes = require("./routes/productRoutes");
 const customerInvoiceRoutes = require("./routes/customerInvoiceRoutes");
 const customOrderRoutes = require("./routes/customerOrderRoutes");
-const customerOrderRoutes = require("./routes/customerOrderRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const termsAndConditionRoutes = require("./routes/termsAndConditionRoutes");
 const helpAndSupportRoutes = require("./routes/helpAndSupportRoutes");
@@ -72,10 +71,9 @@ app.use("/api/deliveryManagement", deliveryManagementRoutes);
 app.use("/api/product", productRoutes);
 
 
-app.use("/api/customerInvoice", customerInvoiceRoutes);
+app.use("/api/invoice", customerInvoiceRoutes);
 app.use("/api/customOrder", customOrderRoutes);
 
-app.use("/api/customOrder", customerOrderRoutes);
 
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/termsAndCondition", termsAndConditionRoutes);
