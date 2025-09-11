@@ -290,7 +290,7 @@ const getOrdersByCustomer = async (req, res) => {
 const createAdditionalOrder = async (req, res) => {
   try {
     const { customerId } = req?.params;
-    const { date, products, deliveryBoyId } = req.body;    
+    const { date, products, deliveryBoyId } = req.body;
 
     // Validation
     if (!customerId || !products || products.length === 0 || !deliveryBoyId) {
@@ -334,9 +334,19 @@ const createAdditionalOrder = async (req, res) => {
           message: `Product ${productName} not found. Please select from the available products.`,
           availableProducts: await Product.find({}, "productName"),
         });
-      } else {
-        item._id = productDoc._id;
       }
+
+      if (productDoc.size && productDoc.size.length > 0) {
+        if (!productDoc.size.includes(productSize)) {
+          return res.status(400).json({
+            success: false,
+            message: `Product size ${productSize} is not available for ${productName}.`,
+            availableSizes: productDoc.size.map((size) => size),
+          });
+        }
+      }
+
+      item._id = productDoc._id;
     }
 
     const existingOrder = await CustomerOrders.findOne({
