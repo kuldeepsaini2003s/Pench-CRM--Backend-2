@@ -8,7 +8,8 @@ const {
   deleteTransaction,
   getPendingBalance,
   updateReturnedBottles,
-  getBottleCountForDate
+  getBottleCountForDate,
+  getAllBottleTrackingOrders,
 } = require("../controllers/bottleTrackingController");
 
 // POST - create transaction
@@ -29,7 +30,11 @@ router.put("/:id", updateTransaction);
 // DELETE - delete transaction
 router.delete("/:id", deleteTransaction);
 router.put("/:id/return", updateReturnedBottles);
+
 // Bottle tracking route
 router.get("/bottles/count", getBottleCountForDate);
+
+// GET - all bottle tracking orders (milk products only)
+router.get("/orders", getAllBottleTrackingOrders);
 
 module.exports = router;
