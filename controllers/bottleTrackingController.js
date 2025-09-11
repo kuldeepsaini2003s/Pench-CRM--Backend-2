@@ -204,6 +204,7 @@ const mapProductSizeToBottleSize = (productSize) => {
 
   return "1ltr";
 };
+
 const getBottleCountForDate = async (req, res) => {
   try {
     const { date } = req.query;

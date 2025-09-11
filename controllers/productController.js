@@ -8,7 +8,8 @@ const {
   subWeeks,
   subMonths,
 } = require("date-fns");
-
+const CustomerOrder = require("../models/customerOrderModel")
+const moment = require("moment");
 
 
 
@@ -698,6 +699,106 @@ const getTopSellingProductAndTotalProductSold = async (req, res) => {
   }
 };
 
+//✅ Get Total Product Deliver Tommorow
+const getTotalProductDeliverTommorow = async (req, res) => {
+  try {
+    let { page = 1, limit = 10, sortOrder = "desc" } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    const tomorrow = moment().add(1, "day").format("DD/MM/YYYY");
+
+    const pipeline = [
+      { $match: { deliveryDate: tomorrow } },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customer",
+          foreignField: "_id",
+          as: "customer",
+        },
+      },
+      { $unwind: "$customer" },
+      { $unwind: "$products" },
+      {
+        $group: {
+          _id: "$_id",
+          customerName: { $first: "$customer.name" },
+          deliveryDate: { $first: "$deliveryDate" },
+          products: { $push: "$products" },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          customerName: 1,
+          deliveryDate: 1,
+          productType: {
+            $reduce: {
+              input: "$products.productName",
+              initialValue: "",
+              in: {
+                $concat: [
+                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] }] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          productSize:{
+            $reduce: {
+              input: "$products.productSize",
+              initialValue: "",
+              in: {
+                $concat: [
+                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] } ] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          quantity:{
+            $reduce: {
+              input: "$products.quantity",
+              initialValue: 0,
+              in: {
+                $sum: ["$$value", "$$this"],
+              },
+            },
+          },
+        },
+      },
+      { $sort: { deliveryDate: sortOrder === "asc" ? 1 : -1 } },
+      { $skip: (page - 1) * limit },
+      { $limit: limit },
+    ];
+
+    const result = await CustomerOrder.aggregate(pipeline);
+    const totalRecords = result.length;
+    const totalPages = Math.ceil(totalRecords / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
+
+    return res.status(200).json({
+      success: true,
+      message: "Total products to deliver tomorrow fetched successfully",
+      totalRecords,
+      totalPages,
+      currentPage: page,
+      previous: hasPrevious,
+      next: hasNext,
+      tommorrowDeliveryProducts: result,
+    });
+  } catch (error) {
+    console.error("❌ Error in getTotalProductDeliverTommorow:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get total products to deliver tomorrow",
+      error: error.message,
+    });
+  }
+};
+
 
  
 module.exports = {
@@ -712,4 +813,5 @@ module.exports = {
   addStock,
   removeStock,
   getTopSellingProductAndTotalProductSold,
+  getTotalProductDeliverTommorow,
 };

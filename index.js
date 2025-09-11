@@ -8,7 +8,7 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
-
+const { initializeOrders } = require("./controllers/customerOrderController");
 app.use(express.json());
 
 app.use(cookieParser());
@@ -86,6 +86,10 @@ app.get("/", (req, res) => {
 });
 
 db();
+
+// (async () => {
+//   await initializeOrders();
+// })();
 
 // const htttpServer = http.createServer(app);
 app.listen(port, () => {

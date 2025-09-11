@@ -4,8 +4,8 @@ const { generateOrderNumber } = require("../utils/generateOrderNumber");
 const mongoose = require("mongoose");
 const Product = require("../models/productModel");
 const DeliveryBoy = require("../models/deliveryBoyModel");
-
-// Create automatic orders for a customer based on their subscription plan and start date
+const moment = require("moment");
+// ✅ Create automatic orders for a customer based on their subscription plan and start date
 const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
   try {
     const customer = await Customer.findById(customerId).populate(
@@ -85,6 +85,57 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
   }
 };
 
+//
+// Function for server start
+const initializeOrders = async () => {
+  try {
+    const today = moment().format("DD/MM/YYYY");
+    const tomorrow = moment().add(1, "day").format("DD/MM/YYYY");
+
+    // -----------------------------
+    // 1️⃣ New customers → first-time orders (3 AM)
+    // -----------------------------
+    const newCustomers = await Customer.find({
+      subscriptionStatus: "active",
+      startDate: tomorrow, // First delivery is tomorrow
+    }).populate("products.product");
+
+    for (const customer of newCustomers) {
+      const deliveryBoy = await DeliveryBoy.findOne({ isDeleted: false });
+      if (!deliveryBoy) {
+        console.log(`No delivery boy available for customer ${customer.name} on ${tomorrow}`);
+        continue;
+      }
+      await createAutomaticOrdersForCustomer(customer._id, deliveryBoy._id);
+      console.log(`✅ First-time order created for NEW customer ${customer.name} for ${tomorrow}`);
+    }
+
+    // -----------------------------
+    // 2️⃣ Existing customers → daily orders (11 AM)
+    // -----------------------------
+    const existingCustomers = await Customer.find({
+      subscriptionStatus: "active",
+      startDate: { $lte: today },
+      endDate: { $gte: today },
+    }).populate("products.product");
+
+    for (const customer of existingCustomers) {
+      const deliveryBoy = await DeliveryBoy.findOne({ isDeleted: false });
+      if (!deliveryBoy) {
+        console.log(`No delivery boy available for customer ${customer.name} on ${today}`);
+        continue;
+      }
+      await createAutomaticOrdersForCustomer(customer._id, deliveryBoy._id, today);
+      console.log(`✅ Daily order created for EXISTING customer ${customer.name} for ${today}`);
+    }
+
+    console.log("🎯 Orders initialization completed!");
+  } catch (error) {
+    console.error("❌ Error in initializing orders:", error.message);
+  }
+};
+
+
 const getAllOrders = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -107,7 +158,7 @@ const getAllOrders = async (req, res) => {
 
     const totalOrders = await CustomerOrders.countDocuments(filter);
 
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       data: orders,
       pagination: {
@@ -119,7 +170,7 @@ const getAllOrders = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({
+   return res.status(500).json({
       success: false,
       message: "Error fetching orders",
       error: error.message,
@@ -438,4 +489,5 @@ module.exports = {
   deleteOrder,
   getOrdersByCustomer,
   createAdditionalOrder,
+  initializeOrders,
 };

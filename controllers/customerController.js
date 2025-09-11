@@ -217,15 +217,12 @@ const createCustomer = async (req, res) => {
 
     await customer.save();
 
-    // Create automatic orders for start date
-    try {
-      const orderResult = await createAutomaticOrdersForCustomer(
-        customer._id,
-        deliveryBoy._id
-      );
-    } catch (orderError) {
-      console.error("Error creating automatic orders:", orderError);
-    }
+    // // Create automatic orders for start date
+    // try {
+  
+    // } catch (orderError) {
+    //   console.error("Error creating automatic orders:", orderError);
+    // }
 
     res.status(201).json({
       success: true,
@@ -336,6 +333,7 @@ const getAllCustomers = async (req, res) => {
           productSize: product?.productSize,
         })),
         deliveryBoy: customer?.deliveryBoy?.name,
+        startDate:customer?.startDate,
         createdAt: customer?.createdAt,
         updatedAt: customer?.updatedAt,
       };
@@ -985,6 +983,7 @@ const updateCustomerProduct = async (req, res) => {
 
       if (!product) {
         const allProducts = await Product.find({}, "productName");
+        console.log("allProducts", allProducts);
         return res.status(404).json({
           success: false,
           message: `Product "${productName}" not found. Please select from available products.`,
