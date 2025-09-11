@@ -509,9 +509,14 @@ const updateCustomer = async (req, res) => {
     if (customDeliveryDates && Array.isArray(customDeliveryDates)) {
       if (subscriptionPlan === "Custom Date") {
         const existingDates = customer.customDeliveryDates || [];
+        
+        const formattedCustomDates = customDeliveryDates.map((dateStr) => {
+          const parsedDate = parseUniversalDate(dateStr);
+          return parsedDate ? formatDateToDDMMYYYY(parsedDate) : dateStr;
+        });
 
         const mergedDates = [
-          ...new Set([...existingDates, ...customDeliveryDates]),
+          ...new Set([...existingDates, ...formattedCustomDates]),
         ];
         customerUpdates.endDate = mergedDates[mergedDates.length - 1];
         customerUpdates.customDeliveryDates = mergedDates;
