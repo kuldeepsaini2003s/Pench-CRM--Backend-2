@@ -344,7 +344,7 @@ const totalProductsSold = async (req, res) => {
     console.error("Error in totalProductsSold:", error);
     return res
       .status(500)
-      .json({ success: false, msg: "" });
+      .json({ success: false, msg: "failed to get total products sold" });
   }
 };
 
