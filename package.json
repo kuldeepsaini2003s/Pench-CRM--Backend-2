@@ -28,6 +28,7 @@
     "mongoose": "^8.17.2",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
     "nodemon": "^3.1.10",
     "puppeteer": "^24.17.0",

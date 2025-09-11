@@ -10,7 +10,8 @@ const {
   getLowStockProductsList,
   addStock,
   removeStock,
-  getTopSellingProductAndTotalProductSold
+  getTopSellingProductSold,
+  getTotalProductDeliverTommorow
 } = require("../controllers/productController");
 
 const { upload } = require("../config/cloudinary");
@@ -38,6 +39,8 @@ router.put("/incrementQuantity/:productId", addStock);
 
 router.put("/decrementQuantity/:productId", removeStock);
 
-router.get("/getTopSellingProduct", getTopSellingProductAndTotalProductSold);
+router.get("/getTopSellingProductSold", getTopSellingProductSold);
+
+router.get("/getProductDeliverTommorow", getTotalProductDeliverTommorow);
 
 module.exports = router;

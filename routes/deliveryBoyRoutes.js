@@ -6,10 +6,7 @@ const {
   updateDeliveryBoy,
   deleteDeliveryBoy,
   getDeliveryBoyProfile,
-  getOrders,
-  getOrdersByDateRange,
   getDeliveryBoyById,
-  getOrderStatistics,
   getOrdersByDeliveryBoy,
 } = require("../controllers/deliveryBoyController");
 
@@ -33,10 +30,6 @@ router.get("/getDeliveryBoyById/:id", getDeliveryBoyById);
 router.put("/updateDeliveryBoyProfile/:id", upload.single("profileImage"), updateDeliveryBoy);
 router.put("/delete/:id", deleteDeliveryBoy);
 
-// Order routes
-router.get("/getOrders", getOrders);
-router.get("/range/:deliveryBoyId", getOrdersByDateRange);
-// router.get('/stats/:deliveryBoyId', getOrderStatistics);
 
 router.get("/getOrdersByDeliveryBoy",  verifyDeliveryBoyToken,  getOrdersByDeliveryBoy);
 

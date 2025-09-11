@@ -8,7 +8,8 @@ const {
   subWeeks,
   subMonths,
 } = require("date-fns");
-
+const CustomerOrder = require("../models/customerOrderModel")
+const moment = require("moment");
 
 
 
@@ -343,7 +344,7 @@ const totalProductsSold = async (req, res) => {
     console.error("Error in totalProductsSold:", error);
     return res
       .status(500)
-      .json({ success: false, msg: "Internal server error" });
+      .json({ success: false, msg: "failed to get total products sold" });
   }
 };
 
@@ -551,21 +552,19 @@ const removeStock = async (req, res) => {
 };
 
 // ✅ Get Top Selling Product And Total Product Sold
-const getTopSellingProductAndTotalProductSold = async (req, res) => {
+const getTopSellingProductSold = async (req, res) => {
   try {
     const { period } = req.query;
- 
-    // Validate period parameter
+
     if (!["daily", "weekly", "monthly"].includes(period)) {
       return res.status(400).json({
         success: false,
         message: "Invalid period. Use: daily, weekly, or monthly",
       });
     }
- 
+
     let startDate, endDate;
- 
-    // Calculate date ranges for current period
+
     switch (period) {
       case "daily":
         startDate = new Date();
@@ -573,119 +572,73 @@ const getTopSellingProductAndTotalProductSold = async (req, res) => {
         endDate = new Date();
         endDate.setHours(23, 59, 59, 999);
         break;
- 
+
       case "weekly":
         startDate = startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 });
         endDate = endOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 });
         break;
- 
+
       case "monthly":
         startDate = startOfMonth(subMonths(new Date(), 1));
         endDate = endOfMonth(subMonths(new Date(), 1));
         break;
     }
- 
-    // Get total products sold
-    const totalProductsPipeline = [
-      {
-        $match: {
-          status: "Delivered",
-          date: {
-            $gte: startDate,
-            $lte: endDate,
-          },
+
+    // ✅ Fetch all delivered orders in given period
+    const deliveredOrders = await CustomerOrder.find({
+      status: "Delivered",
+      date: { $gte: startDate, $lte: endDate },
+    }).populate("products.product");
+
+    if (!deliveredOrders.length) {
+      return res.status(200).json({
+        success: true,
+        message: `No delivered orders found for ${period}`,
+        data: {
+          totalProductsSold: 0,
+          topSellingProduct: "Milk",
+          period,
         },
-      },
-      {
-        $unwind: "$products",
-      },
-      {
-        $match: {
-          "products.status": "delivered",
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalUnits: { $sum: "$products.quantity" },
-        },
-      },
-    ];
- 
-    // Get top selling product details
-    const topSellingPipeline = [
-      {
-        $match: {
-          status: "Delivered",
-          date: {
-            $gte: startDate,
-            $lte: endDate,
-          },
-        },
-      },
-      {
-        $unwind: "$products",
-      },
-      {
-        $match: {
-          "products.status": "delivered",
-        },
-      },
-      {
-        $group: {
-          _id: "$products.product",
-          totalQuantity: { $sum: "$products.quantity" },
-        },
-      },
-      {
-        $lookup: {
-          from: "products",
-          localField: "_id",
-          foreignField: "_id",
-          as: "productDetails",
-        },
-      },
-      {
-        $unwind: "$productDetails",
-      },
-      {
-        $project: {
-          _id: 1,
-          productName: "$productDetails.productName",
-          productImage: "$productDetails.productImage",
-          size: "$productDetails.size",
-          totalQuantity: 1,
-        },
-      },
-      {
-        $sort: { totalQuantity: -1 },
-      },
-      {
-        $limit: 1,
-      },
-    ];
- 
-    const [totalProductsResult, topSellingResult] = await Promise.all([
-      DeliveryHistory.aggregate(totalProductsPipeline),
-      DeliveryHistory.aggregate(topSellingPipeline),
-    ]);
- 
-    const totalProductsSold =
-      totalProductsResult.length > 0 ? totalProductsResult[0].totalUnits : 0;
- 
-    let topSellingProduct = "";
- 
-    if (topSellingResult.length > 0) {
-      topSellingProduct = topSellingResult[0].productName;
+      });
     }
- 
+
+    let totalProductsSold = 0;
+    const productCount = {};
+
+    // ✅ Loop through orders and count product quantities
+    deliveredOrders.forEach((order) => {
+      order.products.forEach((p) => {
+        if (p.status === "delivered") {
+          totalProductsSold += p.quantity;
+
+          const productName = p.product?.productName || "Unknown Product";
+
+          if (!productCount[productName]) {
+            productCount[productName] = 0;
+          }
+          productCount[productName] += p.quantity;
+        }
+      });
+    });
+
+    // ✅ Find top-selling product
+    let topSellingProduct = null;
+    let maxQuantity = 0;
+
+    for (const [name, qty] of Object.entries(productCount)) {
+      if (qty > maxQuantity) {
+        maxQuantity = qty;
+        topSellingProduct = name;
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: `Sales summary for ${period} period`,
       data: {
-        totalProductsSold: totalProductsSold,
-        topSellingProduct: topSellingProduct,
-        period: period,
+        totalProductsSold,
+        topSellingProduct,
+        period,
       },
     });
   } catch (error) {
@@ -693,6 +646,107 @@ const getTopSellingProductAndTotalProductSold = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed To Get Top Selling Product And Total Product Sold",
+      error: error.message,
+    });
+  }
+};
+
+
+//✅ Get Total Product Deliver Tommorow
+const getTotalProductDeliverTommorow = async (req, res) => {
+  try {
+    let { page = 1, limit = 10, sortOrder = "desc" } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    const tomorrow = moment().add(1, "day").format("DD/MM/YYYY");
+
+    const pipeline = [
+      { $match: { deliveryDate: tomorrow } },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customer",
+          foreignField: "_id",
+          as: "customer",
+        },
+      },
+      { $unwind: "$customer" },
+      { $unwind: "$products" },
+      {
+        $group: {
+          _id: "$_id",
+          customerName: { $first: "$customer.name" },
+          deliveryDate: { $first: "$deliveryDate" },
+          products: { $push: "$products" },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          customerName: 1,
+          deliveryDate: 1,
+          productType: {
+            $reduce: {
+              input: "$products.productName",
+              initialValue: "",
+              in: {
+                $concat: [
+                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] }] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          productSize:{
+            $reduce: {
+              input: "$products.productSize",
+              initialValue: "",
+              in: {
+                $concat: [
+                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] } ] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          quantity:{
+            $reduce: {
+              input: "$products.quantity",
+              initialValue: 0,
+              in: {
+                $sum: ["$$value", "$$this"],
+              },
+            },
+          },
+        },
+      },
+      { $sort: { deliveryDate: sortOrder === "asc" ? 1 : -1 } },
+      { $skip: (page - 1) * limit },
+      { $limit: limit },
+    ];
+
+    const result = await CustomerOrder.aggregate(pipeline);
+    const totalRecords = result.length;
+    const totalPages = Math.ceil(totalRecords / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
+
+    return res.status(200).json({
+      success: true,
+      message: "Total products to deliver tomorrow fetched successfully",
+      totalRecords,
+      totalPages,
+      currentPage: page,
+      previous: hasPrevious,
+      next: hasNext,
+      tommorrowDeliveryProducts: result,
+    });
+  } catch (error) {
+    console.error("❌ Error in getTotalProductDeliverTommorow:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get total products to deliver tomorrow",
       error: error.message,
     });
   }
@@ -711,5 +765,6 @@ module.exports = {
   getLowStockProductsList,
   addStock,
   removeStock,
-  getTopSellingProductAndTotalProductSold,
+  getTopSellingProductSold,
+  getTotalProductDeliverTommorow,
 };
