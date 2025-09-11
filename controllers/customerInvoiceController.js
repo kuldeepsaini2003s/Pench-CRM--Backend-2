@@ -2,7 +2,7 @@ const Invoice = require("../models/customerInvoicesModel");
 const ErrorHandler = require("../utils/errorhendler");
 const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 const { generateInvoicePDF } = require("../service/pdfService");
-const { uploadBufferToCloudinary } = require("../service/cloudinaryService");
+const { cloudinary } = require("../config/cloudinary");
 const Customer = require("../models/customerModel");
 const CustomerOrders = require("../models/customerOrderModel");
 const {
@@ -10,75 +10,164 @@ const {
   formatDateToDDMMYYYY,
 } = require("../utils/parsedDateAndDay");
 const { calculateFullPeriodAmount } = require("../helper/helperFuctions");
+const DeliveryBoy = require("../models/deliveryBoyModel");
 
 // ✅ Create Invoice
 const createCustomerInvoice = async (req, res) => {
   try {
     const {
-      customerName,
-      phoneNumber,
-      productType,
-      productSize,
-      productQuantity,
-      price,
-      subscriptionPlan,
-      paymentMode,
-      paymentStatus,
+      customer,
+      period,
+      products,
+      grandTotal,
+      deliveryStats,
+      partialPayment,
     } = req.body;
 
+    // Validation
     if (
-      !customerName ||
-      !phoneNumber ||
-      !productType ||
-      !productSize ||
-      !productQuantity ||
-      !price ||
-      !paymentMode
+      !customer ||
+      !period ||
+      !products ||
+      !Array.isArray(products) ||
+      products.length === 0
     ) {
       return res.status(400).json({
         success: false,
-        message: "All required fields must be filled",
+        message: "Customer data, period, and products are required",
+      });
+    }
+
+    const deliveryBoy = await DeliveryBoy.findOne({
+      name: customer?.deliveryBoy,
+    });
+
+    if (!deliveryBoy) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery boy not found",
+      });
+    }
+
+    const customerId = customer._id;
+    const phoneNumber = customer.phoneNumber;
+    const address = customer.address;
+    const subscriptionPlan = customer.subscriptionPlan;
+    const paymentMethod = customer.paymentMethod || "COD";
+    const paymentStatus = customer.paymentStatus || "Unpaid";
+    const deliveryBoyId = deliveryBoy?._id;
+
+    const subtotal = products.reduce(
+      (sum, product) => sum + product.totalPrice,
+      0
+    );
+    const carryForwardAmount = grandTotal - subtotal;
+    const paidAmount = partialPayment ? partialPayment.partialPaymentAmount : 0;
+    const balanceAmount = grandTotal - paidAmount;
+
+    const partialPayments = [];
+    if (paymentStatus === "Partially Paid" && partialPayment) {
+      partialPayments.push({
+        amount: partialPayment.partialPaymentAmount,
+        date: new Date(),
+        method: paymentMethod,
+        notes: `Partial payment for ${partialPayment.partialPaymentDays} days`,
       });
     }
 
     const invoiceNumber = generateInvoiceNumber();
 
     const invoice = await Invoice.create({
-      customerName,
-      phoneNumber,
       invoiceNumber,
-      productType,
-      productSize,
-      productQuantity,
-      price,
+      customer: customerId,
+      deliveryBoy: deliveryBoyId,
+      phoneNumber: parseInt(phoneNumber),
+      address,
       subscriptionPlan,
-      paymentMode,
-      paymentStatus,
-      invoiceDate: new Date(),
+      Deliveries: deliveryStats?.deliveries || 0,
+      absentDays: deliveryStats?.absentDaysList
+        ? deliveryStats.absentDaysList.map((date) => new Date(date))
+        : [],
+      actualOrders: deliveryStats?.actualOrders || 0,
+      period: {
+        startDate:
+          parseUniversalDate(period.startDate) || new Date(period.startDate),
+        endDate: parseUniversalDate(period.endDate) || new Date(period.endDate),
+      },
+      products: products.map((product) => ({
+        productId: product.productId,
+        productName: product.productName,
+        productSize: product.productSize,
+        quantity: product.quantity,
+        price: product.price,
+        totalPrice: product.totalPrice,
+      })),
+      payment: {
+        status: paymentStatus,
+        method: paymentMethod,
+        amount: paidAmount,
+        paidDate: paymentStatus === "Paid" ? new Date() : null,
+        partialPayments: partialPayments,
+      },
+      totals: {
+        subtotal,
+        paidAmount,
+        balanceAmount,
+        carryForwardAmount,
+      },
+      state: "Draft",
     });
 
-    //  PDF generate
-    const pdfBuffer = await generateInvoicePDF(invoice);
+    const invoiceWithStats = {
+      ...invoice.toObject(),
+      customer: {
+        name: customer.name,
+        phoneNumber: customer.phoneNumber,
+        address: customer.address,
+      },
+      deliveryStats: deliveryStats || {
+        actualOrders: products.length,
+        absentDays: 0,
+        deliveries: products.length,
+      },
+    };
 
-    //  Upload Cloudinary
-    const result = await uploadBufferToCloudinary(
-      pdfBuffer,
-      `invoice-${invoiceNumber}`
-    );
+    const pdfBuffer = await generateInvoicePDF(invoiceWithStats);
+
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          {
+            resource_type: "raw",
+            folder: "Pench/Invoices",
+            public_id: `invoice-${invoiceNumber}`,
+            format: "pdf",
+          },
+          (error, result) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        )
+        .end(pdfBuffer);
+    });
 
     invoice.pdfUrl = result.secure_url;
     await invoice.save();
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Invoice created successfully",
-      invoice,
+      pdfUrl: result.secure_url,
     });
   } catch (error) {
-    console.log(error);
+    console.error("Error creating invoice:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed To Create Invoice",
+      message: "Failed to create invoice",
+      error: error.message,
     });
   }
 };
@@ -383,6 +472,35 @@ const getCustomerData = async (req, res) => {
       0
     );
 
+    // Calculate actual orders count
+    const actualOrders = orders.length;
+
+    // Calculate absent days
+    const absentDays = [];
+    const startDateForAbsent =
+      parseUniversalDate(startDateStr) || new Date(startDateStr);
+    const endDateForAbsent =
+      parseUniversalDate(endDateStr) || new Date(endDateStr);
+
+    // Generate all dates in the range
+    const allDates = [];
+    const currentDate = new Date(startDateForAbsent);
+    while (currentDate <= endDateForAbsent) {
+      allDates.push(formatDateToDDMMYYYY(new Date(currentDate)));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Find absent days (dates with no orders)
+    const orderDates = orders.map((order) => order.deliveryDate);
+    allDates.forEach((date) => {
+      if (!orderDates.includes(date)) {
+        absentDays.push(new Date(parseUniversalDate(date) || new Date(date)));
+      }
+    });
+
+    // Calculate deliveries (actual orders - absent days)
+    const deliveries = actualOrders;
+
     // Get previous unpaid invoices for carry-forward
     const previousUnpaidInvoices = await Invoice.find({
       customer: customerId,
@@ -432,6 +550,12 @@ const getCustomerData = async (req, res) => {
       },
       products,
       grandTotal,
+      deliveryStats: {
+        actualOrders,
+        absentDays: absentDays.length,
+        deliveries,
+        absentDaysList: absentDays.map((date) => formatDateToDDMMYYYY(date)),
+      },
       partialPayment: isPartialPayment
         ? {
             partialPaymentAmount,
