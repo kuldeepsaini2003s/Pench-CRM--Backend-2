@@ -9,11 +9,15 @@ const Razorpay = require("razorpay");
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-// ✅ Create automatic orders for a customer based on their subscription plan and start date
-const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
+// Create automatic orders for a customer based on their subscription plan and delivery date
+const createAutomaticOrdersForCustomer = async (
+  customerId,
+  deliveryBoyId,
+  deliveryDate = null
+) => {
   try {
     const customer = await Customer.findById(customerId).populate(
       "products.product"
@@ -23,7 +27,7 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
       return { success: false, message: "No products found for customer" };
     }
 
-    const deliveryDate = customer.startDate;
+    const orderDeliveryDate = deliveryDate || customer.startDate;
 
     const ordersCreated = [];
 
@@ -33,12 +37,11 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
       customer.subscriptionPlan === "Monthly" ||
       customer.subscriptionPlan === "Alternate Days"
     ) {
-      shouldDeliver = true; // Always deliver on start date for these plans
+      shouldDeliver = true;
     } else if (customer.subscriptionPlan === "Custom Date") {
-      // For custom date, check if start date is in custom delivery dates
       shouldDeliver =
         customer.customDeliveryDates &&
-        customer.customDeliveryDates.includes(deliveryDate);
+        customer.customDeliveryDates.includes(orderDeliveryDate);
     }
 
     if (shouldDeliver) {
@@ -66,7 +69,7 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
       const order = new CustomerOrders({
         customer: customerId,
         deliveryBoy: deliveryBoyId,
-        deliveryDate: deliveryDate, // Use customer's start date directly
+        deliveryDate: orderDeliveryDate,
         products: orderItems,
         orderNumber,
         totalAmount,
@@ -79,7 +82,7 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
 
     return {
       success: true,
-      message: `Created ${ordersCreated.length} automatic orders for start date: ${deliveryDate}`,
+      message: `Created ${ordersCreated.length} automatic orders for delivery date: ${orderDeliveryDate}`,
       orders: ordersCreated,
     };
   } catch (error) {
@@ -92,281 +95,134 @@ const createAutomaticOrdersForCustomer = async (customerId, deliveryBoyId) => {
   }
 };
 
-
 // Function for server start
 const initializeOrders = async () => {
   try {
     const today = moment().format("DD/MM/YYYY");
     const tomorrow = moment().add(1, "day").format("DD/MM/YYYY");
 
-    //✅ Prevent duplicate orders
-    const alreadyCreatedToday = await CustomerOrders.findOne({ deliveryDate: today });
-    const alreadyCreatedTomorrow = await CustomerOrders.findOne({ deliveryDate: tomorrow });
+    // Check if orders already exist for today and tomorrow
+    const alreadyCreatedToday = await CustomerOrders.findOne({
+      deliveryDate: today,
+    });
 
-    //✅ New customers → first-time orders (tomorrow delivery, run at 3 AM logic)
-    if (!alreadyCreatedTomorrow) {
-      const newCustomers = await Customer.find({
-        subscriptionStatus: "active",
-        startDate: tomorrow,
-      }).populate("products.product");
+    const alreadyCreatedTomorrow = await CustomerOrders.findOne({
+      deliveryDate: tomorrow,
+    });
 
-      for (const customer of newCustomers) {
-        const deliveryBoy = await DeliveryBoy.findOne({ isDeleted: false });
-        if (!deliveryBoy) {
-          console.log(`No delivery boy available for customer ${customer.name} on ${tomorrow}`);
-          continue;
-        }
-        await createAutomaticOrdersForCustomer(customer._id, deliveryBoy._id);
-        console.log(`✅ First-time order created for NEW customer ${customer.name} for ${tomorrow}`);
+    if (alreadyCreatedToday && alreadyCreatedTomorrow) {
+      console.log(`Orders for both ${today} and ${tomorrow} already exist`);
+      return;
+    }
+
+    const activeCustomers = await Customer.find({
+      subscriptionStatus: "active",
+      isDeleted: false,
+    })
+      .populate("products.product")
+      .populate("deliveryBoy");
+
+    if (activeCustomers.length === 0) {
+      console.log("No active customers found for order creation.");
+      return;
+    }
+
+    let ordersCreatedToday = 0;
+    let ordersCreatedTomorrow = 0;
+
+    for (const customer of activeCustomers) {
+      if (!customer.deliveryBoy || customer.deliveryBoy.isDeleted) {
+        console.log(`Customer ${customer.name} has no active delivery boy`);
+        continue;
       }
-    } else {
-      console.log(`⏭️ Orders for ${tomorrow} already exist, skipping new customer order creation.`);
-    }
 
-    //✅ Existing customers → daily orders (today delivery, run at 11 AM logic)
-    if (!alreadyCreatedToday) {
-      const existingCustomers = await Customer.find({
-        subscriptionStatus: "active",
-        startDate: { $lte: today },
-        endDate: { $gte: today },
-      }).populate("products.product");
+      const isWithinSubscriptionPeriod =
+        moment(customer.startDate, "DD/MM/YYYY").isSameOrBefore(
+          moment(today, "DD/MM/YYYY")
+        ) &&
+        moment(customer.endDate, "DD/MM/YYYY").isSameOrAfter(
+          moment(today, "DD/MM/YYYY")
+        );
 
-      for (const customer of existingCustomers) {
-        const deliveryBoy = await DeliveryBoy.findOne({ isDeleted: false });
-        if (!deliveryBoy) {
-          console.log(`No delivery boy available for customer ${customer.name} on ${today}`);
-          continue;
-        }
-        await createAutomaticOrdersForCustomer(customer._id, deliveryBoy._id, today);
-        console.log(`✅ Daily order created for EXISTING customer ${customer.name} for ${today}`);
+      if (!isWithinSubscriptionPeriod) {
+        continue;
       }
-    } else {
-      console.log(`⏭️ Orders for ${today} already exist, skipping existing customer order creation.`);
+
+      // Create orders for today if not already created
+      if (!alreadyCreatedToday) {
+        const shouldCreateToday = await shouldCreateOrderForCustomer(
+          customer,
+          today
+        );
+        if (shouldCreateToday) {
+          const result = await createAutomaticOrdersForCustomer(
+            customer._id,
+            customer.deliveryBoy._id,
+            today
+          );
+          if (result.success && result.orders.length > 0) {
+            ordersCreatedToday++;
+            console.log(
+              `Order created for customer ${customer.name} (Delivery Boy: ${customer.deliveryBoy.name}) for ${today}`
+            );
+          }
+        }
+      }
+
+      // Create orders for tomorrow if not already created
+      if (!alreadyCreatedTomorrow) {
+        const shouldCreateTomorrow = await shouldCreateOrderForCustomer(
+          customer,
+          tomorrow
+        );
+        if (shouldCreateTomorrow) {
+          const result = await createAutomaticOrdersForCustomer(
+            customer._id,
+            customer.deliveryBoy._id,
+            tomorrow
+          );
+          if (result.success && result.orders.length > 0) {
+            ordersCreatedTomorrow++;
+            console.log(
+              `Order created for customer ${customer.name} (Delivery Boy: ${customer.deliveryBoy.name}) for ${tomorrow}`
+            );
+          }
+        }
+      }
     }
 
-    console.log("🎯 Orders initialization completed!");
+    console.log(
+      `Orders initialization completed! Created ${ordersCreatedToday} orders for today and ${ordersCreatedTomorrow} orders for tomorrow.`
+    );
   } catch (error) {
-    console.error("❌ Error in initializing orders:", error.message);
+    console.error("Error in initializing orders:", error.message);
   }
 };
 
-
-
-const getAllOrders = async (req, res) => {
-  try {
-    let { page = 1, limit = 10 } = req.query;
-    page = parseInt(page);
-    limit = parseInt(limit);
-    const skip = (page - 1) * limit;
-
-    // ---- Filter (currently no conditions, can be extended later)
-    const filter = {};
-
-    // ---- Fetch orders with pagination ----
-    const [totalOrders, orders] = await Promise.all([
-      CustomerOrders.countDocuments(filter),
-      CustomerOrders.find(filter)
-        .select("orderNumber deliveryDate status products")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-    ]);
-
-    // ---- Format response ----
-    const formattedOrders = orders.map((order) => ({
-      orderId: order._id,
-      orderNumber: order.orderNumber,
-      deliveryDate: order.deliveryDate,
-      status: order.status,
-      totalAmount: order.totalAmount,
-      createdAt: order.createdAt,
-      products: order.products.map((p) => ({
-        productName: p.productName,
-        productSize: p.productSize,
-        quantity: p.quantity,
-      })),
-    }));
-
-    const totalPages = Math.ceil(totalOrders / limit);
-
-    return res.status(200).json({
-      success: true,
-      message: "Orders fetched successfully",
-      totalOrders,
-      totalPages,
-      currentPage: page,
-      previous: page > 1,
-      next: page < totalPages,
-      orders: formattedOrders,
-    });
-  } catch (error) {
-    console.error("getAllOrders Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Error fetching orders",
-      error: error.message,
-    });
+// function to check if an order should be created for a customer on a specific date
+const shouldCreateOrderForCustomer = async (customer, date) => {
+  // Check if the customer is not absent on this date
+  const isNotAbsent = !customer.absentDays?.includes(date);
+  if (!isNotAbsent) {
+    return false;
   }
-};
 
+  // Check subscription plan specific logic
+  switch (customer.subscriptionPlan) {
+    case "Monthly":
+      return true;
 
+    case "Alternate Days":
+      const startDate = moment(customer.startDate, "DD/MM/YYYY");
+      const currentDate = moment(date, "DD/MM/YYYY");
+      const daysDifference = currentDate.diff(startDate, "days");
+      return daysDifference % 2 === 0;
 
-// Get single order by ID
-const getOrderById = async (req, res) => {
-  try {
-    const { id } = req.params;
+    case "Custom Date":
+      return customer.customDeliveryDates?.includes(date) || false;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order ID",
-      });
-    }
-
-    const order = await CustomerCustomOrder.findById(id)
-      .populate("customer", "name phoneNumber address ")
-      .populate("product", "productName price size")
-      .populate("deliveryBoy", "name phone");
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: order,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching order",
-      error: error.message,
-    });
-  }
-};
-
-// Update order
-const updateOrder = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order ID",
-      });
-    }
-
-    const updatedOrder = await CustomerCustomOrder.findByIdAndUpdate(
-      id,
-      updates,
-      { new: true, runValidators: true }
-    )
-      .populate("customer", "name phoneNumber address ")
-      .populate("product", "productName price size")
-      .populate("deliveryBoy", "name phone");
-
-    if (!updatedOrder) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Order updated successfully",
-      data: updatedOrder,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error updating order",
-      error: error.message,
-    });
-  }
-};
-
-// Delete order
-const deleteOrder = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order ID",
-      });
-    }
-
-    const deletedOrder = await CustomerCustomOrder.findByIdAndDelete(id);
-
-    if (!deletedOrder) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Order deleted successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error deleting order",
-      error: error.message,
-    });
-  }
-};
-
-//✅ Get orders by customer ID
-const getOrdersByCustomer = async (req, res) => {
-  try {
-    const { customerId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    if (!mongoose.Types.ObjectId.isValid(customerId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid customer ID",
-      });
-    }
-
-    const orders = await CustomerCustomOrder.find({ customer: customerId })
-      .populate("customer", "name phoneNumber address ")
-      .populate("product", "productName price size")
-      .populate("deliveryBoy", "name phone")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const totalOrders = await CustomerCustomOrder.countDocuments({
-      customer: customerId,
-    });
-
-    res.status(200).json({
-      success: true,
-      data: orders,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(totalOrders / limit),
-        totalOrders,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching customer orders",
-      error: error.message,
-    });
+    default:
+      return false;
   }
 };
 
@@ -541,8 +397,7 @@ const updateOrderStatus = async (req, res) => {
     // ✅ Update status
     if (status) order.status = status;
 
-    if(bottleReturnSize) order.bottleReturnSize = bottleReturnSize;
-   
+    if (bottleReturnSize) order.bottleReturnSize = bottleReturnSize;
 
     // ✅ Want to pay
     if (typeof wantToPay !== "undefined") {
@@ -574,7 +429,10 @@ const updateOrderStatus = async (req, res) => {
           order.razorpayLinkId = paymentLink.id;
           order.razorpayLinkStatus = "created";
         } catch (error) {
-          console.error("❌ Razorpay error in updateOrderStatus:", error.response?.body || error);
+          console.error(
+            "❌ Razorpay error in updateOrderStatus:",
+            error.response?.body || error
+          );
           return res.status(500).json({
             success: false,
             message: "Failed to create payment link",
@@ -604,7 +462,8 @@ const updateOrderStatus = async (req, res) => {
 
 const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_payment_id, razorpay_link_id, razorpay_link_status } = req.query; 
+    const { razorpay_payment_id, razorpay_link_id, razorpay_link_status } =
+      req.query;
     // Razorpay sends these params to callback_url
 
     if (!razorpay_payment_id || !razorpay_link_id) {
@@ -615,7 +474,9 @@ const verifyPayment = async (req, res) => {
     }
 
     // ✅ Find order by Razorpay Link ID
-    const order = await CustomerOrders.findOne({ razorpayLinkId: razorpay_link_id });
+    const order = await CustomerOrders.findOne({
+      razorpayLinkId: razorpay_link_id,
+    });
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -645,16 +506,8 @@ const verifyPayment = async (req, res) => {
   }
 };
 
-
-
-
 module.exports = {
   createAutomaticOrdersForCustomer,
-  getAllOrders,
-  getOrderById,
-  updateOrder,
-  deleteOrder,
-  getOrdersByCustomer,
   createAdditionalOrder,
   initializeOrders,
   updateOrderStatus,
