@@ -50,27 +50,95 @@ async function generateInvoicePDF(invoice) {
     deliveryStats,
   });
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
-  const page = await browser.newPage();
+  // Configure Puppeteer for different environments
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isRender = process.env.RENDER === 'true';
+  
+  let browser;
+  try {
+    if (isRender || isProduction) {
+      // For Render and other production environments
+      // Try to use system Chrome first
+      const chromePath = process.env.CHROME_PATH || '/usr/bin/google-chrome-stable';
+      
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-accelerated-2d-canvas",
+          "--no-first-run",
+          "--no-zygote",
+          "--disable-gpu",
+          "--single-process",
+          "--disable-extensions",
+          "--disable-plugins",
+          "--disable-images",
+          "--disable-javascript-harmony-promises",
+          "--disable-wake-on-wifi",
+          "--disable-features=site-per-process",
+          "--disable-web-security",
+          "--disable-features=VizDisplayCompositor"
+        ],
+        executablePath: chromePath,
+      });
+    } else {
+      // For local development
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      });
+    }
 
-  await page.setContent(html, { waitUntil: "networkidle0" });
+    const page = await browser.newPage();
 
-  const pdfBuffer = await page.pdf({
-    format: "A4",
-    printBackground: true,
-    margin: {
-      top: "0.5in",
-      right: "0.5in",
-      bottom: "0.5in",
-      left: "0.5in",
-    },
-  });
+    await page.setContent(html, { waitUntil: "networkidle0" });
 
-  await browser.close();
-  return pdfBuffer;
+    const pdfBuffer = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: {
+        top: "0.5in",
+        right: "0.5in",
+        bottom: "0.5in",
+        left: "0.5in",
+      },
+    });
+
+    await browser.close();
+    return pdfBuffer;
+  } catch (error) {
+    console.error('Puppeteer launch error:', error);
+    
+    // Fallback: Try with default Puppeteer configuration
+    try {
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      });
+      
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "networkidle0" });
+
+      const pdfBuffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: {
+          top: "0.5in",
+          right: "0.5in",
+          bottom: "0.5in",
+          left: "0.5in",
+        },
+      });
+
+      await browser.close();
+      return pdfBuffer;
+    } catch (fallbackError) {
+      console.error('Puppeteer fallback error:', fallbackError);
+      throw new Error(`Failed to generate PDF: ${fallbackError.message}`);
+    }
+  }
 }
 
 module.exports = { generateInvoicePDF };

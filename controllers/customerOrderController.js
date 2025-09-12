@@ -384,7 +384,7 @@ const createAdditionalOrder = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, bottleReturnSize, wantToPay, paymentMethod } = req.body;
+    const { status, bottleReturnSize, wantToPay, paymentMethod, collectedCash } = req.body;
 
     const order = await CustomerOrders.findById(orderId).populate("customer");
     if (!order) {
@@ -506,6 +506,8 @@ const verifyPayment = async (req, res) => {
     });
   }
 };
+
+//
 
 module.exports = {
   createAutomaticOrdersForCustomer,

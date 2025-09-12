@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "build:render": "bash render-build.sh"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +33,7 @@
     "nodemailer": "^7.0.5",
     "nodemon": "^3.1.10",
     "puppeteer": "^24.17.0",
+    "puppeteer-core": "^24.20.0",
     "razorpay": "^2.9.6",
     "streamifier": "^0.1.1",
     "swagger-jsdoc": "^6.2.8",

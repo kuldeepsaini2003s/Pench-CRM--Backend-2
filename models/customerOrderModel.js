@@ -107,6 +107,10 @@ const customerOrdersSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    cashCollected:{
+      type: Number,
+      default: 0,
+    },
     razorpayLinkId: { type: String },
     razorpayLinkStatus: { type: String },
     razorpayPaymentId: { type: String },
