@@ -130,7 +130,7 @@ const TotalSales = catchAsync(async (req, res, next) => {
   });
 });
 
-//  Get Low Stock Products (stock < 10)
+// ✅ Get Low Stock Products (stock < 10)
 const getLowStockProducts = catchAsync(async (req, res, next) => {
   const products = await Product.find(
     { stock: { $lt: 10 } },
@@ -148,7 +148,7 @@ const getLowStockProducts = catchAsync(async (req, res, next) => {
   });
 });
 
-// 3. Get Active Subscriptions
+//✅ Get Active Subscriptions
 const getActiveSubscriptions = async (req, res) => {
   try {
     let { page = 1, limit = 10, search = "", sortOrder = "desc" } = req.query;
