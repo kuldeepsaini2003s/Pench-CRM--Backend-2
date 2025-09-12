@@ -8,11 +8,8 @@ const {
   subWeeks,
   subMonths,
 } = require("date-fns");
-const CustomerOrder = require("../models/customerOrderModel")
+const CustomerOrder = require("../models/customerOrderModel");
 const moment = require("moment");
-
-
-
 
 // ✅ Create Product
 const createProduct = async (req, res) => {
@@ -37,13 +34,13 @@ const createProduct = async (req, res) => {
 
     // ✅ Normalize size into array & remove duplicates
     let normalizeSize = Array.isArray(size) ? size : [size];
-    normalizeSize = [...new Set(normalizeSize.map(s => s.trim()))]; // unique values only
+    normalizeSize = [...new Set(normalizeSize.map((s) => s.trim()))]; // unique values only
 
     // ✅ Check for duplicate product (same productName + same size)
     const duplicateProduct = await Product.findOne({
       productName,
       size: { $in: normalizeSize },
-      isDeleted: false
+      isDeleted: false,
     });
 
     if (duplicateProduct) {
@@ -82,7 +79,6 @@ const createProduct = async (req, res) => {
       message: "Product Added successfully",
       product,
     });
-
   } catch (error) {
     console.error(error);
     return res.status(500).json({
@@ -93,22 +89,16 @@ const createProduct = async (req, res) => {
   }
 };
 
-
 // ✅ Get All Products
 const getAllProducts = async (req, res) => {
   try {
-    let {
-      page = 1,
-      limit = 10,
-      sortOrder = "",
-      search = "",
-    } = req.query;
+    let { page = 1, limit = 10, sortOrder = "", search = "" } = req.query;
 
     page = parseInt(page);
     limit = parseInt(limit);
 
     // ---- Search Filter ----
-    const filter={isDeleted:false}
+    const filter = { isDeleted: false };
     if (search) {
       filter.$or = [
         { productName: { $regex: search, $options: "i" } },
@@ -138,14 +128,14 @@ const getAllProducts = async (req, res) => {
     const formattedProducts = products.map((p) => ({
       id: p._id,
       productName: p.productName,
-      productImage:p.productImage,
+      productImage: p.productImage,
       // description: p.description,
       // productType: p.productType,
       size: p.size,
       price: p.price,
       stockAvailable: p.stock,
       productCode: p.productCode,
-      isDeleted:p.isDeleted
+      isDeleted: p.isDeleted,
     }));
 
     const totalPages = Math.ceil(totalProducts / limit);
@@ -170,7 +160,7 @@ const getAllProducts = async (req, res) => {
       error: error.message,
     });
   }
-}
+};
 
 // ✅ Get Product By Id
 const getProductById = async (req, res) => {
@@ -245,29 +235,28 @@ const updateProduct = async (req, res) => {
 
 // ✅ Delete Product
 const deleteProduct = async (req, res, next) => {
- 
- try {
-  const { id } = req.params;
-  const product = await Product.findByIdAndUpdate(id, { isDeleted: true });
-  if (!product){
-    return res.status(404).json({
+  try {
+    const { id } = req.params;
+    const product = await Product.findByIdAndUpdate(id, { isDeleted: true });
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Product deleted successfully",
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
       success: false,
-      message: "Product not found",
+      message: "Failed To Delete Product",
     });
   }
-
-  res.status(200).json({
-    success: true,
-    message: "Product deleted successfully",
-  });
- } catch (error) {
-    console.log(error)
-    return res.status(500).json({
-      success:false,
-      message:"Failed To Delete Product"
-    })
- }
-}
+};
 
 // ✅ Total Products Sold
 const totalProductsSold = async (req, res) => {
@@ -276,9 +265,10 @@ const totalProductsSold = async (req, res) => {
 
     // Validate period parameter
     if (!["daily", "weekly", "monthly"].includes(period)) {
-      return res
-        .status(400)
-        .json("Invalid period. Use: daily, weekly, or monthly");
+      return res.status(400).json({
+        success: false,
+        message: "Invalid period. Use: daily, weekly, or monthly",
+      });
     }
 
     let startDate, endDate;
@@ -304,24 +294,39 @@ const totalProductsSold = async (req, res) => {
         break;
     }
 
-    // Aggregate pipeline to get total units sold
+    // Convert dates to DD/MM/YYYY format and generate all dates in range
+    const formatDateToDDMMYYYY = (date) => {
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+
+    // Generate all dates in the range for proper filtering
+    const generateDateRange = (start, end) => {
+      const dates = [];
+      const current = new Date(start);
+      const endDate = new Date(end);
+
+      while (current <= endDate) {
+        dates.push(formatDateToDDMMYYYY(current));
+        current.setDate(current.getDate() + 1);
+      }
+      return dates;
+    };
+
+    const dateRange = generateDateRange(startDate, endDate);
+
+    // Aggregate pipeline to get total units sold from CustomerOrders
     const pipeline = [
       {
         $match: {
           status: "Delivered",
-          date: {
-            $gte: startDate,
-            $lte: endDate,
-          },
+          deliveryDate: { $in: dateRange },
         },
       },
       {
         $unwind: "$products",
-      },
-      {
-        $match: {
-          "products.status": "delivered",
-        },
       },
       {
         $group: {
@@ -334,17 +339,19 @@ const totalProductsSold = async (req, res) => {
     const result = await CustomerOrder.aggregate(pipeline);
     const totalUnits = result.length > 0 ? result[0].totalUnits : 0;
 
-    // Return only the number
     return res.status(200).json({
       success: true,
-      msg: "Total products sold",
+      message: "Total products sold retrieved successfully",
       totalProductsSold: totalUnits,
+      period: period,
     });
   } catch (error) {
     console.error("Error in totalProductsSold:", error);
-    return res
-      .status(500)
-      .json({ success: false, msg: "failed to get total products sold" });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get total products sold",
+      error: error.message,
+    });
   }
 };
 
@@ -355,7 +362,7 @@ const getLowStockProductsCount = async (req, res) => {
       stock: { $lte: 20 },
       isDeleted: false,
     });
- 
+
     return res.status(200).json({
       success: true,
       message: "Low stock count retrieved successfully",
@@ -432,43 +439,43 @@ const addStock = async (req, res) => {
   try {
     const { productId } = req.params;
     const { quantity } = req.body;
- 
+
     if (!productId || !quantity) {
       return res.status(400).json({
         success: false,
         message: "Product ID and quantity are required",
       });
     }
- 
+
     if (quantity <= 0) {
       return res.status(400).json({
         success: false,
         message: "Quantity must be greater than 0",
       });
     }
- 
+
     const product = await Product.findById(productId);
- 
+
     if (!product) {
       return res.status(404).json({
         success: false,
         message: "Product not found",
       });
     }
- 
+
     if (product.isDeleted) {
       return res.status(400).json({
         success: false,
         message: "Cannot add stock to deleted product",
       });
     }
- 
+
     const updatedProduct = await Product.findByIdAndUpdate(
       productId,
       { $inc: { stock: parseInt(quantity) } },
       { new: true }
     );
- 
+
     return res.status(200).json({
       success: true,
       message: "Stock added successfully",
@@ -584,65 +591,92 @@ const getTopSellingProductSold = async (req, res) => {
         break;
     }
 
-    // ✅ Fetch all delivered orders in given period
-    const deliveredOrders = await CustomerOrder.find({
-      status: "Delivered",
-      date: { $gte: startDate, $lte: endDate },
-    }).populate("products.product");
+    // Convert dates to DD/MM/YYYY format and generate all dates in range
+    const formatDateToDDMMYYYY = (date) => {
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
 
-    if (!deliveredOrders.length) {
+    // Generate all dates in the range for proper filtering
+    const generateDateRange = (start, end) => {
+      const dates = [];
+      const current = new Date(start);
+      const endDate = new Date(end);
+
+      while (current <= endDate) {
+        dates.push(formatDateToDDMMYYYY(current));
+        current.setDate(current.getDate() + 1);
+      }
+      return dates;
+    };
+
+    const dateRange = generateDateRange(startDate, endDate);
+
+    // Aggregate pipeline to get top selling product and total sold
+    const pipeline = [
+      {
+        $match: {
+          status: "Delivered",
+          deliveryDate: { $in: dateRange },
+        },
+      },
+      {
+        $unwind: "$products",
+      },
+      {
+        $group: {
+          _id: "$products.productName",
+          totalQuantity: { $sum: "$products.quantity" },
+        },
+      },
+      {
+        $sort: { totalQuantity: -1 },
+      },
+      {
+        $group: {
+          _id: null,
+          totalProductsSold: { $sum: "$totalQuantity" },
+          topSellingProduct: { $first: "$_id" },
+          topSellingQuantity: { $first: "$totalQuantity" },
+          allProducts: {
+            $push: {
+              productName: "$_id",
+              quantity: "$totalQuantity",
+            },
+          },
+        },
+      },
+    ];
+
+    const result = await CustomerOrder.aggregate(pipeline);
+
+    if (!result.length || result[0].totalProductsSold === 0) {
       return res.status(200).json({
         success: true,
         message: `No delivered orders found for ${period}`,
         data: {
           totalProductsSold: 0,
-          topSellingProduct: "Milk",
+          topSellingProduct: "No products sold",
           period,
         },
       });
     }
 
-    let totalProductsSold = 0;
-    const productCount = {};
-
-    // ✅ Loop through orders and count product quantities
-    deliveredOrders.forEach((order) => {
-      order.products.forEach((p) => {
-        if (p.status === "delivered") {
-          totalProductsSold += p.quantity;
-
-          const productName = p.product?.productName || "Unknown Product";
-
-          if (!productCount[productName]) {
-            productCount[productName] = 0;
-          }
-          productCount[productName] += p.quantity;
-        }
-      });
-    });
-
-    // ✅ Find top-selling product
-    let topSellingProduct = null;
-    let maxQuantity = 0;
-
-    for (const [name, qty] of Object.entries(productCount)) {
-      if (qty > maxQuantity) {
-        maxQuantity = qty;
-        topSellingProduct = name;
-      }
-    }
+    const salesData = result[0];
 
     return res.status(200).json({
       success: true,
       message: `Sales summary for ${period} period`,
       data: {
-        totalProductsSold,
-        topSellingProduct,
+        totalProductsSold: salesData.totalProductsSold,
+        topSellingProduct: salesData.topSellingProduct,
         period,
       },
     });
   } catch (error) {
-    console.error("Error in getSalesSummary:", error);
+    console.error("Error in getTopSellingProductSold:", error);
     return res.status(500).json({
       success: false,
       message: "Failed To Get Top Selling Product And Total Product Sold",
@@ -650,7 +684,6 @@ const getTopSellingProductSold = async (req, res) => {
     });
   }
 };
-
 
 //✅ Get Total Product Deliver Tommorow
 const getTotalProductDeliverTommorow = async (req, res) => {
@@ -692,25 +725,37 @@ const getTotalProductDeliverTommorow = async (req, res) => {
               initialValue: "",
               in: {
                 $concat: [
-                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] }] },
+                  {
+                    $cond: [
+                      { $eq: ["$$value", ""] },
+                      "",
+                      { $concat: ["$$value", ", "] },
+                    ],
+                  },
                   "$$this",
                 ],
               },
             },
           },
-          productSize:{
+          productSize: {
             $reduce: {
               input: "$products.productSize",
               initialValue: "",
               in: {
                 $concat: [
-                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] } ] },
+                  {
+                    $cond: [
+                      { $eq: ["$$value", ""] },
+                      "",
+                      { $concat: ["$$value", ", "] },
+                    ],
+                  },
                   "$$this",
                 ],
               },
             },
           },
-          quantity:{
+          quantity: {
             $reduce: {
               input: "$products.quantity",
               initialValue: 0,
@@ -752,8 +797,6 @@ const getTotalProductDeliverTommorow = async (req, res) => {
   }
 };
 
-
- 
 module.exports = {
   createProduct,
   getAllProducts,
