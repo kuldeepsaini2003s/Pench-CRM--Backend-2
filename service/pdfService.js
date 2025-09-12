@@ -2,17 +2,58 @@ const path = require("path");
 const ejs = require("ejs");
 const puppeteer = require("puppeteer");
 const { formatDate } = require("../utils/dateUtils");
+const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 
 async function generateInvoicePDF(invoice) {
   const templatePath = path.join(
     __dirname,
-    "../public/templates/customInvoiceTemplate.ejs"
+    "../public/templates/invoice-template.ejs"
   );
 
-  const formattedDate = formatDate(invoice.invoiceDate);
-  const html = await ejs.renderFile(templatePath, { invoice, formattedDate });
+  // Format dates
+  const formattedDate = formatDate(invoice.createdAt || new Date());
+  const dueDate = formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // 7 days from now
 
-  const browser = await puppeteer.launch();
+  // Format period dates
+  const periodStart = invoice.period?.startDate
+    ? formatDateToDDMMYYYY(invoice.period.startDate)
+    : formatDateToDDMMYYYY(new Date());
+  const periodEnd = invoice.period?.endDate
+    ? formatDateToDDMMYYYY(invoice.period.endDate)
+    : formatDateToDDMMYYYY(new Date());
+
+  // Prepare partial payment data if applicable
+  const partialPayment =
+    invoice.payment?.status === "Partially Paid"
+      ? {
+          partialPaymentAmount: invoice.totals?.paidAmount || 0,
+          balanceAmount: invoice.totals?.balanceAmount || 0,
+          partialPaymentDays:
+            Math.ceil(
+              (invoice.period?.endDate - invoice.period?.startDate) /
+                (1000 * 60 * 60 * 24)
+            ) / 2,
+        }
+      : null;
+
+  // Prepare delivery stats (if available from getCustomerData)
+  const deliveryStats = invoice.deliveryStats || null;
+
+  // Render the EJS template
+  const html = await ejs.renderFile(templatePath, {
+    invoice,
+    formattedDate,
+    dueDate,
+    periodStart,
+    periodEnd,
+    partialPayment,
+    deliveryStats,
+  });
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
   const page = await browser.newPage();
 
   await page.setContent(html, { waitUntil: "networkidle0" });
@@ -20,6 +61,12 @@ async function generateInvoicePDF(invoice) {
   const pdfBuffer = await page.pdf({
     format: "A4",
     printBackground: true,
+    margin: {
+      top: "0.5in",
+      right: "0.5in",
+      bottom: "0.5in",
+      left: "0.5in",
+    },
   });
 
   await browser.close();

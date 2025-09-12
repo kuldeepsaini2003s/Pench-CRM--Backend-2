@@ -52,8 +52,7 @@ const invoiceSchema = new mongoose.Schema(
         productSize: { type: String },
         quantity: { type: Number },
         price: { type: Number },
-        totalPrice: { type: Number },
-        isPaid: { type: Boolean, default: false },
+        totalPrice: { type: Number },        
       },
     ],
     payment: {
@@ -88,8 +87,7 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       enum: ["Draft", "Sent", "Paid"],
       default: "Draft",
-    },
-    notes: { type: String },
+    },    
   },
   { timestamps: true }
 );

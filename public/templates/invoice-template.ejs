@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Invoice Preview</title>
+    <!-- TailwindCSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-white text-black w-full min-h-screen p-4 sm:p-6 font-sans">
+    <!-- Header Section -->
+    <div class="max-w-8xl mx-auto">
+      <div class="bg-white border-b border-black">
+        <div class="flex justify-between items-center mt-2 mb-2">
+          <div class="flex items-center gap-1">
+            <img
+              src="https://penchadmin.netlify.app/assets/pench-logo-BRUfmzHf.png"
+              alt="Logo"
+              class="w-28"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Invoice Header -->
+      <div class="flex items-center flex-col gap-4 mb-6">
+        <div class="pt-4">
+          <h2 class="text-4xl font-bold text-green-800">Invoice</h2>
+        </div>
+      </div>
+
+      <!-- Invoice Info -->
+      <div class="flex flex-col sm:flex-row gap-4 text-sm mb-2">
+        <!-- Left -->
+        <div>
+          <p>
+            <strong>Invoice No:</strong>
+            <span><%= invoice.invoiceNumber || 'N/A' %></span>
+          </p>          
+        </div>
+        <!-- Right -->
+        <div class="ml-auto text-right">
+          <p>
+            <strong class="text-gray-500">Issue Date:</strong>
+            <span><%= formattedDate || 'N/A' %></span>
+          </p>          
+        </div>
+      </div>
+
+      <!-- Bill From / To -->
+      <div
+        class="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-6 items-start text-gray-700 text-sm"
+      >
+        <div class="text-left">
+          <h3 class="text-lg font-semibold mb-1">Bill from:</h3>
+          <p>
+            17, S Ambazari Rd, Madhav Nagar,<br />
+            Nagpur 440010,<br />
+            Maharashtra
+          </p>
+        </div>
+
+        <div class="text-center">
+          <h3 class="text-lg font-semibold mb-1">Bill to:</h3>
+          <p><strong><%= invoice.customer?.name || 'N/A' %></strong></p>
+          <p>Phone: <span><%= invoice.phoneNumber || 'N/A' %></span></p>
+          <p><%= invoice.address || 'N/A' %></p>
+        </div>
+
+        <div class="text-right">
+          <h3 class="text-lg font-semibold mb-1">Duration:</h3>
+          <p>
+            <span><%= periodStart || 'N/A' %></span> to
+            <span><%= periodEnd || 'N/A' %></span>
+          </p>
+          <p>
+            <strong>Plan:</strong>
+            <span><%= invoice.subscriptionPlan || 'N/A' %></span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Items Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-sm">
+          <thead>
+            <tr class="bg-gray-200 font-semibold text-center">
+              <th class="p-2">Product Name</th>
+              <th class="p-2">Product Size</th>
+              <th class="p-2">Quantity</th>
+              <th class="p-2">Price(₹)</th>
+              <th class="p-2">Total(₹)</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white text-center">
+            <% if (invoice.products && invoice.products.length > 0) { %> <%
+            invoice.products.forEach(function(product) { %>
+            <tr>
+              <td class="p-2"><%= product.productName %></td>
+              <td class="p-2"><%= product.productSize %></td>
+              <td class="p-2"><%= product.quantity %></td>
+              <td class="p-2">₹<%= product.price %></td>
+              <td class="p-2">₹<%= product.totalPrice %></td>
+            </tr>
+            <% }); %> <% } else { %>
+            <tr>
+              <td colspan="5" class="p-2 text-center text-gray-500">
+                No products found
+              </td>
+            </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Delivery Statistics -->
+      <% if (deliveryStats) { %>
+      <div class="mt-4 p-3 bg-gray-50 rounded">
+        <h4 class="font-semibold mb-2">Delivery Statistics</h4>
+        <div class="grid grid-cols-3 gap-4 text-sm">
+          <div>
+            <span class="text-gray-600">Actual Orders:</span>
+            <span class="font-semibold"
+              ><%= deliveryStats.actualOrders || 0 %></span
+            >
+          </div>
+          <div>
+            <span class="text-gray-600">Absent Days:</span>
+            <span class="font-semibold"
+              ><%= deliveryStats.absentDays || 0 %></span
+            >
+          </div>
+          <div>
+            <span class="text-gray-600">Deliveries:</span>
+            <span class="font-semibold"
+              ><%= deliveryStats.deliveries || 0 %></span
+            >
+          </div>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- Footer Section -->
+      <div class="mt-2 border-t pt-2 text-sm">
+        <!-- Payment Summary -->
+        <div class="space-y-1">
+          <div class="flex justify-between">
+            <span class="font-semibold">Subtotal:</span>
+            <span class="font-semibold"
+              >₹<%= invoice.totals?.subtotal || 0 %></span
+            >
+          </div>
+
+          <% if (invoice.totals?.carryForwardAmount > 0) { %>
+          <div class="flex justify-between">
+            <span class="font-semibold">Carry Forward:</span>
+            <span class="font-semibold"
+              >₹<%= invoice.totals.carryForwardAmount %></span
+            >
+          </div>
+          <% } %>
+
+          <!-- Partial Payment Section (only shown if partially paid) -->
+          <% if (invoice.payment?.status === "Partially Paid" && partialPayment)
+          { %>
+          <div>
+            <div class="flex justify-between text-blue-600">
+              <span class="font-semibold">Partial Payment:</span>
+              <span class="font-semibold"
+                >₹<%= partialPayment.partialPaymentAmount %></span
+              >
+            </div>
+            <div class="flex justify-between text-red-600">
+              <span class="font-semibold">Balance Amount:</span>
+              <span class="font-semibold"
+                >₹<%= partialPayment.balanceAmount %></span
+              >
+            </div>
+            <div class="flex justify-between text-gray-600">
+              <span class="font-semibold">Partial Days:</span>
+              <span class="font-semibold"
+                ><%= partialPayment.partialPaymentDays %> days</span
+              >
+            </div>
+          </div>
+          <% } else { %>
+          <!-- Regular Total (shown if not partially paid) -->
+          <div class="flex justify-between">
+            <span class="font-semibold">Total Amount:</span>
+            <span class="font-semibold"
+              >₹<%= (invoice.totals?.subtotal || 0) +
+              (invoice.totals?.carryForwardAmount || 0) %></span
+            >
+          </div>
+          <% } %>
+
+          <div class="flex justify-between">
+            <span class="font-semibold">Paid Amount:</span>
+            <span class="font-semibold"
+              >₹<%= invoice.totals?.paidAmount || 0 %></span
+            >
+          </div>
+
+          <div class="flex justify-between border-t pt-1">
+            <span class="font-bold text-lg">Balance Due:</span>
+            <span class="font-bold text-lg"
+              >₹<%= invoice.totals?.balanceAmount || 0 %></span
+            >
+          </div>
+        </div>
+
+        <!-- Payment Status -->
+        <div class="mt-3 p-2 bg-gray-100 rounded">
+          <p class="text-sm">
+            <strong>Status:</strong>
+            <span
+              class="font-semibold <%= invoice.payment?.status === 'Paid' ? 'text-green-600' : invoice.payment?.status === 'Partially Paid' ? 'text-yellow-600' : 'text-red-600' %>"
+            >
+              <%= invoice.payment?.status || 'Unpaid' %>
+            </span>
+          </p>
+          <p class="text-sm">
+            <strong>Payment Method:</strong>
+            <span><%= invoice.payment?.method || 'COD' %></span>
+          </p>
+          <% if (invoice.payment?.paidDate) { %>
+          <p class="text-sm">
+            <strong>Paid Date:</strong>
+            <span
+              ><%= new Date(invoice.payment.paidDate).toLocaleDateString()
+              %></span
+            >
+          </p>
+          <% } %>
+        </div>
+      </div>
+
+      <!-- Partial Payment History -->
+      <% if (invoice.payment?.partialPayments &&
+      invoice.payment.partialPayments.length > 0) { %>
+      <div class="mt-4">
+        <h4 class="font-semibold mb-2">Partial Payment History</h4>
+        <div class="space-y-1">
+          <% invoice.payment.partialPayments.forEach(function(payment, index) {
+          %>
+          <div class="flex justify-between text-sm bg-gray-50 p-2 rounded">
+            <span>Payment <%= index + 1 %>:</span>
+            <span
+              >₹<%= payment.amount %> - <%= payment.method %> - <%= new
+              Date(payment.date).toLocaleDateString() %></span
+            >
+          </div>
+          <% }); %>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- Note Section -->
+      <!-- <div class="mt-4">
+        <label for="note" class="font-semibold block mb-1">Note:</label>
+        <div
+          class="w-full border px-3 py-2 rounded-md border-[#000000] min-h-[60px]"
+        >
+          <%= invoice.notes || "Thank you for your business!" %>
+        </div>
+      </div> -->
+    </div>
+  </body>
+</html>
