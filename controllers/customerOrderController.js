@@ -405,7 +405,7 @@ const updateOrderStatus = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Order updated successfully",
+      message: "Order Status updated successfully",
       order
     });
   } catch (error) {
@@ -418,99 +418,12 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-//✅ Verify Payment
-const verifyPayment = async (req, res) => {
-  try {
-    const {
-      razorpay_payment_id,
-      razorpay_payment_link_id,
-      razorpay_payment_link_status,
-    } = req.query;
 
-    if (!razorpay_payment_id || !razorpay_payment_link_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment verification request",
-      });
-    }
-
-    // ✅ Find order by Razorpay Link ID
-    const order = await CustomerOrders.findOne({
-      razorpayLinkId: razorpay_payment_link_id,
-    }).populate("customer");
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found for this payment",
-      });
-    }
-
-    // ✅ Fetch payment details from Razorpay
-    const payment = await razorpay.payments.fetch(razorpay_payment_id);
-    const paidAmount = payment.amount / 100; // convert from paise to INR
-
-    if (!paidAmount || paidAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment amount",
-      });
-    }
-
-    // ✅ Save Razorpay details
-    order.razorpayPaymentId = razorpay_payment_id;
-    order.razorpayLinkStatus = razorpay_payment_link_status || payment.status;
-
-    // ✅ Track partial payments (optional field in schema)
-    if (!order.partialPayments) order.partialPayments = [];
-    order.partialPayments.push({
-      amount: paidAmount,
-      date: new Date(),
-      method: order.paymentMethod || "Online",
-    });
-
-    // ✅ Calculate total paid so far
-    const totalPaid = order.partialPayments.reduce(
-      (sum, p) => sum + p.amount,
-      0
-    );
-
-    // ✅ Decide payment status
-    if (totalPaid < order.totalAmount) {
-      order.paymentStatus = "Partially Paid";
-    } else if (totalPaid === order.totalAmount) {
-      order.paymentStatus = "Paid";
-    } else {
-      // edge case: overpayment (shouldn’t normally happen)
-      order.paymentStatus = "Paid";
-    }
-
-    await order.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Payment verified successfully",
-      order,
-      paidAmount,
-      totalPaid,
-    });
-  } catch (error) {
-    console.error("verifyPayment Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Error verifying payment",
-      error: error.message,
-    });
-  }
-};
-
-
-//
 
 module.exports = {
   createAutomaticOrdersForCustomer,
   createAdditionalOrder,
   initializeOrders,
   updateOrderStatus,
-  verifyPayment,
+
 };
