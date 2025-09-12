@@ -18,9 +18,11 @@ const paymentSchema = new mongoose.Schema(
         type:Number,
         default:0
     },
-    paidDate: {
-      type: Date,
-    },
+    paidDates: [
+      {
+        type: Date,
+      }
+    ],
     paymentMethod: {
       type: String,
       enum: ["COD", "Online"],
@@ -30,6 +32,14 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       enum: ["Paid", "Unpaid", "Partially Paid"],
     },
+    month:{
+        type:String,
+        default: new Date().toLocaleString("default", { month: "long" }),
+    },
+    year:{
+        type:String,
+        default: new Date().getFullYear(),
+    }
   },
   { timestamps: true }
 );
