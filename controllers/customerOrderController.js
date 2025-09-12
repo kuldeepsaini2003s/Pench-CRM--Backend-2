@@ -460,13 +460,14 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
+//✅ Verify Payment
 const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_payment_id, razorpay_link_id, razorpay_link_status } =
+    const { razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_status } =
       req.query;
     // Razorpay sends these params to callback_url
 
-    if (!razorpay_payment_id || !razorpay_link_id) {
+    if (!razorpay_payment_id || !razorpay_payment_link_id) {
       return res.status(400).json({
         success: false,
         message: "Invalid payment verification request",
@@ -475,7 +476,7 @@ const verifyPayment = async (req, res) => {
 
     // ✅ Find order by Razorpay Link ID
     const order = await CustomerOrders.findOne({
-      razorpayLinkId: razorpay_link_id,
+      razorpayLinkId: razorpay_payment_link_id,
     });
     if (!order) {
       return res.status(404).json({
@@ -486,7 +487,7 @@ const verifyPayment = async (req, res) => {
 
     // ✅ Update order payment details
     order.razorpayPaymentId = razorpay_payment_id;
-    order.razorpayLinkStatus = razorpay_link_status || "paid";
+    order.razorpayLinkStatus = razorpay_payment_link_status || "paid";
     order.paymentStatus = "Paid";
 
     await order.save();

@@ -10,6 +10,6 @@ const {
 router.post("/createAutomaticOrders", createAutomaticOrdersForCustomer);
 router.post("/additionalOrder/:customerId", createAdditionalOrder);
 router.put("/updateStatus/:orderId", updateOrderStatus);
-router.put("/verify-payment", verifyPayment);
+router.get("/verify-payment", verifyPayment);
 
 module.exports = router;
