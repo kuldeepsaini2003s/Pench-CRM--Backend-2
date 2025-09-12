@@ -1,7 +1,6 @@
 const CustomerOrders = require("../models/customerOrderModel");
 const Customer = require("../models/customerModel");
 const { generateOrderNumber } = require("../utils/generateOrderNumber");
-const mongoose = require("mongoose");
 const Product = require("../models/productModel");
 const DeliveryBoy = require("../models/deliveryBoyModel");
 const moment = require("moment");
@@ -384,9 +383,12 @@ const createAdditionalOrder = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, bottleReturnSize, wantToPay, paymentMethod } = req.body;
+    const {
+      status,
+      bottleReturnSize,
+    } = req.body;
 
-    const order = await CustomerOrders.findById(orderId).populate("customer");
+    const order = await CustomerOrders.findById(orderId);
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -399,56 +401,12 @@ const updateOrderStatus = async (req, res) => {
 
     if (bottleReturnSize) order.bottleReturnSize = bottleReturnSize;
 
-    // ✅ Want to pay
-    if (typeof wantToPay !== "undefined") {
-      order.wantToPay = wantToPay;
-    }
-
-    let paymentLink = null;
-
-    if (paymentMethod) {
-      order.paymentMethod = paymentMethod; // "Online" or "COD"
-      order.paymentStatus = wantToPay ? "Pending" : "Unpaid";
-
-      // ✅ Only generate link if Online
-      if (paymentMethod === "Online" && wantToPay) {
-        try {
-          paymentLink = await razorpay.paymentLink.create({
-            amount: Math.round(order.totalAmount * 100), // in paise
-            currency: "INR",
-            description: `Payment for order ${order.orderNumber} – ₹${order.totalAmount}`,
-            customer: {
-              name: order.customer?.name || "Customer",
-              email: order.customer?.email || "test@example.com",
-              contact: String(order.customer?.phoneNumber) || "9999999999",
-            },
-            callback_url: `${process.env.BASE_URL}/api/customOrder/verify-payment`,
-            callback_method: "get",
-          });
-
-          order.razorpayLinkId = paymentLink.id;
-          order.razorpayLinkStatus = "created";
-        } catch (error) {
-          console.error(
-            "❌ Razorpay error in updateOrderStatus:",
-            error.response?.body || error
-          );
-          return res.status(500).json({
-            success: false,
-            message: "Failed to create payment link",
-            error: error.message,
-          });
-        }
-      }
-    }
-
     await order.save();
 
     res.status(200).json({
       success: true,
-      message: "Order updated successfully",
-      order,
-      ...(paymentLink && { paymentUrl: paymentLink.short_url }),
+      message: "Order Status updated successfully",
+      order
     });
   } catch (error) {
     console.error("updateOrderStatus Error:", error);
@@ -460,57 +418,12 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-//✅ Verify Payment
-const verifyPayment = async (req, res) => {
-  try {
-    const { razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_status } =
-      req.query;
-    // Razorpay sends these params to callback_url
 
-    if (!razorpay_payment_id || !razorpay_payment_link_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment verification request",
-      });
-    }
-
-    // ✅ Find order by Razorpay Link ID
-    const order = await CustomerOrders.findOne({
-      razorpayLinkId: razorpay_payment_link_id,
-    });
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found for this payment",
-      });
-    }
-
-    // ✅ Update order payment details
-    order.razorpayPaymentId = razorpay_payment_id;
-    order.razorpayLinkStatus = razorpay_payment_link_status || "paid";
-    order.paymentStatus = "Paid";
-
-    await order.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Payment verified successfully",
-      order,
-    });
-  } catch (error) {
-    console.error("verifyPayment Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Error verifying payment",
-      error: error.message,
-    });
-  }
-};
 
 module.exports = {
   createAutomaticOrdersForCustomer,
   createAdditionalOrder,
   initializeOrders,
   updateOrderStatus,
-  verifyPayment,
+
 };

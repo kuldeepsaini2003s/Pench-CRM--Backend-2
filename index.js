@@ -62,6 +62,8 @@ const customOrderRoutes = require("./routes/customerOrderRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const termsAndConditionRoutes = require("./routes/termsAndConditionRoutes");
 const helpAndSupportRoutes = require("./routes/helpAndSupportRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
@@ -69,19 +71,13 @@ app.use("/api/deliveryBoy", deliveryBoyRoutes);
 app.use("/api/bottleTracking", bottleTrackingRoutes);
 app.use("/api/deliveryManagement", deliveryManagementRoutes);
 app.use("/api/product", productRoutes);
-
-
 app.use("/api/invoice", customerInvoiceRoutes);
 app.use("/api/customOrder", customOrderRoutes);
-
-
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/termsAndCondition", termsAndConditionRoutes);
 app.use("/api/helpAndSupport", helpAndSupportRoutes);
+app.use("/api/payment", paymentRoutes);
 
-app.get("/", (req, res) => {
-  res.send("we are Pench Milk");
-});
 
 // Connect DB then start server
 db().then(async () => {
