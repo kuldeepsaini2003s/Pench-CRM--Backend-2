@@ -10,6 +10,6 @@ const router = express.Router();
 router.post("/create-invoice", createCustomerInvoice);
 router.get("/search-customers", searchCustomers);
 router.get("/customer-data/:customerId", getCustomerData);
-router.get("/all-invoices", getAllCustomerInvoices);
+router.get("/getAllInvoices", getAllCustomerInvoices);
 
 module.exports = router;

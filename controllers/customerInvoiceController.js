@@ -10,7 +10,7 @@ const {
 } = require("../utils/parsedDateAndDay");
 const { calculateFullPeriodAmount } = require("../helper/helperFuctions");
 const DeliveryBoy = require("../models/deliveryBoyModel");
-
+const moment = require("moment");
 // ✅ Create Invoice
 const createCustomerInvoice = async (req, res) => {
   try {
@@ -172,123 +172,130 @@ const createCustomerInvoice = async (req, res) => {
 };
 
 // ✅ Get All Customer Invoices
-const getAllCustomerInvoices = async (req, res, next) => {
+const getAllCustomerInvoices = async (req, res) => {
   try {
     let {
-      search,
-      startDate,
-      endDate,
-      sort = "-createdAt",
       page = 1,
       limit = 10,
+      search = "",
+      startDate,
+      endDate,
+      sortOrder = "desc",
     } = req.query;
-
-    let query = {};
-
-    if (search) {
-      const searchRegex = { $regex: search, $options: "i" };
-      query.$or = [
-        { invoiceNumber: searchRegex },
-        { subscriptionPlan: searchRegex },
-        { "products.productName": searchRegex },
-        { "products.productSize": searchRegex },
-        {
-          $expr: {
-            $regexMatch: {
-              input: { $toString: "$phoneNumber" },
-              regex: search,
-              options: "i",
-            },
-          },
-        },
-      ];
-    }
-
-    // Handle date filtering based on period dates
-    if (startDate && endDate) {
-      query["period.startDate"] = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
-    } else if (startDate) {
-      query["period.startDate"] = {
-        $gte: new Date(startDate),
-      };
-    } else if (endDate) {
-      query["period.endDate"] = {
-        $lte: new Date(endDate),
-      };
-    }
 
     page = parseInt(page) || 1;
     limit = parseInt(limit) || 10;
     const skip = (page - 1) * limit;
 
-    const allowedSortFields = [
-      "createdAt",
-      "invoiceNumber",
-      "totals.subtotal",
-      "payment.status",
-    ];
-    const sortField = sort.startsWith("-") ? sort.substring(1) : sort;
-    const sortDirection = sort.startsWith("-") ? -1 : 1;
+    let matchStage = {};
 
-    if (!allowedSortFields.includes(sortField)) {
-      sort = "-createdAt";
+    // 📅 Date filter
+    if (startDate && endDate) {
+      matchStage["period.startDate"] = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    } else if (startDate) {
+      matchStage["period.startDate"] = { $gte: new Date(startDate) };
+    } else if (endDate) {
+      matchStage["period.endDate"] = { $lte: new Date(endDate) };
     }
 
-    const [totalInvoices, invoices] = await Promise.all([
-      Invoice.countDocuments(query),
-      Invoice.find(query)
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .populate("customer", "name phoneNumber")
-        .populate("deliveryBoy", "name"),
+    // 🔍 Search filter
+    if (search) {
+      const searchRegex = new RegExp(search, "i");
+      if (!isNaN(search)) {
+        matchStage.$or = [
+          { invoiceNumber: searchRegex },
+          { subscriptionPlan: searchRegex },
+          { "products.productName": searchRegex },
+          { "products.productSize": searchRegex },
+          { phoneNumber: Number(search) },
+          { "customerData.name": searchRegex }, // ✅ search by customer name
+        ];
+      } else {
+        matchStage.$or = [
+          { invoiceNumber: searchRegex },
+          { subscriptionPlan: searchRegex },
+          { "products.productName": searchRegex },
+          { "products.productSize": searchRegex },
+          { "customerData.name": searchRegex }, // ✅ search by customer name
+        ];
+      }
+    }
+
+    // 📊 Sorting
+    const sortStage = { createdAt: sortOrder === "asc" ? 1 : -1 };
+
+    // 📦 Aggregation pipeline
+    const invoices = await Invoice.aggregate([
+      {
+        $lookup: {
+          from: "customers", // collection name
+          localField: "customer",
+          foreignField: "_id",
+          as: "customerData",
+        },
+      },
+      { $unwind: { path: "$customerData", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "deliveryboys",
+          localField: "deliveryBoy",
+          foreignField: "_id",
+          as: "deliveryBoyData",
+        },
+      },
+      { $unwind: { path: "$deliveryBoyData", preserveNullAndEmptyArrays: true } },
+      { $match: matchStage },
+      { $sort: sortStage },
+      { $skip: skip },
+      { $limit: limit },
     ]);
 
-    if (!invoices || invoices.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No invoices found",
-      });
-    }
+    const totalInvoices = await Invoice.aggregate([
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customer",
+          foreignField: "_id",
+          as: "customerData",
+        },
+      },
+      { $unwind: { path: "$customerData", preserveNullAndEmptyArrays: true } },
+      { $match: matchStage },
+      { $count: "count" },
+    ]);
 
-    // Filter by customer name if search is provided
-    let filteredInvoices = invoices;
-    if (search && search.trim()) {
-      filteredInvoices = invoices.filter((invoice) => {
-        const customerName = invoice.customer?.name?.toLowerCase() || "";
-        return customerName.includes(search.toLowerCase());
-      });
-    }
+    const totalCount = totalInvoices.length > 0 ? totalInvoices[0].count : 0;
+    const totalPages = Math.ceil(totalCount / limit);
 
-    const formattedInvoices = filteredInvoices.map((invoice) => ({
+    const formattedInvoices = invoices.map((invoice) => ({
       invoiceId: invoice?._id,
       invoiceNumber: invoice?.invoiceNumber,
-      customerName: invoice?.customer?.name || "N/A",
-      phoneNumber: invoice?.phoneNumber || invoice?.customer?.phoneNumber,
+      customerName: invoice?.customerData?.name || "N/A",
+      phoneNumber: invoice?.phoneNumber || invoice?.customerData?.phoneNumber,
       subscriptionPlan: invoice?.subscriptionPlan || "N/A",
       amount: invoice?.totals?.subtotal || 0,
       status: invoice?.payment?.status || "Unpaid",
       pdfUrl: invoice?.pdfUrl,
-      deliveryBoy: invoice?.deliveryBoy?.name || "N/A",
+      deliveryBoy: invoice?.deliveryBoyData?.name || "N/A",
       period: {
-        startDate: invoice?.period?.startDate || null,
-        endDate: invoice?.period?.endDate || null,
+        startDate: invoice?.period?.startDate ?
+        moment(invoice?.period?.startDate).format("DD/MM/YYYY") : null,
+        endDate: invoice?.period?.endDate ? moment(invoice?.period?.endDate).format("DD/MM/YYYY") : null,
       },
       createdAt: invoice?.createdAt,
     }));
 
-    const totalPages = Math.ceil(totalInvoices / limit);
-
     return res.status(200).json({
       success: true,
-      message: "Invoices fetched successfully with applied filters",
-      count: formattedInvoices.length,
-      page,
-      totalPages: Math.ceil(filteredInvoices.length / limit),
-      totalInvoices: filteredInvoices.length,
+      message: "Invoices fetched successfully",
+      totalInvoices: totalCount,
+      totalPages,
+      currentPage: page,
+      previous: page > 1,
+      next: page < totalPages,
       invoices: formattedInvoices,
     });
   } catch (error) {
@@ -300,6 +307,8 @@ const getAllCustomerInvoices = async (req, res, next) => {
     });
   }
 };
+
+
 
 // ✅ Search Customers
 const searchCustomers = async (req, res) => {
@@ -472,7 +481,7 @@ const getCustomerData = async (req, res) => {
 
       finalEndDate = new Date(
         effectiveStartDate.getTime() +
-          (partialPaymentDays - 1) * (1000 * 3600 * 24)
+        (partialPaymentDays - 1) * (1000 * 3600 * 24)
       );
       isPartialPayment = true;
     }
@@ -614,10 +623,10 @@ const getCustomerData = async (req, res) => {
       },
       partialPayment: isPartialPayment
         ? {
-            partialPaymentAmount,
-            partialPaymentDays,
-            balanceAmount,
-          }
+          partialPaymentAmount,
+          partialPaymentDays,
+          balanceAmount,
+        }
         : false,
     });
   } catch (error) {
