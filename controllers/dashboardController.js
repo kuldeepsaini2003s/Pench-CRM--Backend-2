@@ -1,14 +1,11 @@
 
 const Payment = require("../models/paymentModel");
-const catchAsync = require("../middlewares/catchAsyncErrors");
-const ErrorHandler = require("../utils/errorhendler");
 const Product = require("../models/productModel");
 const Customer = require("../models/customerModel");
-const { formatDate, normalizeDate } = require("../utils/dateUtils");
-const { checkSubscriptionStatus } = require("../helper/helperFuctions");
+const { normalizeDate } = require("../utils/dateUtils");
 const moment = require("moment");
 
-const TotalSales = catchAsync(async (req, res, next) => {
+const TotalSales = async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
 
@@ -128,10 +125,10 @@ const TotalSales = catchAsync(async (req, res, next) => {
       },
     },
   });
-});
+}
 
-// ✅ Get Low Stock Products (stock < 10)
-const getLowStockProducts = catchAsync(async (req, res, next) => {
+//  Get Low Stock Products (stock < 10)
+const getLowStockProducts = async (req, res, next) => {
   const products = await Product.find(
     { stock: { $lt: 10 } },
     { productName: 1, productCode: 1, stock: 1, size: 1, _id: 1 }
@@ -146,7 +143,7 @@ const getLowStockProducts = catchAsync(async (req, res, next) => {
     count: products.length,
     products,
   });
-});
+}
 
 //✅ Get Active Subscriptions
 const getActiveSubscriptions = async (req, res) => {
@@ -236,7 +233,7 @@ const getActiveSubscriptions = async (req, res) => {
 
 // 5. Get Top &lowest Products by Sales
 
-const getTopAndLowestProducts = catchAsync(async (req, res, next) => {
+const getTopAndLowestProducts = async (req, res, next) => {
   let { startDate, endDate } = req.query;
 
   // Prepare match stage
@@ -303,11 +300,11 @@ const getTopAndLowestProducts = catchAsync(async (req, res, next) => {
         : null,
     },
   });
-});
+}
 
 
 
-const getPendingPayments = catchAsync(async (req, res, next) => {
+const getPendingPayments = async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
 
@@ -350,7 +347,7 @@ const getPendingPayments = catchAsync(async (req, res, next) => {
       limit: parseInt(limit),
     },
   });
-});
+}
 
 //✅ Get New Onboard Customers (first delivery)
 const getNewOnboardCustomers = async (req, res) => {
