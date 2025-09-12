@@ -1,5 +1,4 @@
 const Invoice = require("../models/customerInvoicesModel");
-const ErrorHandler = require("../utils/errorhendler");
 const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 const { generateInvoicePDF } = require("../service/pdfService");
 const { cloudinary } = require("../config/cloudinary");
@@ -174,75 +173,132 @@ const createCustomerInvoice = async (req, res) => {
 
 // ✅ Get All Customer Invoices
 const getAllCustomerInvoices = async (req, res, next) => {
-  let {
-    name,
-    phoneNumber,
-    status,
-    startDate,
-    endDate,
-    sort = "-createdAt",
-    page = 1,
-    limit = 10,
-  } = req.query;
+  try {
+    let {
+      search,
+      startDate,
+      endDate,
+      sort = "-createdAt",
+      page = 1,
+      limit = 10,
+    } = req.query;
 
-  let query = {};
+    let query = {};
 
-  if (name) {
-    query.name = { $regex: name, $options: "i" };
+    if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
+      query.$or = [
+        { invoiceNumber: searchRegex },
+        { subscriptionPlan: searchRegex },
+        { "products.productName": searchRegex },
+        { "products.productSize": searchRegex },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $toString: "$phoneNumber" },
+              regex: search,
+              options: "i",
+            },
+          },
+        },
+      ];
+    }
+
+    // Handle date filtering based on period dates
+    if (startDate && endDate) {
+      query["period.startDate"] = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    } else if (startDate) {
+      query["period.startDate"] = {
+        $gte: new Date(startDate),
+      };
+    } else if (endDate) {
+      query["period.endDate"] = {
+        $lte: new Date(endDate),
+      };
+    }
+
+    page = parseInt(page) || 1;
+    limit = parseInt(limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const allowedSortFields = [
+      "createdAt",
+      "invoiceNumber",
+      "totals.subtotal",
+      "payment.status",
+    ];
+    const sortField = sort.startsWith("-") ? sort.substring(1) : sort;
+    const sortDirection = sort.startsWith("-") ? -1 : 1;
+
+    if (!allowedSortFields.includes(sortField)) {
+      sort = "-createdAt";
+    }
+
+    const [totalInvoices, invoices] = await Promise.all([
+      Invoice.countDocuments(query),
+      Invoice.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .populate("customer", "name phoneNumber")
+        .populate("deliveryBoy", "name"),
+    ]);
+
+    if (!invoices || invoices.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No invoices found",
+      });
+    }
+
+    // Filter by customer name if search is provided
+    let filteredInvoices = invoices;
+    if (search && search.trim()) {
+      filteredInvoices = invoices.filter((invoice) => {
+        const customerName = invoice.customer?.name?.toLowerCase() || "";
+        return customerName.includes(search.toLowerCase());
+      });
+    }
+
+    const formattedInvoices = filteredInvoices.map((invoice) => ({
+      invoiceId: invoice?._id,
+      invoiceNumber: invoice?.invoiceNumber,
+      customerName: invoice?.customer?.name || "N/A",
+      phoneNumber: invoice?.phoneNumber || invoice?.customer?.phoneNumber,
+      subscriptionPlan: invoice?.subscriptionPlan || "N/A",
+      amount: invoice?.totals?.subtotal || 0,
+      status: invoice?.payment?.status || "Unpaid",
+      pdfUrl: invoice?.pdfUrl,
+      deliveryBoy: invoice?.deliveryBoy?.name || "N/A",
+      period: {
+        startDate: invoice?.period?.startDate || null,
+        endDate: invoice?.period?.endDate || null,
+      },
+      createdAt: invoice?.createdAt,
+    }));
+
+    const totalPages = Math.ceil(totalInvoices / limit);
+
+    return res.status(200).json({
+      success: true,
+      message: "Invoices fetched successfully with applied filters",
+      count: formattedInvoices.length,
+      page,
+      totalPages: Math.ceil(filteredInvoices.length / limit),
+      totalInvoices: filteredInvoices.length,
+      invoices: formattedInvoices,
+    });
+  } catch (error) {
+    console.error("getAllCustomerInvoices Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching invoices",
+      error: error.message,
+    });
   }
-
-  if (phoneNumber) {
-    query.phoneNumber = { $regex: phoneNumber, $options: "i" };
-  }
-
-  if (status) {
-    query["products.status"] = status;
-  }
-
-  if (startDate && endDate) {
-    query.createdAt = { $gte: new Date(startDate), $lte: new Date(endDate) };
-  }
-
-  page = parseInt(page);
-  limit = parseInt(limit);
-  const skip = (page - 1) * limit;
-
-  const customers = await Customer.find(query)
-    .select("name phoneNumber products createdAt")
-    .sort(sort)
-    .skip(skip)
-    .limit(limit);
-
-  if (!customers || customers.length === 0) {
-    return next(new ErrorHandler("No customers found", 404));
-  }
-
-  const formattedCustomers = customers.map((cust) => {
-    const firstProduct = cust.products[0];
-    return {
-      id: cust._id,
-      name: cust.name,
-      phoneNumber: cust.phoneNumber,
-      startDate: firstProduct?.startDate || null,
-      subscriptionPlan: firstProduct?.subscriptionPlan || "None",
-      totalAmount: cust.products.reduce(
-        (acc, p) => acc + (p.totalPrice || 0),
-        0
-      ),
-      status: "Unpaid", // agar aapko product ka actual status chahiye to ye dynamic bana sakte ho
-    };
-  });
-
-  const total = await Customer.countDocuments(query);
-
-  res.status(200).json({
-    success: true,
-    count: formattedCustomers.length,
-    page,
-    totalPages: Math.ceil(total / limit),
-    totalCustomers: total,
-    customers: formattedCustomers,
-  });
 };
 
 // ✅ Search Customers
