@@ -331,7 +331,7 @@ const totalProductsSold = async (req, res) => {
       },
     ];
 
-    const result = await DeliveryHistory.aggregate(pipeline);
+    const result = await CustomerOrder.aggregate(pipeline);
     const totalUnits = result.length > 0 ? result[0].totalUnits : 0;
 
     // Return only the number

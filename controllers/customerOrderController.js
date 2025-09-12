@@ -1,7 +1,6 @@
 const CustomerOrders = require("../models/customerOrderModel");
 const Customer = require("../models/customerModel");
 const { generateOrderNumber } = require("../utils/generateOrderNumber");
-const mongoose = require("mongoose");
 const Product = require("../models/productModel");
 const DeliveryBoy = require("../models/deliveryBoyModel");
 const moment = require("moment");
@@ -384,9 +383,12 @@ const createAdditionalOrder = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, bottleReturnSize, wantToPay, paymentMethod, collectedCash } = req.body;
+    const {
+      status,
+      bottleReturnSize,
+    } = req.body;
 
-    const order = await CustomerOrders.findById(orderId).populate("customer");
+    const order = await CustomerOrders.findById(orderId);
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -399,56 +401,12 @@ const updateOrderStatus = async (req, res) => {
 
     if (bottleReturnSize) order.bottleReturnSize = bottleReturnSize;
 
-    // ✅ Want to pay
-    if (typeof wantToPay !== "undefined") {
-      order.wantToPay = wantToPay;
-    }
-
-    let paymentLink = null;
-
-    if (paymentMethod) {
-      order.paymentMethod = paymentMethod; // "Online" or "COD"
-      order.paymentStatus = wantToPay ? "Pending" : "Unpaid";
-
-      // ✅ Only generate link if Online
-      if (paymentMethod === "Online" && wantToPay) {
-        try {
-          paymentLink = await razorpay.paymentLink.create({
-            amount: Math.round(order.totalAmount * 100), // in paise
-            currency: "INR",
-            description: `Payment for order ${order.orderNumber} – ₹${order.totalAmount}`,
-            customer: {
-              name: order.customer?.name || "Customer",
-              email: order.customer?.email || "test@example.com",
-              contact: String(order.customer?.phoneNumber) || "9999999999",
-            },
-            callback_url: `${process.env.BASE_URL}/api/customOrder/verify-payment`,
-            callback_method: "get",
-          });
-
-          order.razorpayLinkId = paymentLink.id;
-          order.razorpayLinkStatus = "created";
-        } catch (error) {
-          console.error(
-            "❌ Razorpay error in updateOrderStatus:",
-            error.response?.body || error
-          );
-          return res.status(500).json({
-            success: false,
-            message: "Failed to create payment link",
-            error: error.message,
-          });
-        }
-      }
-    }
-
     await order.save();
 
     res.status(200).json({
       success: true,
       message: "Order updated successfully",
-      order,
-      ...(paymentLink && { paymentUrl: paymentLink.short_url }),
+      order
     });
   } catch (error) {
     console.error("updateOrderStatus Error:", error);
@@ -463,9 +421,11 @@ const updateOrderStatus = async (req, res) => {
 //✅ Verify Payment
 const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_status } =
-      req.query;
-    // Razorpay sends these params to callback_url
+    const {
+      razorpay_payment_id,
+      razorpay_payment_link_id,
+      razorpay_payment_link_status,
+    } = req.query;
 
     if (!razorpay_payment_id || !razorpay_payment_link_id) {
       return res.status(400).json({
@@ -477,7 +437,8 @@ const verifyPayment = async (req, res) => {
     // ✅ Find order by Razorpay Link ID
     const order = await CustomerOrders.findOne({
       razorpayLinkId: razorpay_payment_link_id,
-    });
+    }).populate("customer");
+
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -485,10 +446,44 @@ const verifyPayment = async (req, res) => {
       });
     }
 
-    // ✅ Update order payment details
+    // ✅ Fetch payment details from Razorpay
+    const payment = await razorpay.payments.fetch(razorpay_payment_id);
+    const paidAmount = payment.amount / 100; // convert from paise to INR
+
+    if (!paidAmount || paidAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment amount",
+      });
+    }
+
+    // ✅ Save Razorpay details
     order.razorpayPaymentId = razorpay_payment_id;
-    order.razorpayLinkStatus = razorpay_payment_link_status || "paid";
-    order.paymentStatus = "Paid";
+    order.razorpayLinkStatus = razorpay_payment_link_status || payment.status;
+
+    // ✅ Track partial payments (optional field in schema)
+    if (!order.partialPayments) order.partialPayments = [];
+    order.partialPayments.push({
+      amount: paidAmount,
+      date: new Date(),
+      method: order.paymentMethod || "Online",
+    });
+
+    // ✅ Calculate total paid so far
+    const totalPaid = order.partialPayments.reduce(
+      (sum, p) => sum + p.amount,
+      0
+    );
+
+    // ✅ Decide payment status
+    if (totalPaid < order.totalAmount) {
+      order.paymentStatus = "Partially Paid";
+    } else if (totalPaid === order.totalAmount) {
+      order.paymentStatus = "Paid";
+    } else {
+      // edge case: overpayment (shouldn’t normally happen)
+      order.paymentStatus = "Paid";
+    }
 
     await order.save();
 
@@ -496,6 +491,8 @@ const verifyPayment = async (req, res) => {
       success: true,
       message: "Payment verified successfully",
       order,
+      paidAmount,
+      totalPaid,
     });
   } catch (error) {
     console.error("verifyPayment Error:", error);
@@ -506,6 +503,7 @@ const verifyPayment = async (req, res) => {
     });
   }
 };
+
 
 //
 
