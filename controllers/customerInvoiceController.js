@@ -8,9 +8,9 @@ const {
   parseUniversalDate,
   formatDateToDDMMYYYY,
 } = require("../utils/parsedDateAndDay");
-const { calculateFullPeriodAmount } = require("../helper/helperFuctions");
-const DeliveryBoy = require("../models/deliveryBoyModel");
 const moment = require("moment");
+const { calculateFullPeriodAmount } = require("../helper/helperFunctions");
+
 const createCustomerInvoice = async (req, res) => {
   try {
     const {
@@ -35,24 +35,12 @@ const createCustomerInvoice = async (req, res) => {
       });
     }
 
-    const deliveryBoy = await DeliveryBoy.findOne({
-      name: customer?.deliveryBoy,
-    });
-
-    if (!deliveryBoy) {
-      return res.status(404).json({
-        success: false,
-        message: "Delivery boy not found",
-      });
-    }
-
     const customerId = customer._id;
     const phoneNumber = customer.phoneNumber;
     const address = customer.address;
     const subscriptionPlan = customer.subscriptionPlan;
     const paymentMethod = customer.paymentMethod || "COD";
     const paymentStatus = customer.paymentStatus || "Unpaid";
-    const deliveryBoyId = deliveryBoy?._id;
 
     const subtotal = products.reduce(
       (sum, product) => sum + product.totalPrice,
@@ -77,7 +65,6 @@ const createCustomerInvoice = async (req, res) => {
     const invoice = await Invoice.create({
       invoiceNumber,
       customer: customerId,
-      deliveryBoy: deliveryBoyId,
       phoneNumber: parseInt(phoneNumber),
       address,
       subscriptionPlan,
@@ -274,7 +261,6 @@ const getAllCustomerInvoices = async (req, res) => {
       amount: invoice?.totals?.subtotal || 0,
       status: invoice?.payment?.status || "Unpaid",
       pdfUrl: invoice?.pdfUrl,
-      deliveryBoy: invoice?.deliveryBoyData?.name || "N/A",
       period: {
         startDate: invoice?.period?.startDate
           ? moment(invoice?.period?.startDate).format("DD/MM/YYYY")
@@ -399,219 +385,42 @@ const getCustomerData = async (req, res) => {
       });
     }
 
-    const existingInvoices = await Invoice.find({
-      customer: customerId,
-    }).sort({ issueDate: -1 });
-
-    let start, end;
-
-    if (startDate && endDate) {
-      start = parseUniversalDate(startDate) || new Date(startDate);
-      end = parseUniversalDate(endDate) || new Date(endDate);
-    } else if (startDate) {
-      start = parseUniversalDate(startDate) || new Date(startDate);
-      end = new Date();
-    } else if (endDate) {
-      if (existingInvoices.length > 0) {
-        const lastInvoice = existingInvoices[0];
-        if (
-          lastInvoice.payment?.status === "Unpaid" ||
-          lastInvoice.payment?.status === "Partially Paid"
-        ) {
-          start =
-            parseUniversalDate(lastInvoice.period?.startDate) ||
-            new Date(lastInvoice.period?.startDate);
-        } else {
-          start =
-            parseUniversalDate(lastInvoice.period?.endDate) ||
-            new Date(lastInvoice.period?.endDate);
-        }
-      } else {
-        start =
-          parseUniversalDate(customer.startDate) ||
-          new Date(customer.startDate);
-      }
-      end = parseUniversalDate(endDate) || new Date(endDate);
-    } else {
-      if (existingInvoices.length > 0) {
-        const lastInvoice = existingInvoices[0];
-        if (
-          lastInvoice.payment?.status === "Unpaid" ||
-          lastInvoice.payment?.status === "Partially Paid"
-        ) {
-          start =
-            parseUniversalDate(lastInvoice.period?.startDate) ||
-            new Date(lastInvoice.period?.startDate);
-        } else {
-          start =
-            parseUniversalDate(lastInvoice.period?.endDate) ||
-            new Date(lastInvoice.period?.endDate);
-        }
-        end = new Date();
-      } else {
-        const customerStartDate =
-          parseUniversalDate(customer?.startDate) ||
-          new Date(customer.startDate);
-        const now = new Date();
-
-        if (customerStartDate > now) {
-          start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          end = now;
-        } else {
-          start = customerStartDate;
-          end = now;
-        }
-      }
-    }
-
-    if (!start || isNaN(start.getTime())) {
-      start = new Date();
-    }
-    if (!end || isNaN(end.getTime())) {
-      end = new Date();
-    }
-
-    if (start > end) {
-      const temp = start;
-      start = end;
-      end = temp;
-    }
-
-    const customerStartDate =
-      parseUniversalDate(customer.startDate) || new Date(customer.startDate);
-
-    const now = new Date();
-    let effectiveStartDate = start;
-
-    if (start > now) {
-      effectiveStartDate = now;
-    }
-
-    if (end > now || end.getTime() === effectiveStartDate.getTime()) {
-      end = now;
-    }
-
-    let finalStartDate = effectiveStartDate;
-    let finalEndDate = end;
-    let isPartialPayment = false;
-    let partialPaymentDays = 0;
-
-    if (paymentStatus === "Partially Paid") {
-      const timeDiff = end.getTime() - effectiveStartDate.getTime();
-      const totalDays = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
-      partialPaymentDays = Math.floor(totalDays / 2);
-
-      finalEndDate = new Date(
-        effectiveStartDate.getTime() +
-          (partialPaymentDays - 1) * (1000 * 3600 * 24)
-      );
-      isPartialPayment = true;
-    }
-
-    const startDateStr = formatDateToDDMMYYYY(finalStartDate);
-    const endDateStr = formatDateToDDMMYYYY(finalEndDate);
-
-    const orders = await CustomerOrders.find({
-      customer: customerId,
-      status: "Delivered",
-      deliveryDate: {
-        $gte: startDateStr,
-        $lte: endDateStr,
-      },
-    }).populate(
-      "products._id",
-      "productName productCode price size description"
+    const {
+      finalStartDate,
+      finalEndDate,
+      isPartialPayment,
+      partialPaymentDays,
+    } = await determineDateRange(
+      customerId,
+      customer,
+      startDate,
+      endDate,
+      paymentStatus
     );
 
-    const startDateObj =
-      parseUniversalDate(startDateStr) || new Date(startDateStr);
-    const endDateObj = parseUniversalDate(endDateStr) || new Date(endDateStr);
-    const timeDiff = endDateObj.getTime() - startDateObj.getTime();
-    const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1;
-
-    const productMap = new Map();
-
-    orders.forEach((order) => {
-      order.products.forEach((product) => {
-        const key = `${product._id._id}_${product.productSize}`;
-
-        if (productMap.has(key)) {
-          const existing = productMap.get(key);
-          existing.quantity += product.quantity;
-          existing.totalPrice += product.totalPrice;
-        } else {
-          productMap.set(key, {
-            productId: product._id._id,
-            productName: product._id.productName,
-            productCode: product._id.productCode,
-            productSize: product.productSize,
-            quantity: product.quantity,
-            price: parseFloat(product.price),
-            totalPrice: product.totalPrice,
-          });
-        }
-      });
-    });
-
-    const products = Array.from(productMap.values());
-    const totalAmount = products.reduce(
-      (sum, product) => sum + product.totalPrice,
-      0
+    const orders = await fetchOrdersInRange(
+      customerId,
+      finalStartDate,
+      finalEndDate,
+      paymentStatus
     );
-
-    const actualOrders = orders.length;
-
-    const absentDays = [];
-    const startDateForAbsent =
-      parseUniversalDate(startDateStr) || new Date(startDateStr);
-    const endDateForAbsent =
-      parseUniversalDate(endDateStr) || new Date(endDateStr);
-
-    const allDates = [];
-    const currentDate = new Date(startDateForAbsent);
-
-    while (currentDate <= endDateForAbsent) {
-      allDates.push(formatDateToDDMMYYYY(new Date(currentDate)));
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    const orderDates = orders.map((order) => order.deliveryDate);
-
-    allDates.forEach((date) => {
-      if (!orderDates.includes(date)) {
-        absentDays.push(new Date(parseUniversalDate(date) || new Date(date)));
-      }
-    });
-
-    const deliveries = actualOrders;
-
-    const previousUnpaidInvoices = await Invoice.find({
-      customer: customerId,
-      paymentStatus: { $in: ["Unpaid", "Partially Paid"] },
-    }).sort({ issueDate: 1 });
-
-    const carryForwardAmount = previousUnpaidInvoices.reduce(
-      (total, invoice) => {
-        return total + (invoice.totalAmount - (invoice.paidAmount || 0));
-      },
-      0
+    const { products, totalAmount } = processProducts(orders, paymentStatus);
+    const { actualOrders, absentDays } = await calculateDeliveryStats(
+      orders,
+      finalStartDate,
+      finalEndDate,
+      paymentStatus,
+      customerId
     );
-
-    let partialPaymentAmount = totalAmount;
-    let balanceAmount = 0;
-
-    if (isPartialPayment) {
-      const fullPeriodAmount = await calculateFullPeriodAmount(
+    const { grandTotal, carryForwardAmount, balanceAmount } =
+      await calculateFinancials(
         customerId,
-        effectiveStartDate,
-        end
+        totalAmount,
+        isPartialPayment,
+        partialPaymentDays,
+        finalStartDate,
+        finalEndDate
       );
-      balanceAmount = fullPeriodAmount - partialPaymentAmount;
-    }
-
-    const grandTotal =
-      (isPartialPayment ? partialPaymentAmount : totalAmount) +
-      carryForwardAmount;
 
     return res.json({
       success: true,
@@ -627,19 +436,19 @@ const getCustomerData = async (req, res) => {
         deliveryBoy: customer.deliveryBoy?.name,
       },
       period: {
-        startDate: startDateStr,
-        endDate: endDateStr,
+        startDate: formatDateToDDMMYYYY(finalStartDate),
+        endDate: formatDateToDDMMYYYY(finalEndDate),
       },
       products,
       grandTotal,
       deliveryStats: {
         actualOrders,
         absentDays: absentDays.length,
-        deliveries,
+        deliveries: actualOrders,
       },
       partialPayment: isPartialPayment
         ? {
-            partialPaymentAmount,
+            partialPaymentAmount: totalAmount,
             partialPaymentDays,
             balanceAmount,
           }
@@ -653,6 +462,261 @@ const getCustomerData = async (req, res) => {
       error: error.message,
     });
   }
+};
+
+// Helper function to determine date range
+const determineDateRange = async (
+  customerId,
+  customer,
+  startDate,
+  endDate,
+  paymentStatus
+) => {
+  const existingInvoices = await Invoice.find({ customer: customerId }).sort({
+    issueDate: -1,
+  });
+
+  let start, end;
+
+  if (startDate && endDate) {
+    start = parseUniversalDate(startDate) || new Date(startDate);
+    end = parseUniversalDate(endDate) || new Date(endDate);
+  } else if (startDate) {
+    start = await getStartDateFromInvoice(customerId, customer, startDate);
+    end = await getLastOrderDate(customerId, start);
+  } else if (endDate) {
+    start = await getStartDateFromLastInvoice(customer, existingInvoices);
+    end = parseUniversalDate(endDate) || new Date(endDate);
+  } else {
+    start = await getStartDateFromLastInvoice(customer, existingInvoices);
+    end = await getLastOrderDate(customerId, start);
+  }
+
+  // Validate and fix dates
+  if (!start || isNaN(start.getTime())) start = new Date();
+  if (!end || isNaN(end.getTime())) end = new Date();
+  if (start > end) [start, end] = [end, start];
+
+  // Handle partial payment
+  let finalStartDate = start;
+  let finalEndDate = end;
+  let isPartialPayment = false;
+  let partialPaymentDays = 0;
+
+  if (paymentStatus === "Partially Paid") {
+    const totalDays =
+      Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
+    partialPaymentDays = Math.floor(totalDays / 2);
+    finalEndDate = new Date(
+      start.getTime() + (partialPaymentDays - 1) * (1000 * 3600 * 24)
+    );
+    isPartialPayment = true;
+  }
+
+  return { finalStartDate, finalEndDate, isPartialPayment, partialPaymentDays };
+};
+
+// Helper function to get start date from invoice
+const getStartDateFromInvoice = async (
+  customerId,
+  customer,
+  providedStartDate
+) => {
+  const invoicesInPeriod = await Invoice.find({
+    customer: customerId,
+    "period.startDate": {
+      $gte:
+        parseUniversalDate(providedStartDate) || new Date(providedStartDate),
+    },
+  }).sort({ "period.endDate": -1 });
+
+  if (invoicesInPeriod.length > 0) {
+    const endDate =
+      parseUniversalDate(invoicesInPeriod[0].period?.endDate) ||
+      new Date(invoicesInPeriod[0].period?.endDate);
+    return new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  return parseUniversalDate(customer.startDate) || new Date(customer.startDate);
+};
+
+// Helper function to get start date from last invoice
+const getStartDateFromLastInvoice = (customer, existingInvoices) => {
+  if (existingInvoices.length > 0) {
+    const lastInvoice = existingInvoices[0];
+    const isUnpaidOrPartial = ["Unpaid", "Partially Paid"].includes(
+      lastInvoice.payment?.status
+    );
+    const targetDate = isUnpaidOrPartial
+      ? lastInvoice.period?.startDate
+      : lastInvoice.period?.endDate;
+    return parseUniversalDate(targetDate) || new Date(targetDate);
+  }
+  return parseUniversalDate(customer.startDate) || new Date(customer.startDate);
+};
+
+// Helper function to get last order date
+const getLastOrderDate = async (customerId, startDate) => {
+  const lastOrder = await CustomerOrders.findOne({
+    customer: customerId,
+    deliveryDate: { $gte: formatDateToDDMMYYYY(startDate) },
+  }).sort({ deliveryDate: -1 });
+
+  return lastOrder
+    ? parseUniversalDate(lastOrder.deliveryDate) ||
+        new Date(lastOrder.deliveryDate)
+    : new Date();
+};
+
+// Helper function to fetch orders in range
+const fetchOrdersInRange = async (
+  customerId,
+  startDate,
+  endDate,
+  paymentStatus
+) => {
+  const allOrders = await CustomerOrders.find({
+    customer: customerId,
+  }).populate("products._id", "productName productCode price size description");
+
+  const startDateObj =
+    parseUniversalDate(formatDateToDDMMYYYY(startDate)) || startDate;
+  const endDateObj =
+    parseUniversalDate(formatDateToDDMMYYYY(endDate)) || endDate;
+
+  let orders = allOrders.filter((order) => {
+    const orderDate = parseUniversalDate(order.deliveryDate);
+    return orderDate && orderDate >= startDateObj && orderDate <= endDateObj;
+  });
+
+  if (paymentStatus === "Partially Paid") {
+    orders = orders.filter((order) => order.status === "Delivered");
+  }
+
+  return orders;
+};
+
+// Helper function to process products
+const processProducts = (orders, paymentStatus) => {
+  const productMap = new Map();
+
+  orders.forEach((order) => {
+    if (paymentStatus === "Partially Paid" && order.status !== "Delivered")
+      return;
+
+    order.products.forEach((product) => {
+      const key = `${product._id._id}_${product.productSize}`;
+      const price = parseFloat(product.price);
+
+      if (productMap.has(key)) {
+        const existing = productMap.get(key);
+        existing.quantity += product.quantity;
+        existing.totalPrice = existing.quantity * existing.price;
+      } else {
+        productMap.set(key, {
+          productId: product._id._id,
+          productName: product._id.productName,
+          productCode: product._id.productCode,
+          productSize: product.productSize,
+          quantity: product.quantity,
+          price: price,
+          totalPrice: product.quantity * price,
+        });
+      }
+    });
+  });
+
+  const products = Array.from(productMap.values());
+  const totalAmount = products.reduce(
+    (sum, product) => sum + product.totalPrice,
+    0
+  );
+
+  return { products, totalAmount };
+};
+
+// Helper function to calculate delivery stats
+const calculateDeliveryStats = async (
+  orders,
+  startDate,
+  endDate,
+  paymentStatus,
+  customerId
+) => {
+  const actualOrders =
+    paymentStatus === "Partially Paid"
+      ? orders.filter((order) => order.status === "Delivered").length
+      : orders.length;
+
+  const startDateStr = formatDateToDDMMYYYY(startDate);
+  const endDateStr = formatDateToDDMMYYYY(endDate);
+  const startDateObj =
+    parseUniversalDate(startDateStr) || new Date(startDateStr);
+  const endDateObj = parseUniversalDate(endDateStr) || new Date(endDateStr);
+
+  const allDates = [];
+  const currentDate = new Date(startDateObj);
+  while (currentDate <= endDateObj) {
+    allDates.push(formatDateToDDMMYYYY(new Date(currentDate)));
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  const orderDates =
+    paymentStatus === "Partially Paid"
+      ? orders
+          .filter((order) => order.status === "Delivered")
+          .map((order) => order.deliveryDate)
+      : orders.map((order) => order.deliveryDate);
+
+  // Get customer's absent days list
+  const customer = await Customer.findById(customerId);
+  const customerAbsentDays = customer.absentDays.map((absentDate) =>
+    formatDateToDDMMYYYY(absentDate)
+  );
+
+  // Only count dates that have no order AND are in customer's absent list
+  const absentDays = allDates
+    .filter(
+      (date) => !orderDates.includes(date) && customerAbsentDays.includes(date)
+    )
+    .map((date) => new Date(parseUniversalDate(date) || new Date(date)));
+
+  return { actualOrders, absentDays };
+};
+
+// Helper function to calculate financials
+const calculateFinancials = async (
+  customerId,
+  totalAmount,
+  isPartialPayment,
+  partialPaymentDays,
+  startDate,
+  endDate
+) => {
+  const previousUnpaidInvoices = await Invoice.find({
+    customer: customerId,
+    paymentStatus: { $in: ["Unpaid", "Partially Paid"] },
+  }).sort({ issueDate: 1 });
+
+  const carryForwardAmount = previousUnpaidInvoices.reduce(
+    (total, invoice) =>
+      total + (invoice.totalAmount - (invoice.paidAmount || 0)),
+    0
+  );
+
+  let balanceAmount = 0;
+  if (isPartialPayment) {
+    const fullPeriodAmount = await calculateFullPeriodAmount(
+      customerId,
+      startDate,
+      endDate
+    );
+    balanceAmount = fullPeriodAmount - totalAmount;
+  }
+
+  const grandTotal = totalAmount + carryForwardAmount;
+
+  return { grandTotal, carryForwardAmount, balanceAmount };
 };
 
 module.exports = {

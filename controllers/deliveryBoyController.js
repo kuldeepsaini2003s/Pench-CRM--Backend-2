@@ -14,14 +14,30 @@ const generateToken = (id) => {
 // ✅ Register Delivery Boy
 const registerDeliveryBoy = async (req, res) => {
   try {
-    const { name, email, phoneNumber, area, password } = req.body;
+    const { name, email, phoneNumber, area, password, address } = req.body;
     const profileImage = req.file.path;
 
+    if (!name || email || phoneNumber || area || password || address) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
+    }
+
     const existing = await DeliveryBoy.findOne({ email });
+
+    const existingPhoneNumber = await DeliveryBoy.findOne({ phoneNumber });
+
     if (existing) {
       return res
         .status(400)
         .json({ success: false, message: "Email already exists" });
+    }
+
+    if (existingPhoneNumber) {
+      return res
+        .status(400)
+        .json({ success: false, message: "PhoneNumber already exists" });
     }
 
     const deliveryBoy = await DeliveryBoy.create({
@@ -31,15 +47,16 @@ const registerDeliveryBoy = async (req, res) => {
       area,
       password,
       profileImage,
+      address,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Delivery boy registered successfully",
       deliveryBoy,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -318,7 +335,6 @@ const deleteDeliveryBoy = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 //✅ Get Orders By Delivery Boy
 const getOrdersByDeliveryBoy = async (req, res) => {

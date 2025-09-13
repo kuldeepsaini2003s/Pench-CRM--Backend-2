@@ -27,6 +27,10 @@ const deliveryBoySchema = new mongoose.Schema(
       type: String,
       required: [true, "Delivery area is required"],
     },
+    address: {
+      type: String,
+      required: [true, "Delivery address is required"],
+    },
     password: {
       type: String,
       required: [true, "Password is required"],

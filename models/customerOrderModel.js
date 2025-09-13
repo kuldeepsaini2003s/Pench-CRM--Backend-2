@@ -60,16 +60,18 @@ const customerOrdersSchema = new mongoose.Schema(
         return `${day}/${month}/${year}`;
       },
     },
-    // paymentMethod: {
-    //   type: String,
-    //   enum: ["COD", "Online"],
-    //   default: "COD",
-    // },
-    // paymentStatus: {
-    //   type: String,
-    //   enum: ["Pending", "Unpaid", "Partially Paid", "Paid"],
-    //   default: "Pending",
-    // },
+
+    paymentMethod: {
+      type: String,
+      enum: ["COD", "Online"],
+      default: "COD",
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ["Pending", "Unpaid", "Partially Paid", "Paid"],
+      default: "Pending",
+    },
 
     products: [productOrderSchema],
 
@@ -82,11 +84,7 @@ const customerOrdersSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: [
-        "Pending",
-        "Delivered",
-        "Returned"
-      ],
+      enum: ["Pending", "Delivered", "Returned"],
       default: "Pending",
     },
 
@@ -110,8 +108,6 @@ const customerOrdersSchema = new mongoose.Schema(
     // razorpayLinkId: { type: String },
     // razorpayLinkStatus: { type: String },
     // razorpayPaymentId: { type: String },
-   
-
   },
   { timestamps: true }
 );
