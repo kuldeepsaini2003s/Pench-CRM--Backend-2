@@ -9,10 +9,6 @@ const invoiceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
     },
-    deliveryBoy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "DeliveryBoy",
-    },
     phoneNumber: {
       type: Number,
       required: true,
