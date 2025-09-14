@@ -63,7 +63,7 @@ const dashboardRoutes = require("./routes/dashboardRoutes");
 const termsAndConditionRoutes = require("./routes/termsAndConditionRoutes");
 const helpAndSupportRoutes = require("./routes/helpAndSupportRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
-
+const shareTokenRoutes = require("./routes/shareTokenRoutes");
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
@@ -77,6 +77,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/termsAndCondition", termsAndConditionRoutes);
 app.use("/api/helpAndSupport", helpAndSupportRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/shareToken", shareTokenRoutes);
 
 
 // Connect DB then start server
