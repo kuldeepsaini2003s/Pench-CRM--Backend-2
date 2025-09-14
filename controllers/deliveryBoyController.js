@@ -1,21 +1,19 @@
 const DeliveryBoy = require("../models/deliveryBoyModel");
-const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const CustomerOrders = require("../models/customerOrderModel");
 const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 
-// Generate JWT
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "7d",
-  });
-};
+
+const FRONTEND_BASE = process.env.FRONTEND_BASE_URL || "https://pench-delivery-boy-app.netlify.app";
+const tokenExpiry = parseInt(process.env.TOKEN_TTL_MIN) || 15; // token expiry in minutes
+
+
 
 // ✅ Register Delivery Boy
 const registerDeliveryBoy = async (req, res) => {
   try {
     const { name, email, phoneNumber, area, password, address } = req.body;
-    const profileImage = req.file.path;
+    const profileImage = req?.file;
 
     if (!name || !email || !phoneNumber || !area || !password || !address) {
       return res.status(400).json({
@@ -205,18 +203,16 @@ const getDeliveryBoyById = async (req, res) => {
       });
     }
 
-    // Try to decrypt plain password
-    let plainPassword;
+    let plainPassword = null
     try {
-      if (deliveryBoy.encryptedPassword) {
-        plainPassword = deliveryBoy.getPlainPassword();
-      } else {
-        plainPassword = deliveryBoy.password; // fallback hashed password
-      }
-    } catch (err) {
-      console.error("Error decrypting password:", err.message);
-      plainPassword = deliveryBoy.password; // fallback hashed password
+      plainPassword = deliveryBoy.getPlainPassword();
+    } catch (error) {
+      console.error("Error getting plain password:", error);
     }
+
+
+    const deliveryBoyCredentialShareableLink = `${FRONTEND_BASE}?t=${deliveryBoy.shareToken}`;
+    const message = `Hi! Use this link to login the delivery app (valid ${tokenExpiry} minutes): ${deliveryBoyCredentialShareableLink}`;
 
     return res.status(200).json({
       success: true,
@@ -233,6 +229,7 @@ const getDeliveryBoyById = async (req, res) => {
         isDeleted: deliveryBoy.isDeleted,
         createdAt: deliveryBoy.createdAt,
         updatedAt: deliveryBoy.updatedAt,
+        credentialShareableLink: message,
       },
     });
   } catch (error) {
@@ -417,6 +414,65 @@ const getOrdersByDeliveryBoy = async (req, res) => {
   }
 };
 
+//✅ Share Genearted  Token
+const shareConsumeToken = async(req, res) =>{
+  try {
+    const {token} = req.query
+    if(!token){
+      return res.staus(400).json({
+        success: false,
+        message: "Token is required",
+      })
+    }
+    const sharedToken = await DeliveryBoy.findOne({shareToken: token})
+    .select("_id name email password +encryptedPassword")
+
+    if(!sharedToken){
+      return res.status(404).json({
+        success: false,
+        message: "Share token not found",
+      })
+    }
+
+    if (new Date() > new Date(sharedToken.shareTokenExpiresAt)) {
+      return res.status(410).json({ success: false, message: "Share token expired" });
+    }
+
+  
+    let plainPassword = null;
+    let hashedPassword = null;
+    try {
+      plainPassword = sharedToken.getPlainPassword(); 
+      hashedPassword = sharedToken.password;
+    } catch (err) {
+      console.error("Decrypt error:", err);
+    }
+
+    sharedToken.shareTokenUsed = true;
+    await sharedToken.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Share token consumed successfully",
+      shareToken: {
+        _id:sharedToken._id,
+        email: sharedToken.email,
+        hashedPassword: hashedPassword,
+        password:plainPassword,
+        deliveryBoyName: sharedToken.name,
+      },
+    });
+    
+  } catch (error) {
+    console.log("Error in shareConsumeToken:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to consume token",
+      error: error.message,
+    });
+  }
+}
+
 module.exports = {
   registerDeliveryBoy,
   loginDeliveryBoy,
@@ -426,4 +482,5 @@ module.exports = {
   deleteDeliveryBoy,
   getDeliveryBoyById,
   getOrdersByDeliveryBoy,
+  shareConsumeToken,
 };

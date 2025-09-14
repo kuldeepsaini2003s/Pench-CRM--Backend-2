@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { encrypt, decrypt } = require("../utils/decrypt");
+const crypto = require("crypto")
 
 const deliveryBoySchema = new mongoose.Schema(
   {
@@ -49,6 +50,9 @@ const deliveryBoySchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    shareToken: { type: String },
+    shareTokenExpiresAt: { type: Date },
+    shareTokenUsed: { type: Boolean, default: false },
   },
   {
     timestamps: true,
@@ -69,8 +73,14 @@ deliveryBoySchema.pre("save", async function (next) {
   // ✅ Step 2: hash the password for login comparison
   this.password = await bcrypt.hash(this.password, 10);
 
+  this.shareToken = crypto.randomBytes(16).toString("hex")
+
+  this.shareTokenExpiresAt= undefined
+  this.shareTokenUsed= false
   next();
 });
+
+
 
 // Compare password method
 deliveryBoySchema.methods.comparePassword = async function (enteredPassword) {
