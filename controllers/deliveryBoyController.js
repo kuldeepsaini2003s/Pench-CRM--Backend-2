@@ -13,7 +13,7 @@ const tokenExpiry = parseInt(process.env.TOKEN_TTL_MIN) || 15; // token expiry i
 const registerDeliveryBoy = async (req, res) => {
   try {
     const { name, email, phoneNumber, area, password, address } = req.body;
-    const profileImage = req?.file;
+    const profileImage = req?.file?.path;
 
     if (!name || !email || !phoneNumber || !area || !password || !address) {
       return res.status(400).json({
