@@ -61,23 +61,15 @@ const invoiceSchema = new mongoose.Schema(
         type: String,
         enum: ["COD", "Online"],
         default: "COD",
-      },
-      amount: { type: Number, default: 0 },
-      paidDate: { type: Date },
-      partialPayments: [
-        {
-          amount: { type: Number },
-          date: { type: Date },
-          method: { type: String },
-          notes: { type: String },
-        },
-      ],
+      }
     },
     totals: {
       subtotal: { type: Number, default: 0 },
       paidAmount: { type: Number, default: 0 },
       balanceAmount: { type: Number, default: 0 },
       carryForwardAmount: { type: Number, default: 0 },
+      partiallyPaidAmount: { type: Number, default: 0 },
+      paidDate: { type: Date },
     },
     state: {
       type: String,

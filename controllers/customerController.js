@@ -312,6 +312,7 @@ const getAllCustomers = async (req, res) => {
     }
 
     const totalCustomers = filteredCustomers.length;
+    console.log("get All Customer", totalCustomers)
 
     const paginatedCustomers = filteredCustomers.slice(
       (page - 1) * limit,

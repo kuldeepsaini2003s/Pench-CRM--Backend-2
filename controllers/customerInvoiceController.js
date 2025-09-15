@@ -11,6 +11,7 @@ const {
 const moment = require("moment");
 const { calculateFullPeriodAmount } = require("../helper/helperFunctions");
 
+//✅ Create Customer Invoice
 const createCustomerInvoice = async (req, res) => {
   try {
     const {
@@ -50,16 +51,6 @@ const createCustomerInvoice = async (req, res) => {
     const paidAmount = partialPayment ? partialPayment.partialPaymentAmount : 0;
     const balanceAmount = grandTotal - paidAmount;
 
-    const partialPayments = [];
-    if (paymentStatus === "Partially Paid" && partialPayment) {
-      partialPayments.push({
-        amount: partialPayment.partialPaymentAmount,
-        date: new Date(),
-        method: paymentMethod,
-        notes: `Partial payment for ${partialPayment.partialPaymentDays} days`,
-      });
-    }
-
     const invoiceNumber = generateInvoiceNumber();
 
     const invoice = await Invoice.create({
@@ -90,14 +81,14 @@ const createCustomerInvoice = async (req, res) => {
         status: paymentStatus,
         method: paymentMethod,
         amount: paidAmount,
-        paidDate: paymentStatus === "Paid" ? new Date() : null,
-        partialPayments: partialPayments,
+
       },
       totals: {
         subtotal,
         paidAmount,
         balanceAmount,
         carryForwardAmount,
+        paidDate: paymentStatus === "Paid" ? new Date() : null,
       },
       state: "Draft",
     });
@@ -156,6 +147,7 @@ const createCustomerInvoice = async (req, res) => {
   }
 };
 
+//✅ Get All Customer Invoices
 const getAllCustomerInvoices = async (req, res) => {
   try {
     let {
@@ -255,7 +247,7 @@ const getAllCustomerInvoices = async (req, res) => {
       customerName: invoice?.customerData?.name || "N/A",
       phoneNumber: invoice?.phoneNumber || invoice?.customerData?.phoneNumber,
       subscriptionPlan: invoice?.subscriptionPlan || "N/A",
-      amount: invoice?.totals?.subtotal || 0,
+      totalAmount: invoice?.totals?.subtotal || 0,
       status: invoice?.payment?.status || "Unpaid",
       pdfUrl: invoice?.pdfUrl,
       period: {
@@ -289,6 +281,7 @@ const getAllCustomerInvoices = async (req, res) => {
   }
 };
 
+//✅ Search Customers
 const searchCustomers = async (req, res) => {
   try {
     const { customerName, phoneNumber } = req.query;
@@ -356,6 +349,7 @@ const searchCustomers = async (req, res) => {
   }
 };
 
+//✅ Get Customer Data
 const getCustomerData = async (req, res) => {
   try {
     const { customerId } = req.params;
@@ -492,6 +486,41 @@ const getCustomerData = async (req, res) => {
     });
   }
 };
+
+//✅ Get Invoice By Id
+const getInvoiceById = async(req, res) =>{
+  try{
+    const{invoiceId} = req.params
+    if(!invoiceId){
+      return res.status(400).json({
+        success: false,
+        message: "Invoice ID is required",
+      });
+    }
+
+    const invoice = await Invoice.findById(invoiceId)
+    if(!invoice){
+      return res.status(404).json({
+        success: false,
+        message: "Invoice not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Invoice By Id retrieved successfully",
+      invoice,
+    });
+
+  }catch(error){
+    console.error("Error getting invoice by id:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error getting invoice by id",
+      error: error.message,
+    });
+  }
+}
 
 // Helper function to determine date range
 const determineDateRange = async (
@@ -751,6 +780,7 @@ const calculateFinancials = async (
 module.exports = {
   createCustomerInvoice,
   getAllCustomerInvoices,
+  getInvoiceById,
   searchCustomers,
   getCustomerData,
 };
