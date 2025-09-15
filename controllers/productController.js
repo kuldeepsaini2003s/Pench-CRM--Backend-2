@@ -117,7 +117,6 @@ const getAllProducts = async (req, res) => {
     if (search) {
       filter.$or = [
         { productName: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
         { size: { $regex: search, $options: "i" } },
       ];
     }
