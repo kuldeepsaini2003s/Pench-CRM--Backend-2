@@ -36,12 +36,12 @@ const createProduct = async (req, res) => {
     let normalizeSize = size.replace(/\s+/g, "").toLowerCase();
 
      // ✅ Validation: only allow formats ending with ltr, gm, or kg
-     const sizePattern = /^\d+(ltr|gm|kg)$/; // e.g. 2ltr, 500gm, 1kg
+     const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/; // 
      if (!sizePattern.test(normalizeSize)) {
        return res.status(400).json({
          success: false,
          message:
-           "Invalid size format. Allowed formats: e.g. '2ltr', '500gm', '1kg'",
+           "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
        });
      }
 
@@ -55,7 +55,7 @@ const createProduct = async (req, res) => {
     if(!sizePattern.test(normalizeSize)){
         return res.status(400).json({
             success: false,
-            message: `Invalid size. Use: ${allowedsizes.join(", ")}`,
+            message: `Invalid size. Use: ${sizePattern}`,
           });
     }
     if (duplicateProduct) {
@@ -223,7 +223,7 @@ const updateProduct = async (req, res) => {
           return res.status(400).json({
             success: false,
             message:
-              "Invalid size format. Allowed formats: e.g. '2ltr', '500gm', '1kg'",
+              "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
           });
         }
   
@@ -252,8 +252,8 @@ const updateProduct = async (req, res) => {
     // ⚡ Single DB call, no validation re-run
     const updatedProduct = await Product.findByIdAndUpdate(id, updateData, {
       new: true, // return updated doc
-      lean: true, // ⚡ return plain JS object (faster)
-    }).exec(); // ⚡ ensure query executes immediately
+      lean: true, // return plain JS object (faster)
+    }).exec(); // ensure query executes immediately
 
     if (!updatedProduct) {
       return res.status(404).json({

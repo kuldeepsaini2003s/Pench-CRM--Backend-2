@@ -90,7 +90,7 @@ const loginDeliveryBoy = async (req, res) => {
     }
 
     // Generate JWT token
-    const token = generateToken(deliveryBoy._id);
+    const token = await deliveryBoy.generateToken();
 
     return res.status(200).json({
       success: true,
@@ -99,10 +99,10 @@ const loginDeliveryBoy = async (req, res) => {
         _id: deliveryBoy._id,
         name: deliveryBoy.name,
         email: deliveryBoy.email,
+        password:deliveryBoy.password,
         phoneNumber: deliveryBoy.phoneNumber,
         area: deliveryBoy.area,
         profileImage: deliveryBoy.profileImage,
-        // ⚠️ Do NOT send hashed/encrypted password in login response
       },
     });
   } catch (error) {

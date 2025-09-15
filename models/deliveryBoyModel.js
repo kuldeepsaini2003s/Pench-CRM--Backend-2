@@ -96,9 +96,9 @@ deliveryBoySchema.methods.getPlainPassword = function () {
 };
 
 // Generate JWT token
-deliveryBoySchema.methods.getJWTToken = function () {
-  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE,
+deliveryBoySchema.methods.generateToken = function () {
+  return jwt.sign({ id: this._id }, process.env.ACCESS_TOKEN_SECRET, {
+    expiresIn: "7d",
   });
 };
 
