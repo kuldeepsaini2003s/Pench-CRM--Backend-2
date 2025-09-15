@@ -3,131 +3,195 @@ const Payment = require("../models/paymentModel");
 const Product = require("../models/productModel");
 const Customer = require("../models/customerModel");
 const { normalizeDate } = require("../utils/dateUtils");
+const CustomerOrder = require("../models/customerOrderModel")
 const moment = require("moment");
 
-const TotalSales = async (req, res, next) => {
-  const { page = 1, limit = 10 } = req.query;
-  const skip = (page - 1) * limit;
 
-  //  Total Delivered Records
-  const totalRecords = await DeliveryHistory.countDocuments({
-    status: "Delivered",
-  });
+//✅ Total Sales
+const TotalSales = async (req, res) => {
+  try {
+    let { page = 1, limit = 10, search = "", sortOrder = "", period="All Time" } = req.query;
 
-  if (totalRecords === 0) {
-    return next(new ErrorHandler("No delivered sales found", 404));
-  }
+    page = parseInt(page);
+    limit = parseInt(limit);
+    const skip = (page - 1) * limit;
 
-  const deliveries = await DeliveryHistory.find({ status: "Delivered" })
-    .populate("customer", "name phoneNumber address createdAt")
-    .populate("products.product", "productName productCode size price")
-    .sort({ date: -1 })
-    .skip(skip)
-    .limit(parseInt(limit));
+    // ---- Base Match Filter ----
+    const baseMatch = { status: "Delivered" };
 
-  const salesData = await Promise.all(
-    deliveries.map(async (delivery) => {
-      const customer = delivery.customer;
+    let startDate, endDate;
+    const today = new Date();
+    if(period == "This Month"){
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+      endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    }
+    else if(period == "This Year"){
+      startDate = new Date(today.getFullYear(), 0, 1);
+      endDate = new Date(today.getFullYear(), 11, 31);
+    }
+    else if(period == "This Week"){
+      const dayOfWeek = today.getDay(); // 0=Sunday
+      startDate = new Date(today);
+      startDate.setDate(today.getDate() - dayOfWeek); // start of week
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      endDate.setHours(23, 59, 59, 999);
+    }
+    else{
+      startDate = null;
+      endDate = null;
+    }
 
-      if (!customer) {
-        return {
-          customer: {
-            name: "Unknown Customer",
-            phoneNumber: "N/A",
-            address: "N/A",
-            startDate: null,
-          },
-          products: [],
-          totalAmount: 0,
-          payment: {
-            method: "N/A",
-            status: "Unpaid",
-            totalPaid: 0,
-          },
-        };
-      }
+    // ---- Aggregation Pipeline ----
+    const pipeline = [
+      { $match: baseMatch },
+      {
+        $lookup: {
+          from: "customers",        // collection name in MongoDB
+          localField: "customer",
+          foreignField: "_id",
+          as: "customer",
+        },
+      },
+      { $unwind: "$customer" },
+    ];
 
-      const paymentRecord = await Payment.findOne({ customer: customer._id })
-        .sort({ createdAt: -1 })
-        .select("paymentMethod status paidAmount");
-
-      const products = delivery.products.map((item) => {
-        const product = item.product;
-        const price = Number(product?.price || item.price || 0);
-        const quantity = Number(item.quantity || 0);
-        const total = price * quantity;
-
-        return {
-          productName: product?.productName || "N/A",
-          productCode: product?.productCode || "N/A",
-          size: product?.size || "N/A",
-          price,
-          quantity,
-          total,
-        };
+    // ---- Search Filter ----
+    if (search && search.trim() !== "") {
+      const regex = new RegExp(search, "i");
+      pipeline.push({
+        $match: {
+          $or: [
+            { "customer.name": { $regex: regex } },
+            { 
+              $expr: { 
+                $regexMatch: { 
+                  input: { $toString: "$customer.phoneNumber" }, 
+                  regex: regex 
+                } 
+              } 
+            },
+            { "products.productName": { $regex: regex } },
+            { "products.productSize": { $regex: regex } },
+          ],
+        },
       });
+    }
+       // ---- Date Filter ----
+       if (startDate && endDate) {
+        pipeline.push({
+          $addFields: {
+            deliveryDateObj: {
+              $dateFromString: {
+                dateString: "$deliveryDate", // your field in dd/mm/yyyy
+                format: "%d/%m/%Y",
+              },
+            },
+          },
+        });
+        pipeline.push({
+          $match: {
+            deliveryDateObj: { $gte: startDate, $lte: endDate },
+          },
+        });
+      }
+  
+    const sortOptions = sortOrder === "asc" ? 1 : -1;
 
-      const deliveryTotal = products.reduce((sum, p) => sum + p.total, 0);
+    // ---- Sorting, Skip, Limit ----
+    pipeline.push(
+      { $sort: { createdAt: sortOptions } },
+      { $skip: skip },
+      { $limit: limit }
+    );
+
+    // ---- Execute Aggregation ----
+    const deliveries = await CustomerOrder.aggregate(pipeline);
+
+    if (!deliveries || deliveries.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No delivered sales found",
+      });
+    }
+
+    // ---- Map Sales Data ----
+    const salesData = deliveries.map((delivery) => {
+      const customer = delivery.customer || {};
+      const products = delivery.products.map((product) => ({
+        _id: product._id,
+        productName: product.productName,
+        productSize: product.productSize,
+        price: product.price,
+        quantity: product.quantity,
+        totalPrice: product.totalPrice,
+      }));
+
+      const totalAmount = products.reduce(
+        (sum, p) => sum + (p.totalPrice || Number(p.price) * Number(p.quantity)),
+        0
+      );
+      const totalProductsDelivered = products.reduce(
+        (sum, p) => sum + (p.quantity || 0),
+        0
+      );
 
       return {
-        customer: {
-          name: customer.name,
-          phoneNumber: customer.phoneNumber,
-          address: customer.address,
-          startDate: customer.createdAt,
-        },
+        orderNumber: delivery.orderNumber,
+        orderStatus:delivery.status,
+        customerName: customer.name || "Unknown",
+        phoneNumber: customer.phoneNumber || "N/A",
+        paymentMethod: delivery.paymentMethod || "N/A",
+        paymentStatus: delivery.paymentStatus || "Unpaid",
         products,
-        totalAmount: deliveryTotal,
-        payment: {
-          method: paymentRecord?.paymentMethod || "N/A",
-          status: paymentRecord?.status || "Unpaid",
-          totalPaid: paymentRecord?.paidAmount || 0,
-        },
+        totalAmount,
+        totalProductsDelivered,
+        deliveryDate: delivery.deliveryDate,
       };
-    })
-  );
-
-  const grandTotalAmount = salesData.reduce(
-    (sum, record) => sum + (record.totalAmount || 0),
-    0
-  );
-
-  const allDeliveries = await DeliveryHistory.find({
-    status: "Delivered",
-  }).populate("products.product");
-
-  let totalProductsDelivered = 0;
-  allDeliveries.forEach((d) => {
-    d.products.forEach((p) => {
-      totalProductsDelivered += Number(p.quantity || 0);
     });
-  });
 
-  const totalDeliveries = allDeliveries.length;
-  const totalPages = Math.ceil(totalRecords / limit);
+    // ---- Summary ----
+    const grandTotalAmount = salesData.reduce(
+      (sum, record) => sum + (record.totalAmount || 0),
+      0
+    );
+    const totalProductsDelivered = salesData.reduce(
+      (sum, record) => sum + (record.totalProductsDelivered || 0),
+      0
+    );
 
-  res.status(200).json({
-    success: true,
-    data: {
-      sales: salesData,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages,
-        totalRecords,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
-        limit: parseInt(limit),
-      },
+    const totalPages = Math.ceil(deliveries.length / limit);
+
+    // ---- Response ----
+    res.status(200).json({
+      success: true,
+      message: "Total Sales fetched successfully",
+      totalRecords: deliveries.length,
+      totalPages,
+      currentPage: page,
+      previous: page > 1,
+      next: page < totalPages,
       summary: {
         grandTotalAmount,
-        totalProductsDelivered,
-        totalDeliveries,
+        // totalProductsDelivered,
+        totalDeliveries: deliveries.length,
       },
-    },
-  });
-}
+      sales: salesData,
+    });
+  } catch (err) {
+    console.error("TotalSales Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
 
-//  Get Low Stock Products (stock < 10)
+
+
+
+//✅ Get Low Stock Products (stock < 10)
 const getLowStockProducts = async (req, res, next) => {
   const products = await Product.find(
     { stock: { $lt: 10 } },
@@ -230,9 +294,119 @@ const getActiveSubscriptions = async (req, res) => {
 };
 
 
+//✅ Get New Onboard Customers (first delivery)
+const getNewOnboardCustomers = async (req, res) => {
+  try {
+    let { page = 1, limit = 10, productName = "", size = "", range = "prev" } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
+    const skip = (page - 1) * limit;
 
-// 5. Get Top &lowest Products by Sales
+    const today = moment().startOf("day");
+    const weekday = today.isoWeekday(); // 1 = Monday ... 7 = Sunday
 
+    let startDate, endDate;
+
+    if (range === "prev") {
+      // Last same weekday → Today
+      startDate = moment(today).subtract(1, "week").startOf("day");
+      endDate = moment(today).endOf("day");
+    } else if (range === "next") {
+      // Today  → Next same weekday
+      startDate = moment(today).startOf("day");
+      endDate = moment(today).add(1, "week").endOf("day");
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid range. Use 'prev' or 'next'.",
+      });
+    }
+
+    // ---- Base filter ----
+    const filter = {
+      isDeleted: false,
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
+    };
+
+    // ---- Product filter ----
+    let productMatch = {};
+    if (productName && productName.trim() !== "") {
+      productMatch.productName = { $regex: new RegExp(productName, "i") };
+    }
+    if (size && size.trim() !== "") {
+      productMatch.size = { $regex: new RegExp(size, "i") };
+    }
+
+    // ---- Count + Query ----
+    const [totalOnBoardedCustomers, customers] = await Promise.all([
+      Customer.countDocuments(filter),
+      Customer.find(filter)
+        .populate({
+          path: "products.product",
+          model: Product,
+          select: "productName size",
+          match: productMatch,
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    if (!customers || customers.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No onboard customers found for this range",
+      });
+    }
+
+    // ---- Format Response ----
+    const response = customers
+      .map((customer) =>
+        customer.products
+          .filter((p) => p.product)
+          .map((p) => ({
+            customerName: customer.name,
+            productName: p.product?.productName || "N/A",
+            size: p.productSize || p.product?.size || "N/A",
+            quantity: p.quantity,
+            date: moment(customer.createdAt).format("DD/MM/YYYY"),
+          }))
+      )
+      .flat();
+
+    // ---- Pagination ----
+    const totalPages = Math.ceil(totalOnBoardedCustomers / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
+
+    return res.status(200).json({
+      success: true,
+      message: "Onboard customers fetched successfully",
+      weekRange: {
+        from: startDate.format("DD/MM/YYYY"),
+        to: endDate.format("DD/MM/YYYY"),
+      },
+      totalOnBoardedCustomers,
+      totalPages,
+      currentPage: page,
+      previous: hasPrevious,
+      next: hasNext,
+      customers: response,
+    });
+  } catch (error) {
+    console.error("getNewOnboardCustomers Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch onboard customers",
+      error: error.message,
+    });
+  }
+};
+
+
+
+// ✅ Get Top &lowest Products by Sales
 const getTopAndLowestProducts = async (req, res, next) => {
   let { startDate, endDate } = req.query;
 
@@ -349,115 +523,7 @@ const getPendingPayments = async (req, res, next) => {
   });
 }
 
-//✅ Get New Onboard Customers (first delivery)
-const getNewOnboardCustomers = async (req, res) => {
-  try {
-    let { page = 1, limit = 10, productName = "", size = "", range = "prev" } = req.query;
-    page = parseInt(page);
-    limit = parseInt(limit);
-    const skip = (page - 1) * limit;
 
-    const today = moment().startOf("day");
-    const weekday = today.isoWeekday(); // 1 = Monday ... 7 = Sunday
-
-    let startDate, endDate;
-
-    if (range === "prev") {
-      // Last same weekday → Today
-      startDate = moment(today).subtract(1, "week").startOf("day");
-      endDate = moment(today).endOf("day");
-    } else if (range === "next") {
-      // Today  → Next same weekday
-      startDate = moment(today).startOf("day");
-      endDate = moment(today).add(1, "week").endOf("day");
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid range. Use 'prev' or 'next'.",
-      });
-    }
-
-    // ---- Base filter ----
-    const filter = {
-      isDeleted: false,
-      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
-    };
-
-    // ---- Product filter ----
-    let productMatch = {};
-    if (productName && productName.trim() !== "") {
-      productMatch.productName = { $regex: new RegExp(productName, "i") };
-    }
-    if (size && size.trim() !== "") {
-      productMatch.size = { $regex: new RegExp(size, "i") };
-    }
-
-    // ---- Count + Query ----
-    const [totalOnBoardedCustomers, customers] = await Promise.all([
-      Customer.countDocuments(filter),
-      Customer.find(filter)
-        .populate({
-          path: "products.product",
-          model: Product,
-          select: "productName size",
-          match: productMatch,
-        })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-    ]);
-
-    if (!customers || customers.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No onboard customers found for this range",
-      });
-    }
-
-    // ---- Format Response ----
-    const response = customers
-      .map((customer) =>
-        customer.products
-          .filter((p) => p.product)
-          .map((p) => ({
-            customerName: customer.name,
-            productName: p.product?.productName || "N/A",
-            size: p.productSize || p.product?.size || "N/A",
-            quantity: p.quantity,
-            date: moment(customer.createdAt).format("DD/MM/YYYY"),
-          }))
-      )
-      .flat();
-
-    // ---- Pagination ----
-    const totalPages = Math.ceil(totalOnBoardedCustomers / limit);
-    const hasPrevious = page > 1;
-    const hasNext = page < totalPages;
-
-    return res.status(200).json({
-      success: true,
-      message: "Onboard customers fetched successfully",
-      weekRange: {
-        from: startDate.format("DD/MM/YYYY"),
-        to: endDate.format("DD/MM/YYYY"),
-      },
-      totalOnBoardedCustomers,
-      totalPages,
-      currentPage: page,
-      previous: hasPrevious,
-      next: hasNext,
-      customers: response,
-    });
-  } catch (error) {
-    console.error("getNewOnboardCustomers Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch onboard customers",
-      error: error.message,
-    });
-  }
-};
 
 
 
