@@ -9,6 +9,10 @@ const invoiceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
     },
+    gstNumber:{
+      type:Number,
+      required:true
+    },
     phoneNumber: {
       type: Number,
       required: true,

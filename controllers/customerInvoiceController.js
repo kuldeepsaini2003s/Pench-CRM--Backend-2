@@ -16,6 +16,7 @@ const createCustomerInvoice = async (req, res) => {
   try {
     const {
       customer,
+      gstNumber,
       period,
       products,
       grandTotal,
@@ -55,6 +56,7 @@ const createCustomerInvoice = async (req, res) => {
 
     const invoice = await Invoice.create({
       invoiceNumber,
+      gstNumber,
       customer: customerId,
       phoneNumber: parseInt(phoneNumber),
       address,
