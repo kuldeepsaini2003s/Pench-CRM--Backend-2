@@ -218,7 +218,7 @@ const updateProduct = async (req, res) => {
     if(size){
       const normalizeSize = size.replace(/\s+/g, "").toLowerCase();
         // ✅ Validate size format
-        const sizePattern = /^\d+(ltr|gm|kg)$/;
+        const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
         if (!sizePattern.test(normalizeSize)) {
           return res.status(400).json({
             success: false,
