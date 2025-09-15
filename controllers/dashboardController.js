@@ -357,20 +357,19 @@ const getNewOnboardCustomers = async (req, res) => {
     limit = parseInt(limit);
     const skip = (page - 1) * limit;
 
-    // ✅ Get today's weekday
     const today = moment().startOf("day");
-    const weekday = today.isoWeekday(); // 1 = Monday, 7 = Sunday
+    const weekday = today.isoWeekday(); // 1 = Monday ... 7 = Sunday
 
     let startDate, endDate;
 
     if (range === "prev") {
-      // 🔹 Last same weekday → Current weekday
-      startDate = moment(today).subtract(1, "week"); // last same weekday
-      endDate = today;
+      // Last same weekday → Today
+      startDate = moment(today).subtract(1, "week").startOf("day");
+      endDate = moment(today).endOf("day");
     } else if (range === "next") {
-      // 🔹 Current weekday → Next same weekday
-      startDate = today;
-      endDate = moment(today).add(1, "week");
+      // Today  → Next same weekday
+      startDate = moment(today).startOf("day");
+      endDate = moment(today).add(1, "week").endOf("day");
     } else {
       return res.status(400).json({
         success: false,
@@ -381,7 +380,7 @@ const getNewOnboardCustomers = async (req, res) => {
     // ---- Base filter ----
     const filter = {
       isDeleted: false,
-      createdAt: { $gte: startDate.toDate(), $lt: endDate.toDate() },
+      createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
     };
 
     // ---- Product filter ----
@@ -420,7 +419,7 @@ const getNewOnboardCustomers = async (req, res) => {
     const response = customers
       .map((customer) =>
         customer.products
-          .filter((p) => p.product) 
+          .filter((p) => p.product)
           .map((p) => ({
             customerName: customer.name,
             productName: p.product?.productName || "N/A",
@@ -459,6 +458,7 @@ const getNewOnboardCustomers = async (req, res) => {
     });
   }
 };
+
 
 
 

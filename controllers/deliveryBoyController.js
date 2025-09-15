@@ -213,7 +213,7 @@ const getDeliveryBoyById = async (req, res) => {
 
 
     const deliveryBoyCredentialShareableLink = `${FRONTEND_BASE}?t=${deliveryBoy.shareToken}`;
-    const message = `Hi! Use this link to login the delivery app (valid ${tokenExpiry} minutes): ${deliveryBoyCredentialShareableLink}`;
+    
 
     return res.status(200).json({
       success: true,
@@ -230,7 +230,7 @@ const getDeliveryBoyById = async (req, res) => {
         isDeleted: deliveryBoy.isDeleted,
         createdAt: deliveryBoy.createdAt,
         updatedAt: deliveryBoy.updatedAt,
-        credentialShareableLink: message,
+        credentialShareableLink: deliveryBoyCredentialShareableLink,
       },
     });
   } catch (error) {
