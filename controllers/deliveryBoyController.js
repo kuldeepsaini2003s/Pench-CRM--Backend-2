@@ -94,6 +94,7 @@ const loginDeliveryBoy = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      message:"Delivery boy logged in successfully",
       token,
       deliveryBoy: {
         _id: deliveryBoy._id,
