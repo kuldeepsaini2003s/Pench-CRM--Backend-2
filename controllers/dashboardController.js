@@ -21,6 +21,10 @@ const TotalSales = async (req, res) => {
 
     let startDate, endDate;
     const today = new Date();
+    if(period == "Today"){
+      startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    }
     if(period == "This Month"){
       startDate = new Date(today.getFullYear(), today.getMonth(), 1);
       endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
@@ -96,7 +100,7 @@ const TotalSales = async (req, res) => {
           },
         });
       }
-  
+
     const sortOptions = sortOrder === "asc" ? 1 : -1;
 
     // ---- Sorting, Skip, Limit ----
@@ -187,8 +191,6 @@ const TotalSales = async (req, res) => {
     });
   }
 };
-
-
 
 
 //✅ Get Low Stock Products (stock < 10)
@@ -405,6 +407,93 @@ const getNewOnboardCustomers = async (req, res) => {
 };
 
 
+const getEarningOverview = async(req, res) =>{
+  try {
+    const {period} = req.query
+    const order = await CustomerOrder.find()
+  } catch (error) {
+    console.log(error)
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch earnings overview",
+      error: error.message,
+    })
+  }
+}
+
+
+const getProductOfTheDay = async (req, res) => {
+  try {
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+    const pipeline = [
+      // Match delivered orders
+      { $match: { status: "Delivered" } },
+
+      // Convert deliveryDate (dd/mm/yyyy string) -> Date
+      {
+        $addFields: {
+          deliveryDateObj: {
+            $dateFromString: {
+              dateString: "$deliveryDate",
+              format: "%d/%m/%Y",
+            },
+          },
+        },
+      },
+
+      // Match only today's orders
+      {
+        $match: {
+          deliveryDateObj: { $gte: startOfDay, $lte: endOfDay },
+        },
+      },
+
+      // Break down products array
+      { $unwind: "$products" },
+
+      // Group by product name (or _id if you prefer)
+      {
+        $group: {
+          _id: "$products._id",
+          productName: { $first: "$products.productName" },
+          totalQuantity: { $sum: "$products.quantity" },
+          totalRevenue: { $sum: "$products.totalPrice" },
+        },
+      },
+
+      // Sort by quantity sold
+      { $sort: { totalQuantity: -1 } },
+
+      // Keep top 1 product
+      { $limit: 1 },
+    ];
+
+    const result = await CustomerOrder.aggregate(pipeline);
+
+    if (!result || result.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No product sales found for today",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Product of the day fetched successfully",
+      productOfTheDay: result[0],
+    });
+  } catch (error) {
+    console.error("getProductOfTheDay Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch product of the day",
+      error: error.message,
+    });
+  }
+};
 
 // ✅ Get Top &lowest Products by Sales
 const getTopAndLowestProducts = async (req, res, next) => {
@@ -535,4 +624,6 @@ module.exports = {
   getTopAndLowestProducts,
   getPendingPayments,
   getNewOnboardCustomers,
+  getProductOfTheDay,
+  getProductOfTheDay
 };
