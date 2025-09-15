@@ -131,23 +131,23 @@ const createCustomer = async (req, res) => {
       }
 
       // Product validate
-      const productDoc = await Product.findOne({ productName });
+      const productDoc = await Product.findOne({ productName, size: productSize });
 
       if (!productDoc) {
-        const allProducts = await Product.find({}, "productName");
+        const allProducts = await Product.find({}, "productName size");
         return res.status(400).json({
           success: false,
           message: `Invalid product name: ${productName}. Please select from dropdown.`,
-          availableProducts: allProducts.map((p) => p.productName),
+          availableProducts: allProducts.map((p) => ({ productName: p.productName, size: p.size })),
         });
       }
 
       // productSize validate
-      if (!productDoc.size.includes(productSize)) {
+      if (productDoc.size !== productSize) {
         return res.status(400).json({
           success: false,
           message: `Invalid size "${productSize}" for ${productName}. Please select from dropdown.`,
-          availableSizes: productDoc.size,
+          availableSizes: [productDoc.size],
         });
       }
 
@@ -925,14 +925,14 @@ const addProductToCustomer = async (req, res) => {
       });
     }
 
-    const product = await Product.findOne({ productName });
+    const product = await Product.findOne({ productName, size: productSize });
 
     if (!product) {
-      const allProducts = await Product.find({}, "productName");
+      const allProducts = await Product.find({}, "productName size");
       return res.status(404).json({
         success: false,
         message: `Product "${productName}" not found. Please select from available products.`,
-        availableProducts: allProducts.map((p) => p.productName),
+        availableProducts: allProducts.map((p) => ({ productName: p.productName, size: p.size })),
       });
     }
 
