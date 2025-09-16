@@ -9,9 +9,9 @@ const invoiceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
     },
-    gstNumber:{
-      type:Number,
-      required:true
+    gstNumber: {
+      type: Number,
+      required: true,
     },
     phoneNumber: {
       type: Number,
@@ -52,7 +52,7 @@ const invoiceSchema = new mongoose.Schema(
         productSize: { type: String },
         quantity: { type: Number },
         price: { type: Number },
-        totalPrice: { type: Number },        
+        totalPrice: { type: Number },
       },
     ],
     payment: {
@@ -65,7 +65,7 @@ const invoiceSchema = new mongoose.Schema(
         type: String,
         enum: ["COD", "Online"],
         default: "COD",
-      }
+      },
     },
     totals: {
       subtotal: { type: Number, default: 0 },
@@ -80,6 +80,12 @@ const invoiceSchema = new mongoose.Schema(
       enum: ["Draft", "Sent", "Paid"],
       default: "Draft",
     },    
+    includedOrders: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CustomerOrders",
+      },
+    ],
   },
   { timestamps: true }
 );

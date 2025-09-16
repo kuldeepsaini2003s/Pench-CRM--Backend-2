@@ -1,16 +1,20 @@
-
 const Payment = require("../models/paymentModel");
 const Product = require("../models/productModel");
 const Customer = require("../models/customerModel");
 const { normalizeDate } = require("../utils/dateUtils");
-const CustomerOrder = require("../models/customerOrderModel")
+const CustomerOrder = require("../models/customerOrderModel");
 const moment = require("moment");
-
 
 //✅ Total Sales
 const TotalSales = async (req, res) => {
   try {
-    let { page = 1, limit = 10, search = "", sortOrder = "", period="All Time" } = req.query;
+    let {
+      page = 1,
+      limit = 10,
+      search = "",
+      sortOrder = "",
+      period = "All Time",
+    } = req.query;
 
     page = parseInt(page);
     limit = parseInt(limit);
@@ -21,19 +25,25 @@ const TotalSales = async (req, res) => {
 
     let startDate, endDate;
     const today = new Date();
-    if(period == "Today"){
-      startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if (period == "Today") {
+      startDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
+      endDate = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate()
+      );
     }
-    if(period == "This Month"){
+    if (period == "This Month") {
       startDate = new Date(today.getFullYear(), today.getMonth(), 1);
       endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    }
-    else if(period == "This Year"){
+    } else if (period == "This Year") {
       startDate = new Date(today.getFullYear(), 0, 1);
       endDate = new Date(today.getFullYear(), 11, 31);
-    }
-    else if(period == "This Week"){
+    } else if (period == "This Week") {
       const dayOfWeek = today.getDay(); // 0=Sunday
       startDate = new Date(today);
       startDate.setDate(today.getDate() - dayOfWeek); // start of week
@@ -41,8 +51,7 @@ const TotalSales = async (req, res) => {
       endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
       endDate.setHours(23, 59, 59, 999);
-    }
-    else{
+    } else {
       startDate = null;
       endDate = null;
     }
@@ -52,7 +61,7 @@ const TotalSales = async (req, res) => {
       { $match: baseMatch },
       {
         $lookup: {
-          from: "customers",        // collection name in MongoDB
+          from: "customers", // collection name in MongoDB
           localField: "customer",
           foreignField: "_id",
           as: "customer",
@@ -68,13 +77,13 @@ const TotalSales = async (req, res) => {
         $match: {
           $or: [
             { "customer.name": { $regex: regex } },
-            { 
-              $expr: { 
-                $regexMatch: { 
-                  input: { $toString: "$customer.phoneNumber" }, 
-                  regex: regex 
-                } 
-              } 
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $toString: "$customer.phoneNumber" },
+                  regex: regex,
+                },
+              },
             },
             { "products.productName": { $regex: regex } },
             { "products.productSize": { $regex: regex } },
@@ -82,24 +91,24 @@ const TotalSales = async (req, res) => {
         },
       });
     }
-       // ---- Date Filter ----
-       if (startDate && endDate) {
-        pipeline.push({
-          $addFields: {
-            deliveryDateObj: {
-              $dateFromString: {
-                dateString: "$deliveryDate", // your field in dd/mm/yyyy
-                format: "%d/%m/%Y",
-              },
+    // ---- Date Filter ----
+    if (startDate && endDate) {
+      pipeline.push({
+        $addFields: {
+          deliveryDateObj: {
+            $dateFromString: {
+              dateString: "$deliveryDate", // your field in dd/mm/yyyy
+              format: "%d/%m/%Y",
             },
           },
-        });
-        pipeline.push({
-          $match: {
-            deliveryDateObj: { $gte: startDate, $lte: endDate },
-          },
-        });
-      }
+        },
+      });
+      pipeline.push({
+        $match: {
+          deliveryDateObj: { $gte: startDate, $lte: endDate },
+        },
+      });
+    }
 
     const sortOptions = sortOrder === "asc" ? 1 : -1;
 
@@ -133,7 +142,8 @@ const TotalSales = async (req, res) => {
       }));
 
       const totalAmount = products.reduce(
-        (sum, p) => sum + (p.totalPrice || Number(p.price) * Number(p.quantity)),
+        (sum, p) =>
+          sum + (p.totalPrice || Number(p.price) * Number(p.quantity)),
         0
       );
       const totalProductsDelivered = products.reduce(
@@ -143,7 +153,7 @@ const TotalSales = async (req, res) => {
 
       return {
         orderNumber: delivery.orderNumber,
-        orderStatus:delivery.status,
+        orderStatus: delivery.status,
         customerName: customer.name || "Unknown",
         phoneNumber: customer.phoneNumber || "N/A",
         paymentMethod: delivery.paymentMethod || "N/A",
@@ -192,7 +202,6 @@ const TotalSales = async (req, res) => {
   }
 };
 
-
 //✅ Get Low Stock Products (stock < 10)
 const getLowStockProducts = async (req, res, next) => {
   const products = await Product.find(
@@ -209,7 +218,7 @@ const getLowStockProducts = async (req, res, next) => {
     count: products.length,
     products,
   });
-}
+};
 
 //✅ Get Active Subscriptions
 const getActiveSubscriptions = async (req, res) => {
@@ -233,10 +242,7 @@ const getActiveSubscriptions = async (req, res) => {
           { subscriptionStatus: regex },
         ];
       } else {
-        filter.$or = [
-          { name: regex },
-          { subscriptionStatus: regex },
-        ];
+        filter.$or = [{ name: regex }, { subscriptionStatus: regex }];
       }
     }
 
@@ -247,7 +253,9 @@ const getActiveSubscriptions = async (req, res) => {
     const [totalActiveSubscribedCustomers, customers] = await Promise.all([
       Customer.countDocuments(filter),
       Customer.find(filter)
-        .select("image name phoneNumber subscriptionStatus subscriptionPlan createdAt")
+        .select(
+          "image name phoneNumber subscriptionStatus subscriptionPlan createdAt"
+        )
         .sort({ createdAt: sortOption })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -295,11 +303,16 @@ const getActiveSubscriptions = async (req, res) => {
   }
 };
 
-
 //✅ Get New Onboard Customers (first delivery)
 const getNewOnboardCustomers = async (req, res) => {
   try {
-    let { page = 1, limit = 10, productName = "", size = "", range = "prev" } = req.query;
+    let {
+      page = 1,
+      limit = 10,
+      productName = "",
+      size = "",
+      range = "prev",
+    } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
     const skip = (page - 1) * limit;
@@ -364,18 +377,22 @@ const getNewOnboardCustomers = async (req, res) => {
 
     // ---- Format Response ----
     const response = customers
-      .map((customer) =>
-        customer.products
-          .filter((p) => p.product)
-          .map((p) => ({
-            customerName: customer.name,
-            productName: p.product?.productName || "N/A",
-            size: p.productSize || p.product?.size || "N/A",
-            quantity: p.quantity,
-            date: moment(customer.createdAt).format("DD/MM/YYYY"),
-          }))
-      )
-      .flat();
+      .filter((customer) => customer.products.some((p) => p.product))
+      .map((customer) => {
+        const validProducts = customer.products.filter((p) => p.product);
+
+        return {
+          customerName: customer.name,
+          productNames: validProducts
+            .map((p) => p.product?.productName || "N/A")
+            .join(", "),
+          sizes: validProducts
+            .map((p) => p.productSize || p.product?.size || "N/A")
+            .join(", "),
+          quantities: validProducts.map((p) => p.quantity).join(", "),
+          date: moment(customer.startDate).format("DD/MM/YYYY"),
+        };
+      });
 
     // ---- Pagination ----
     const totalPages = Math.ceil(totalOnBoardedCustomers / limit);
@@ -389,7 +406,7 @@ const getNewOnboardCustomers = async (req, res) => {
         from: startDate.format("DD/MM/YYYY"),
         to: endDate.format("DD/MM/YYYY"),
       },
-      totalOnBoardedCustomers,
+      totalOnBoardedCustomers: response.length,
       totalPages,
       currentPage: page,
       previous: hasPrevious,
@@ -406,21 +423,19 @@ const getNewOnboardCustomers = async (req, res) => {
   }
 };
 
-
-const getEarningOverview = async(req, res) =>{
+const getEarningOverview = async (req, res) => {
   try {
-    const {period} = req.query
-    const order = await CustomerOrder.find()
+    const { period } = req.query;
+    const order = await CustomerOrder.find();
   } catch (error) {
-    console.log(error)
+    console.log(error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch earnings overview",
       error: error.message,
-    })
+    });
   }
-}
-
+};
 
 const getProductOfTheDay = async (req, res) => {
   try {
@@ -563,9 +578,7 @@ const getTopAndLowestProducts = async (req, res, next) => {
         : null,
     },
   });
-}
-
-
+};
 
 const getPendingPayments = async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
@@ -610,12 +623,7 @@ const getPendingPayments = async (req, res, next) => {
       limit: parseInt(limit),
     },
   });
-}
-
-
-
-
-
+};
 
 module.exports = {
   TotalSales,
@@ -625,5 +633,5 @@ module.exports = {
   getPendingPayments,
   getNewOnboardCustomers,
   getProductOfTheDay,
-  getProductOfTheDay
+  getProductOfTheDay,
 };
