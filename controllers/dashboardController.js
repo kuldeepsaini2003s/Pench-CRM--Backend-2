@@ -439,10 +439,9 @@ const getEarningOverview = async (req, res) => {
 };
 
 
-}
+
 
 //✅ Get Product Of The Day
-
 const getProductOfTheDay = async (req, res) => {
   try {
     const today = new Date();
