@@ -492,7 +492,7 @@ const getProductOfTheDay = async (req, res) => {
     ];
 
     const result = await CustomerOrder.aggregate(pipeline);
-
+console.log("result", result)
     if (!result || result.length === 0) {
       return res.status(404).json({
         success: false,
@@ -597,6 +597,7 @@ const getLowestProductSale = async (req, res) => {
     });
   }
 };
+
 
 //✅ Get Total Delivered Product Unit
 const getTotalDeliveredProductUnit = async (req, res) => {
