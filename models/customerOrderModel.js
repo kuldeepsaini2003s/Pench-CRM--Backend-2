@@ -93,9 +93,11 @@ const customerOrdersSchema = new mongoose.Schema(
       default: 0,
     },
 
-    bottleReturnSize: {
-      type: String,
-    },
+    bottleReturnSize:[
+      {
+        type: String,
+      }
+    ]
 
     // wantToPay: {
     //   type: Boolean,

@@ -383,10 +383,7 @@ const createAdditionalOrder = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const {
-      status,
-      bottleReturnSize,
-    } = req.body;
+    const { status, bottleReturnSize } = req.body;
 
     const order = await CustomerOrders.findById(orderId);
     if (!order) {
@@ -396,17 +393,43 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // ✅ Update status
-    if (status) order.status = status;
+    const allowedOrderStatus = ["Pending", "Delivered", "Returned"];
+    if (status && !allowedOrderStatus.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order status",
+        allowedOrderStatus,
+      });
+    }
 
-    if (bottleReturnSize) order.bottleReturnSize = bottleReturnSize;
+    const allowedBottleReturnSize = ["1ltr", "1/2ltr"];
+    if(bottleReturnSize && !allowedBottleReturnSize.includes(bottleReturnSize)){
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bottle return size",
+        allowedBottleReturnSize,
+      });
+    }
+
+    // ✅ Update status if provided
+    if (status) {
+      order.status = status;
+    }
+
+    // ✅ Handle bottle return
+    if (bottleReturnSize) {
+      order.bottleReturnSize = bottleReturnSize;
+
+      // Increase bottleReturned count
+      order.bottlesReturned = (order.bottlesReturned || 0) + 1;
+    }
 
     await order.save();
 
     res.status(200).json({
       success: true,
-      message: "Order Status updated successfully",
-      order
+      message: "Order status updated successfully",
+      order,
     });
   } catch (error) {
     console.error("updateOrderStatus Error:", error);
@@ -417,6 +440,7 @@ const updateOrderStatus = async (req, res) => {
     });
   }
 };
+
 
 
 
