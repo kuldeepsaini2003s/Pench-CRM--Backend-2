@@ -391,6 +391,7 @@ const updateOrderStatus = async (req, res) => {
     const { orderId } = req.params;
     const { status, bottleReturnSize } = req.body;
 
+
     const order = await CustomerOrders.findById(orderId).populate("customer");
 
     if (!order) {
@@ -416,6 +417,9 @@ const updateOrderStatus = async (req, res) => {
       bottleReturnSize &&
       !allowedBottleReturnSize.includes(bottleReturnSize)
     ) {
+
+    if(bottleReturnSize && !allowedBottleReturnSize.includes(bottleReturnSize)){
+
       return res.status(400).json({
         success: false,
         message: "Invalid bottle return size",
@@ -466,7 +470,9 @@ const updateOrderStatus = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: message,
+      message: "Order status updated successfully",
+      order,
+
     });
   } catch (error) {
     console.error("updateOrderStatus Error:", error);
@@ -641,6 +647,7 @@ const createOrUpdateInvoice = async (order, customer) => {
     return { success: false, error: error.message };
   }
 };
+
 
 
 module.exports = {
