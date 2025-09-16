@@ -94,13 +94,13 @@ const loginDeliveryBoy = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message:"Delivery boy logged in successfully",
+      message: "Delivery boy logged in successfully",
       token,
       deliveryBoy: {
         _id: deliveryBoy._id,
         name: deliveryBoy.name,
         email: deliveryBoy.email,
-        password:deliveryBoy.password,
+        password: deliveryBoy.password,
         phoneNumber: deliveryBoy.phoneNumber,
         area: deliveryBoy.area,
         profileImage: deliveryBoy.profileImage,
@@ -213,7 +213,7 @@ const getDeliveryBoyById = async (req, res) => {
 
 
     const deliveryBoyCredentialShareableLink = `${FRONTEND_BASE}?t=${deliveryBoy.shareToken}`;
-    
+
 
     return res.status(200).json({
       success: true,
@@ -416,19 +416,19 @@ const getOrdersByDeliveryBoy = async (req, res) => {
 };
 
 //✅ Share Genearted  Token
-const shareConsumeToken = async(req, res) =>{
+const shareConsumeToken = async (req, res) => {
   try {
-    const {token} = req.query
-    if(!token){
+    const { token } = req.query
+    if (!token) {
       return res.staus(400).json({
         success: false,
         message: "Token is required",
       })
     }
-    const sharedToken = await DeliveryBoy.findOne({shareToken: token})
-    .select("_id name email password +encryptedPassword")
+    const sharedToken = await DeliveryBoy.findOne({ shareToken: token })
+      .select("_id name email password +encryptedPassword")
 
-    if(!sharedToken){
+    if (!sharedToken) {
       return res.status(404).json({
         success: false,
         message: "Share token not found",
@@ -439,11 +439,11 @@ const shareConsumeToken = async(req, res) =>{
       return res.status(410).json({ success: false, message: "Share token expired" });
     }
 
-  
+
     let plainPassword = null;
     let hashedPassword = null;
     try {
-      plainPassword = sharedToken.getPlainPassword(); 
+      plainPassword = sharedToken.getPlainPassword();
       hashedPassword = sharedToken.password;
     } catch (err) {
       console.error("Decrypt error:", err);
@@ -456,14 +456,14 @@ const shareConsumeToken = async(req, res) =>{
       success: true,
       message: "Share token consumed successfully",
       shareToken: {
-        _id:sharedToken._id,
+        _id: sharedToken._id,
         email: sharedToken.email,
         hashedPassword: hashedPassword,
-        password:plainPassword,
+        password: plainPassword,
         deliveryBoyName: sharedToken.name,
       },
     });
-    
+
   } catch (error) {
     console.log("Error in shareConsumeToken:", error);
     return res.status(500).json({
@@ -473,6 +473,86 @@ const shareConsumeToken = async(req, res) =>{
     });
   }
 }
+
+// ✅ Get DeliveryBoy Own Bootle Tracking Record
+const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
+  try {
+    const deliveryBoyId = req.deliveryBoy._id;
+
+    if (!deliveryBoyId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      })
+    }
+    const deliveryBoy = await DeliveryBoy.findById(deliveryBoyId)
+    console.log("deliveryBoy", deliveryBoy)
+    if (!deliveryBoy) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery boy not found",
+      })
+    }
+    const orders = await CustomerOrders.find({ deliveryBoy: deliveryBoyId });
+
+    let totalIssued = 0, totalReturned = 0;
+    let oneLtrIssued = 0, oneLtrReturned = 0;
+    let halfLtrIssued = 0, halfLtrReturned = 0;
+
+    for (const order of orders) {
+      // issued bottles
+      for (const p of order.products) {
+        if (p.productSize === "1ltr") {
+          oneLtrIssued += p.quantity;
+        } else if (p.productSize === "1/2ltr") {
+          halfLtrIssued += p.quantity;
+        }
+        totalIssued += p.quantity;
+      }
+
+      // returned bottles
+      if (order.bottleReturnSize && order.bottleReturnSize.length > 0) {
+        order.bottleReturnSize.forEach(size => {
+          if (size === "1ltr") oneLtrReturned += 1;
+          if (size === "1/2ltr") halfLtrReturned += 1;
+        });
+      }
+      totalReturned += order.bottlesReturned;
+    }
+
+    const response = {
+      _id: deliveryBoy._id,
+      deliveryBoy: deliveryBoy.name,
+      total: {
+        issued: totalIssued,
+        returned: totalReturned,
+        yetToReturn: totalIssued - totalReturned,
+      },
+      "1ltr": {
+        issued: oneLtrIssued,
+        returned: oneLtrReturned,
+        yetToReturn: oneLtrIssued - oneLtrReturned,
+      },
+      "1/2ltr": {
+        issued: halfLtrIssued,
+        returned: halfLtrReturned,
+        yetToReturn: halfLtrIssued - halfLtrReturned,
+      }
+    };
+
+    return res.json({
+      success: true,
+      message: "Delivery boy own bottle tracking record fetched successfully",
+      trackingRecord: response
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: "Failed to get delivery boy own bottle tracking record" });
+  }
+
+}
+
 
 module.exports = {
   registerDeliveryBoy,
@@ -484,4 +564,5 @@ module.exports = {
   getDeliveryBoyById,
   getOrdersByDeliveryBoy,
   shareConsumeToken,
+  getDeliveryBoyOwnBootleTrackingRecord
 };

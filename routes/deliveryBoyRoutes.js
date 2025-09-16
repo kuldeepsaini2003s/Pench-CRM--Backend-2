@@ -8,7 +8,8 @@ const {
   getDeliveryBoyProfile,
   getDeliveryBoyById,
   getOrdersByDeliveryBoy,
-  shareConsumeToken
+  shareConsumeToken,
+  getDeliveryBoyOwnBootleTrackingRecord
 } = require("../controllers/deliveryBoyController");
 
 const {upload} = require("../config/cloudinary");
@@ -32,6 +33,7 @@ router.put("/updateDeliveryBoyProfile/:id", upload.single("profileImage"), updat
 router.put("/delete/:id", deleteDeliveryBoy);
 router.get("/getOrdersByDeliveryBoy",  verifyDeliveryBoyToken,  getOrdersByDeliveryBoy);
 router.get("/shareToken", shareConsumeToken);
+router.get("/getDeliveryBoyBootleTracking", verifyDeliveryBoyToken, getDeliveryBoyOwnBootleTrackingRecord);
 
 
 module.exports = router;
