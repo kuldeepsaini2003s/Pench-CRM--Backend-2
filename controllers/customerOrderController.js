@@ -413,10 +413,6 @@ const updateOrderStatus = async (req, res) => {
 
     const allowedBottleReturnSize = ["1ltr", "1/2ltr"];
 
-    if (
-      bottleReturnSize &&
-      !allowedBottleReturnSize.includes(bottleReturnSize)
-    ) {
 
     if(bottleReturnSize && !allowedBottleReturnSize.includes(bottleReturnSize)){
 
