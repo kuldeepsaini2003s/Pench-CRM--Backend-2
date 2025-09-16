@@ -421,7 +421,7 @@ const getEarningOverview = async(req, res) =>{
   }
 }
 
-
+//✅ Get Product Of The Day
 const getProductOfTheDay = async (req, res) => {
   try {
     const today = new Date();
@@ -495,76 +495,234 @@ const getProductOfTheDay = async (req, res) => {
   }
 };
 
-// ✅ Get Top &lowest Products by Sales
-const getTopAndLowestProducts = async (req, res, next) => {
-  let { startDate, endDate } = req.query;
+//✅ Get Lowest Product Sale
+const getLowestProductSale = async (req, res) => {
+  try {
+    const today = new Date();
+    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
-  // Prepare match stage
-  const matchStage = { status: "Delivered" };
-  if (startDate || endDate) {
-    matchStage.date = {};
-    if (startDate) matchStage.date.$gte = normalizeDate(startDate);
-    if (endDate) matchStage.date.$lte = normalizeDate(endDate);
+    const pipeline = [
+      // Match delivered orders
+      { $match: { status: "Delivered" } },
+
+      // Convert deliveryDate (dd/mm/yyyy string) -> Date
+      {
+        $addFields: {
+          deliveryDateObj: {
+            $dateFromString: {
+              dateString: "$deliveryDate",
+              format: "%d/%m/%Y",
+            },
+          },
+        },
+      },
+
+      // Match only today's orders
+      {
+        $match: {
+          deliveryDateObj: { $gte: startOfDay, $lte: endOfDay },
+        },
+      },
+
+      // Break down products array
+      { $unwind: "$products" },
+
+      // Group by product name
+      {
+        $group: {
+          _id: "$products._id",
+          productName: { $first: "$products.productName" },
+          productSize:{$first:"$products.productSize"},
+          totalQuantity: { $sum: "$products.quantity" },
+          totalRevenue: { $sum: "$products.totalPrice" },
+        },
+      },
+
+      // Sort ascending by quantity
+      { $sort: { totalQuantity: 1 } },
+    ];
+
+    const result = await CustomerOrder.aggregate(pipeline);
+
+    if (!result || result.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No product sales found for today",
+      });
+    }
+
+    // Find minimum quantity
+    const minQuantity = result[0].totalQuantity;
+
+    // Filter all products that have this minimum quantity
+    const lowestProducts = result.filter(
+      (p) => p.totalQuantity === minQuantity
+    );
+
+
+    const lowestSalesCount = lowestProducts.length;
+    return res.status(200).json({
+      success: true,
+      message: "Lowest sold product(s) fetched successfully",
+      lowestSalesCount,
+      lowestProductSale:lowestProducts,
+    });
+  } catch (error) {
+    console.error("getLowestProductSale Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch lowest sold product(s)",
+      error: error.message,
+    });
   }
+};
 
-  // Aggregate deliveries
-  const productAggregation = await DeliveryHistory.aggregate([
-    { $match: matchStage },
-    { $unwind: "$products" },
-    { $match: { "products.status": "delivered" } },
-    {
+//✅ Get Total Delivered Product Unit
+const getTotalDeliveredProductUnit = async (req, res) => {
+  try {
+    let { productName, productSize, period } = req.query;
+
+    // ---- Validate productName ----
+    let productDoc = [];
+    if (productName) {
+      productDoc = await Product.find({ productName });
+
+      if (!productDoc || productDoc.length === 0) {
+        const allProducts = await Product.find({}, "productName size");
+        return res.status(400).json({
+          success: false,
+          message: `Invalid product name: "${productName}". Please choose from the available list.`,
+          availableProducts: allProducts.map((p) => ({
+            name: p.productName,
+            size: p.productSize,
+          })),
+        });
+      }
+    }
+
+    // ---- Validate quantity unit if product exists ----
+    if (productSize && productDoc.length > 0) {
+      const valideSize = productDoc.map((p) => p.size);
+      if (!valideSize.includes(productSize)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid size "${productSize}" for product "${productName}". Please choose from the available list.`,
+          availableSizes: valideSize,
+        });
+      }
+    }
+
+    // ---- Date Range based on period ----
+    const now = new Date();
+    let startDate, endDate;
+
+    switch (period) {
+      case "Daily":
+        startDate = new Date(now.setHours(0, 0, 0, 0));
+        endDate = new Date(now.setHours(23, 59, 59, 999));
+        break;
+      case "Weekly":
+        const firstDayOfWeek = new Date(now);
+        firstDayOfWeek.setDate(now.getDate() - now.getDay()); // Sunday
+        firstDayOfWeek.setHours(0, 0, 0, 0);
+
+        const lastDayOfWeek = new Date(firstDayOfWeek);
+        lastDayOfWeek.setDate(firstDayOfWeek.getDate() + 6);
+        lastDayOfWeek.setHours(23, 59, 59, 999);
+
+        startDate = firstDayOfWeek;
+        endDate = lastDayOfWeek;
+        break;
+      case "Monthly":
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(
+          now.getFullYear(),
+          now.getMonth() + 1,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
+        break;
+      default:
+        startDate = null;
+        endDate = null;
+    }
+
+    // ---- Pipeline ----
+    const pipeline = [
+      { $match: { status: "Delivered" } },
+      {
+        $addFields: {
+          deliveryDateObj: {
+            $dateFromString: {
+              dateString: "$deliveryDate",
+              format: "%d/%m/%Y",
+            },
+          },
+        },
+      },
+    ];
+
+    if (startDate && endDate) {
+      pipeline.push({
+        $match: { deliveryDateObj: { $gte: startDate, $lte: endDate } },
+      });
+    }
+
+    pipeline.push({ $unwind: "$products" });
+
+    const productMatch = {};
+    if (productName) productMatch["products.productName"] = productName;
+    if (productSize) productMatch["products.productSize"] = productSize;
+
+    if (Object.keys(productMatch).length > 0) {
+      pipeline.push({ $match: productMatch });
+    }
+
+    pipeline.push({
       $group: {
-        _id: "$products.product",
-        totalQuantity: { $sum: "$products.quantity" },
+        _id: "$products._id",
+        productName: { $first: "$products.productName" },
+        productSize: { $first: "$products.productSize" },
+        totalUnits: { $sum: "$products.quantity" },
+        totalRevenue: { $sum: "$products.totalPrice" },
       },
-    },
-    {
-      $lookup: {
-        from: "products",
-        localField: "_id",
-        foreignField: "_id",
-        as: "productInfo",
-      },
-    },
-    { $unwind: "$productInfo" },
-    {
-      $project: {
-        productName: "$productInfo.productName",
-        productCode: "$productInfo.productCode",
-        totalQuantity: 1,
-      },
-    },
-    { $sort: { totalQuantity: -1 } }, // Descending for top products
-  ]);
+    });
 
-  if (!productAggregation || productAggregation.length === 0) {
-    return next(new ErrorHandler("No product deliveries found", 404));
+    pipeline.push({ $sort: { totalUnits: -1 } });
+
+    const result = await CustomerOrder.aggregate(pipeline);
+
+
+
+    if (!result || result.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No delivered products found",
+      });
+    }
+    const grandTotalUnits = result.reduce((sum, r) => sum + r.totalUnits, 0);
+
+
+    return res.status(200).json({
+      success: true,
+      message: "Delivered Product Units Fetched Successfully",
+      period: period || "All",
+      deliveredUnits:grandTotalUnits,
+      result,
+    });
+  } catch (error) {
+    console.error("getTotalDelivierdProductUnit Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to Fetch Total Delivered Product Unit",
+      error: error.message,
+    });
   }
-
-  const topProduct = productAggregation[0];
-  const lowestProduct = productAggregation[productAggregation.length - 1];
-
-  res.status(200).json({
-    success: true,
-    data: {
-      topProduct: topProduct
-        ? {
-            productName: topProduct.productName,
-            productCode: topProduct.productCode,
-            count: topProduct.totalQuantity,
-          }
-        : null,
-      lowestProduct: lowestProduct
-        ? {
-            productName: lowestProduct.productName,
-            productCode: lowestProduct.productCode,
-            count: lowestProduct.totalQuantity,
-          }
-        : null,
-    },
-  });
-}
-
+};
 
 
 const getPendingPayments = async (req, res, next) => {
@@ -621,9 +779,9 @@ module.exports = {
   TotalSales,
   getLowStockProducts,
   getActiveSubscriptions,
-  getTopAndLowestProducts,
   getPendingPayments,
   getNewOnboardCustomers,
   getProductOfTheDay,
-  getProductOfTheDay
+  getLowestProductSale,
+  getTotalDeliveredProductUnit
 };
