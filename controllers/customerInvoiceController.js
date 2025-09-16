@@ -11,12 +11,13 @@ const {
 const moment = require("moment");
 const { calculateFullPeriodAmount } = require("../helper/helperFunctions");
 
+const gstNumber = process.env.GST_NUMBER;
+
 //✅ Create Customer Invoice
 const createCustomerInvoice = async (req, res) => {
   try {
     const {
       customer,
-      gstNumber,
       period,
       products,
       grandTotal,
@@ -44,13 +45,48 @@ const createCustomerInvoice = async (req, res) => {
     const paymentMethod = customer.paymentMethod || "COD";
     const paymentStatus = customer.paymentStatus || "Unpaid";
 
+    // Check if invoice already exists for this customer and period
+    const existingInvoice = await Invoice.findOne({
+      customer: customerId,
+      "period.startDate": {
+        $lte: parseUniversalDate(period.endDate) || new Date(period.endDate),
+      },
+      "period.endDate": {
+        $gte:
+          parseUniversalDate(period.startDate) || new Date(period.startDate),
+      },
+    });
+
+    if (existingInvoice) {
+      return res.status(409).json({
+        success: false,
+        message: "Invoice already exists for this customer and period",
+        existingInvoice: {
+          invoiceNumber: existingInvoice.invoiceNumber,
+          period: {
+            startDate: existingInvoice.period.startDate,
+            endDate: existingInvoice.period.endDate,
+          },
+          status: existingInvoice.payment?.status || "Unpaid",
+          pdfUrl: existingInvoice.pdfUrl,
+          state: existingInvoice.state,
+        },
+      });
+    }
+
     const subtotal = products.reduce(
       (sum, product) => sum + product.totalPrice,
       0
     );
     const carryForwardAmount = grandTotal - subtotal;
-    const paidAmount = partialPayment ? partialPayment.partialPaymentAmount : 0;
-    const balanceAmount = grandTotal - paidAmount;
+    const paidAmount =
+      paymentStatus === "Paid"
+        ? grandTotal
+        : partialPayment
+        ? partialPayment.partialPaymentAmount
+        : 0;
+    const balanceAmount =
+      paymentStatus === "Paid" ? 0 : grandTotal - paidAmount;
 
     const invoiceNumber = generateInvoiceNumber();
 
@@ -82,17 +118,19 @@ const createCustomerInvoice = async (req, res) => {
       payment: {
         status: paymentStatus,
         method: paymentMethod,
-        amount: paidAmount,
-
       },
       totals: {
         subtotal,
         paidAmount,
         balanceAmount,
         carryForwardAmount,
+        partiallyPaidAmount: partialPayment
+          ? partialPayment.partialPaymentAmount
+          : 0,
         paidDate: paymentStatus === "Paid" ? new Date() : null,
       },
       state: "Draft",
+      includedOrders: [], // Will be populated when orders are associated
     });
 
     const invoiceWithStats = {
@@ -134,6 +172,15 @@ const createCustomerInvoice = async (req, res) => {
     invoice.pdfUrl = result.secure_url;
     await invoice.save();
 
+    // Update payment status and method for all orders in the date range
+    await updateOrdersPaymentStatus(
+      customerId,
+      period,
+      paymentStatus,
+      paymentMethod,
+      partialPayment
+    );
+
     return res.status(201).json({
       success: true,
       message: "Invoice created successfully",
@@ -166,7 +213,7 @@ const getAllCustomerInvoices = async (req, res) => {
     const skip = (page - 1) * limit;
 
     let matchStage = {};
-    
+
     if (startDate && endDate) {
       const startDateObj = parseUniversalDate(startDate) || new Date(startDate);
       const endDateObj = parseUniversalDate(endDate) || new Date(endDate);
@@ -400,7 +447,7 @@ const getCustomerData = async (req, res) => {
       endDate,
       paymentStatus
     );
-        
+
     const existingInvoice = await Invoice.findOne({
       customer: customerId,
       "period.startDate": { $lte: finalEndDate },
@@ -490,18 +537,18 @@ const getCustomerData = async (req, res) => {
 };
 
 //✅ Get Invoice By Id
-const getInvoiceById = async(req, res) =>{
-  try{
-    const{invoiceId} = req.params
-    if(!invoiceId){
+const getInvoiceById = async (req, res) => {
+  try {
+    const { invoiceId } = req.params;
+    if (!invoiceId) {
       return res.status(400).json({
         success: false,
         message: "Invoice ID is required",
       });
     }
 
-    const invoice = await Invoice.findById(invoiceId)
-    if(!invoice){
+    const invoice = await Invoice.findById(invoiceId);
+    if (!invoice) {
       return res.status(404).json({
         success: false,
         message: "Invoice not found",
@@ -513,8 +560,7 @@ const getInvoiceById = async(req, res) =>{
       message: "Invoice By Id retrieved successfully",
       invoice,
     });
-
-  }catch(error){
+  } catch (error) {
     console.error("Error getting invoice by id:", error);
     return res.status(500).json({
       success: false,
@@ -522,7 +568,7 @@ const getInvoiceById = async(req, res) =>{
       error: error.message,
     });
   }
-}
+};
 
 // Helper function to determine date range
 const determineDateRange = async (
@@ -777,6 +823,128 @@ const calculateFinancials = async (
   const grandTotal = totalAmount + carryForwardAmount;
 
   return { grandTotal, carryForwardAmount, balanceAmount };
+};
+
+// Helper function to update payment status and method for orders in date range
+const updateOrdersPaymentStatus = async (
+  customerId,
+  period,
+  paymentStatus,
+  paymentMethod,
+  partialPayment
+) => {
+  try {
+    const startDate =
+      parseUniversalDate(period.startDate) || new Date(period.startDate);
+    const endDate =
+      parseUniversalDate(period.endDate) || new Date(period.endDate);
+
+    // Find all orders for the customer in the date range
+    const orders = await CustomerOrders.find({
+      customer: customerId,
+      deliveryDate: {
+        $gte: formatDateToDDMMYYYY(startDate),
+        $lte: formatDateToDDMMYYYY(endDate),
+      },
+      status: "Delivered", // Only update delivered orders
+    });
+
+    if (orders.length === 0) {
+      console.log("No delivered orders found in the specified date range");
+      return;
+    }
+
+    // Determine which orders to update based on payment type
+    let ordersToUpdate = [];
+
+    if (paymentStatus === "Paid") {
+      // Update all orders if fully paid
+      ordersToUpdate = orders;
+    } else if (paymentStatus === "Partially Paid" && partialPayment) {
+      // For partial payment, update orders up to the partial payment amount
+      let remainingAmount = partialPayment.partialPaymentAmount;
+      ordersToUpdate = [];
+
+      // Sort orders by delivery date to process chronologically
+      const sortedOrders = orders.sort(
+        (a, b) =>
+          new Date(a.deliveryDate.split("/").reverse().join("-")) -
+          new Date(b.deliveryDate.split("/").reverse().join("-"))
+      );
+
+      for (const order of sortedOrders) {
+        const orderTotal = order.products.reduce(
+          (sum, product) => sum + (product.totalPrice || 0),
+          0
+        );
+
+        if (remainingAmount >= orderTotal) {
+          ordersToUpdate.push(order);
+          remainingAmount -= orderTotal;
+        } else {
+          // If remaining amount is less than order total,
+          // we can still mark it as partially paid
+          ordersToUpdate.push(order);
+          break;
+        }
+      }
+    } else {
+      // For unpaid, don't update any orders
+      console.log("No orders to update for unpaid status");
+      return;
+    }
+
+    // Update the selected orders
+    const updatePromises = ordersToUpdate.map(async (order) => {
+      const updateData = {
+        paymentStatus: paymentStatus,
+        paymentMethod: paymentMethod,
+      };
+
+      // If it's a partial payment and this is the last order that might not be fully covered
+      if (paymentStatus === "Partially Paid" && partialPayment) {
+        const orderTotal = order.products.reduce(
+          (sum, product) => sum + (product.totalPrice || 0),
+          0
+        );
+
+        // Check if this order should be marked as partially paid
+        const remainingAmount =
+          partialPayment.partialPaymentAmount -
+          ordersToUpdate
+            .slice(0, ordersToUpdate.indexOf(order))
+            .reduce(
+              (sum, prevOrder) =>
+                sum +
+                prevOrder.products.reduce(
+                  (orderSum, product) => orderSum + (product.totalPrice || 0),
+                  0
+                ),
+              0
+            );
+
+        if (remainingAmount < orderTotal) {
+          updateData.paymentStatus = "Partially Paid";
+        }
+      }
+
+      return CustomerOrders.findByIdAndUpdate(order._id, updateData, {
+        new: true,
+      });
+    });
+
+    const updatedOrders = await Promise.all(updatePromises);
+
+    console.log(`Updated payment status for ${updatedOrders.length} orders`);
+    console.log(
+      `Payment Status: ${paymentStatus}, Payment Method: ${paymentMethod}`
+    );
+
+    return updatedOrders;
+  } catch (error) {
+    console.error("Error updating orders payment status:", error);
+    throw error;
+  }
 };
 
 module.exports = {
