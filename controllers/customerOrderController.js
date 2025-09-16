@@ -437,31 +437,31 @@ const updateOrderStatus = async (req, res) => {
 
     await order.save();
 
-    // Create or update invoice if order is delivered
-    let invoiceResult = null;
-    if (status === "Delivered") {
-      if (order.isInvoiced) {
-        invoiceResult = {
-          success: true,
-          message: "Invoice already created for this order",
-          isUpdated: false,
-        };
-      } else {
-        invoiceResult = await createOrUpdateInvoice(order, order.customer);
-      }
+    // // Create or update invoice if order is delivered
+    // let invoiceResult = null;
+    // if (status === "Delivered") {
+    //   if (order.isInvoiced) {
+    //     invoiceResult = {
+    //       success: true,
+    //       message: "Invoice already created for this order",
+    //       isUpdated: false,
+    //     };
+    //   } else {
+    //     invoiceResult = await createOrUpdateInvoice(order, order.customer);
+    //   }
 
-      if (!invoiceResult.success) {
-        console.error("Failed to create/update invoice:", invoiceResult.error);
-      }
-    }
+    //   if (!invoiceResult.success) {
+    //     console.error("Failed to create/update invoice:", invoiceResult.error);
+    //   }
+    // }
 
-    let message = "Order Status updated successfully";
+    // let message = "Order Status updated successfully";
 
-    if (invoiceResult && invoiceResult.success) {
-      if (invoiceResult.message) {
-        message = invoiceResult.message;
-      }
-    }
+    // if (invoiceResult && invoiceResult.success) {
+    //   if (invoiceResult.message) {
+    //     message = invoiceResult.message;
+    //   }
+    // }
 
     return res.status(200).json({
       success: true,

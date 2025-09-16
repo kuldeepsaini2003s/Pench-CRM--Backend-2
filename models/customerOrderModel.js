@@ -93,10 +93,6 @@ const customerOrdersSchema = new mongoose.Schema(
       default: 0,
     },
 
-    isInvoiced: {
-      type: Boolean,
-      default: false,
-    },
 
     bottleReturnSize:[
       {
