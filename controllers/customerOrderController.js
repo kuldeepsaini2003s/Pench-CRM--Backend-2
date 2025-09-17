@@ -391,7 +391,6 @@ const updateOrderStatus = async (req, res) => {
     const { orderId } = req.params;
     const { status, bottleReturnSize } = req.body;
 
-
     const order = await CustomerOrders.findById(orderId).populate("customer");
 
     if (!order) {
@@ -401,20 +400,12 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    const allowedOrderStatus = ["Pending", "Delivered", "Returned"];
+    const allowedBottleReturnSize = ["1ltr", "1/2ltr"];
 
-    if (status && !allowedOrderStatus.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order status",
-        allowedOrderStatus,
-      });
-    }
-
-    const allowedBottleReturnSize = ["1ltr", "1/2ltr"]
-
-    if(bottleReturnSize && !allowedBottleReturnSize.includes(bottleReturnSize)){
-
+    if (
+      bottleReturnSize &&
+      !allowedBottleReturnSize.includes(bottleReturnSize)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid bottle return size",
@@ -437,37 +428,12 @@ const updateOrderStatus = async (req, res) => {
 
     await order.save();
 
-    // // Create or update invoice if order is delivered
-    // let invoiceResult = null;
-    // if (status === "Delivered") {
-    //   if (order.isInvoiced) {
-    //     invoiceResult = {
-    //       success: true,
-    //       message: "Invoice already created for this order",
-    //       isUpdated: false,
-    //     };
-    //   } else {
-    //     invoiceResult = await createOrUpdateInvoice(order, order.customer);
-    //   }
-
-    //   if (!invoiceResult.success) {
-    //     console.error("Failed to create/update invoice:", invoiceResult.error);
-    //   }
-    // }
-
-    // let message = "Order Status updated successfully";
-
-    // if (invoiceResult && invoiceResult.success) {
-    //   if (invoiceResult.message) {
-    //     message = invoiceResult.message;
-    //   }
-    // }
-
     return res.status(200).json({
       success: true,
-      message: "Order status updated successfully",
-      order,
-
+      message: message,
+      _id: order?._id,
+      orderNumber: order?.orderNumber,
+      status: order?.status,
     });
   } catch (error) {
     console.error("updateOrderStatus Error:", error);
@@ -478,172 +444,6 @@ const updateOrderStatus = async (req, res) => {
     });
   }
 };
-
-// Helper function to create or update invoice for delivered order
-const createOrUpdateInvoice = async (order, customer) => {
-  try {
-    // Check if this specific order has already been invoiced
-    if (order.isInvoiced) {
-      const existingInvoice = await Invoice.findOne({
-        includedOrders: order._id,
-      });
-
-      return {
-        success: true,
-        message: "Invoice already created for this order",
-      };
-    }
-
-    // Check if customer has an existing invoice
-    const existingInvoice = await Invoice.findOne({
-      customer: order.customer,
-      state: "Draft" || "Sent",
-    }).sort({ createdAt: -1 });
-
-    const orderProducts = order.products.map((product) => ({
-      productId: product._id,
-      productName: product.productName,
-      productSize: product.productSize,
-      quantity: product.quantity,
-      price: parseFloat(product.price),
-      totalPrice: product.totalPrice,
-    }));
-
-    let invoice;
-    let isUpdated = false;
-
-    if (existingInvoice) {
-      // Update existing invoice
-      invoice = existingInvoice;
-      isUpdated = true;
-
-      // Check for duplicate products and update quantities
-      for (const orderProduct of orderProducts) {
-        const existingProductIndex = existingInvoice.products.findIndex(
-          (existingProduct) =>
-            existingProduct.productId.toString() ===
-              orderProduct.productId.toString() &&
-            existingProduct.productSize === orderProduct.productSize
-        );
-
-        if (existingProductIndex !== -1) {
-          // Product exists, update quantity and total price
-          existingInvoice.products[existingProductIndex].quantity +=
-            orderProduct.quantity;
-          existingInvoice.products[existingProductIndex].totalPrice +=
-            orderProduct.totalPrice;
-        } else {
-          // New product, add to invoice
-          existingInvoice.products.push(orderProduct);
-        }
-      }
-
-      // Recalculate totals
-      const newSubtotal = existingInvoice.products.reduce(
-        (sum, product) => sum + product.totalPrice,
-        0
-      );
-
-      existingInvoice.totals.subtotal = newSubtotal;
-      existingInvoice.totals.balanceAmount =
-        newSubtotal - existingInvoice.totals.paidAmount;
-
-      // Add this order to the included orders list
-      if (!existingInvoice.includedOrders.includes(order._id)) {
-        existingInvoice.includedOrders.push(order._id);
-      }
-    } else {
-      // Create new invoice
-      const invoiceNumber = generateInvoiceNumber();
-      const subtotal = orderProducts.reduce(
-        (sum, product) => sum + product.totalPrice,
-        0
-      );
-
-      invoice = await Invoice.create({
-        invoiceNumber,
-        gstNumber: parseInt(gstNumber),
-        customer: order.customer,
-        phoneNumber: parseInt(customer.phoneNumber),
-        address: customer.address,
-        subscriptionPlan: customer.subscriptionPlan,
-        Deliveries: 1,
-        absentDays: [],
-        actualOrders: 1,
-        period: {
-          startDate: new Date(),
-          endDate: moment().add(1, "month").toDate(),
-        },
-        products: orderProducts,
-        payment: {
-          status: "Unpaid",
-          method: order.paymentMethod || "COD",
-        },
-        totals: {
-          subtotal,
-          paidAmount: 0,
-          balanceAmount: subtotal,
-          carryForwardAmount: 0,
-          paidDate: null,
-        },
-        state: "Draft",
-        includedOrders: [order._id],
-      });
-    }
-    
-    const invoiceWithStats = {
-      ...invoice.toObject(),
-      customer: {
-        name: customer.name,
-        phoneNumber: customer.phoneNumber,
-        address: customer.address,
-      },
-      deliveryStats: {
-        actualOrders: invoice.actualOrders + (isUpdated ? 1 : 0),
-        absentDays: invoice.absentDays.length,
-        deliveries: invoice.Deliveries + (isUpdated ? 1 : 0),
-      },
-    };
-
-    const pdfBuffer = await generateInvoicePDF(invoiceWithStats);
-
-    const result = await new Promise((resolve, reject) => {
-      cloudinary.uploader
-        .upload_stream(
-          {
-            resource_type: "raw",
-            folder: "Pench/Invoices",
-            public_id: `invoice-${invoice.invoiceNumber}`,
-            format: "pdf",
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        )
-        .end(pdfBuffer);
-    });
-
-    invoice.pdfUrl = result.secure_url;
-    await invoice.save();
-
-    // Mark the order as invoiced
-    order.isInvoiced = true;
-    await order.save();
-
-    return {
-      success: true,            
-      message: isUpdated
-        ? "Invoice already created for this order"
-        : "Order status updated and created invoice",
-    };
-  } catch (error) {
-    console.error("Error creating/updating invoice:", error);
-    return { success: false, error: error.message };
-  }
-};
-
-
 
 module.exports = {
   createAutomaticOrdersForCustomer,

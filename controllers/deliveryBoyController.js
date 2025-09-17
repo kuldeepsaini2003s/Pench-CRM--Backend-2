@@ -3,11 +3,9 @@ const mongoose = require("mongoose");
 const CustomerOrders = require("../models/customerOrderModel");
 const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 
-
-const FRONTEND_BASE = process.env.FRONTEND_BASE_URL || "https://pench-delivery-boy-app.netlify.app";
+const FRONTEND_BASE =
+  process.env.FRONTEND_BASE_URL || "https://pench-delivery-boy-app.netlify.app";
 const tokenExpiry = parseInt(process.env.TOKEN_TTL_MIN) || 15; // token expiry in minutes
-
-
 
 // ✅ Register Delivery Boy
 const registerDeliveryBoy = async (req, res) => {
@@ -205,16 +203,14 @@ const getDeliveryBoyById = async (req, res) => {
       });
     }
 
-    let plainPassword = null
+    let plainPassword = null;
     try {
       plainPassword = deliveryBoy.getPlainPassword();
     } catch (error) {
       console.error("Error getting plain password:", error);
     }
 
-
     const deliveryBoyCredentialShareableLink = `${FRONTEND_BASE}?t=${deliveryBoy.shareToken}`;
-
 
     return res.status(200).json({
       success: true,
@@ -285,6 +281,29 @@ const updateDeliveryBoy = async (req, res) => {
     const { name, email, phoneNumber, area, password, address } = req.body;
     const profileImage = req?.file?.path;
 
+    // Email validation
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide a valid email address",
+        });
+      }
+    }
+
+    // Phone number validation
+    if (phoneNumber) {
+      const phoneRegex = /^[6-9]\d{9}$/;
+      if (!phoneRegex.test(phoneNumber.toString())) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Please provide a valid 10-digit phone number starting with 6-9",
+        });
+      }
+    }
+
     // Fetch existing delivery boy
     const deliveryBoy = await DeliveryBoy.findById(id).select(
       "+encryptedPassword"
@@ -293,6 +312,34 @@ const updateDeliveryBoy = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Delivery boy not found" });
+    }
+
+    // Check for duplicate email (if email is being updated)
+    if (email && email !== deliveryBoy.email) {
+      const existingEmail = await DeliveryBoy.findOne({
+        email,
+        _id: { $ne: id },
+      });
+      if (existingEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Email already exists",
+        });
+      }
+    }
+
+    // Check for duplicate phone number (if phone number is being updated)
+    if (phoneNumber && phoneNumber !== deliveryBoy.phoneNumber) {
+      const existingPhone = await DeliveryBoy.findOne({
+        phoneNumber,
+        _id: { $ne: id },
+      });
+      if (existingPhone) {
+        return res.status(400).json({
+          success: false,
+          message: "Phone number already exists",
+        });
+      }
     }
 
     // Update fields if provided
@@ -367,6 +414,7 @@ const getOrdersByDeliveryBoy = async (req, res) => {
     const filter = {
       deliveryBoy: deliveryBoyId,
       deliveryDate: todayFormatted,
+      status: "Pending",
     };
 
     const [totalOrders, orders] = await Promise.all([
@@ -419,27 +467,29 @@ const getOrdersByDeliveryBoy = async (req, res) => {
 //✅ Share Genearted  Token
 const shareConsumeToken = async (req, res) => {
   try {
-    const { token } = req.query
+    const { token } = req.query;
     if (!token) {
       return res.staus(400).json({
         success: false,
         message: "Token is required",
-      })
+      });
     }
-    const sharedToken = await DeliveryBoy.findOne({ shareToken: token })
-      .select("_id name email password +encryptedPassword")
+    const sharedToken = await DeliveryBoy.findOne({ shareToken: token }).select(
+      "_id name email password +encryptedPassword"
+    );
 
     if (!sharedToken) {
       return res.status(404).json({
         success: false,
         message: "Share token not found",
-      })
+      });
     }
 
     if (new Date() > new Date(sharedToken.shareTokenExpiresAt)) {
-      return res.status(410).json({ success: false, message: "Share token expired" });
+      return res
+        .status(410)
+        .json({ success: false, message: "Share token expired" });
     }
-
 
     let plainPassword = null;
     let hashedPassword = null;
@@ -464,7 +514,6 @@ const shareConsumeToken = async (req, res) => {
         deliveryBoyName: sharedToken.name,
       },
     });
-
   } catch (error) {
     console.log("Error in shareConsumeToken:", error);
     return res.status(500).json({
@@ -473,7 +522,7 @@ const shareConsumeToken = async (req, res) => {
       error: error.message,
     });
   }
-}
+};
 
 // ✅ Get DeliveryBoy Own Bootle Tracking Record
 const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
@@ -567,11 +616,11 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
   }
 };
 
-//✅ Order history 
+//✅ Order history
 const getOrderHistory = async (req, res) => {
   try {
     const deliveryBoyId = req.deliveryBoy.id; // 👈 authorization middleware se aayega
-   let { status = "All", page = 1, limit = 10 } = req.query;
+    let { status = "All", page = 1, limit = 10 } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
     // Pagination
@@ -582,10 +631,8 @@ const getOrderHistory = async (req, res) => {
 
     // Status filter
     if (status !== "All") {
-      filter.status = { $regex: new RegExp(`^${status}$`, "i") }; 
+      filter.status = { $regex: new RegExp(`^${status}$`, "i") };
     }
-    
-
 
     // Get total count
     const totalOrders = await CustomerOrders.countDocuments(filter);
@@ -632,8 +679,8 @@ const getOrderHistory = async (req, res) => {
       success: true,
       message: "Order history fetched successfully",
       totalOrders,
-      currentPage:page,
-      totalPages:totalPages,
+      currentPage: page,
+      totalPages: totalPages,
       previous: hasPrevious,
       next: hasNext,
       orders: formattedOrders,
@@ -648,7 +695,6 @@ const getOrderHistory = async (req, res) => {
   }
 };
 
-
 module.exports = {
   registerDeliveryBoy,
   loginDeliveryBoy,
@@ -660,5 +706,5 @@ module.exports = {
   getOrdersByDeliveryBoy,
   shareConsumeToken,
   getDeliveryBoyOwnBootleTrackingRecord,
-  getOrderHistory
+  getOrderHistory,
 };

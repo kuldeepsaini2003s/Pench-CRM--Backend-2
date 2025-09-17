@@ -10,6 +10,8 @@ const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
 const { initializeOrders } = require("./controllers/customerOrderController");
 
+require("./smsJob/job");
+
 // Middlewares
 app.use(express.json());
 app.use(cookieParser());
@@ -64,7 +66,6 @@ const termsAndConditionRoutes = require("./routes/termsAndConditionRoutes");
 const helpAndSupportRoutes = require("./routes/helpAndSupportRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 
-
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/deliveryBoy", deliveryBoyRoutes);
@@ -77,8 +78,6 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/termsAndCondition", termsAndConditionRoutes);
 app.use("/api/helpAndSupport", helpAndSupportRoutes);
 app.use("/api/payment", paymentRoutes);
-
-
 
 // Connect DB then start server
 db().then(async () => {

@@ -343,15 +343,6 @@ const getNewOnboardCustomers = async (req, res) => {
       createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
     };
 
-    // ---- Product filter ----
-    let productMatch = {};
-    if (productName && productName.trim() !== "") {
-      productMatch.productName = { $regex: new RegExp(productName, "i") };
-    }
-    if (size && size.trim() !== "") {
-      productMatch.size = { $regex: new RegExp(size, "i") };
-    }
-
     // ---- Count + Query ----
     const [totalOnBoardedCustomers, customers] = await Promise.all([
       Customer.countDocuments(filter),
@@ -360,7 +351,6 @@ const getNewOnboardCustomers = async (req, res) => {
           path: "products.product",
           model: Product,
           select: "productName size",
-          match: productMatch,
         })
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -376,26 +366,50 @@ const getNewOnboardCustomers = async (req, res) => {
     }
 
     // ---- Format Response ----
-    const response = customers
-      .filter((customer) => customer.products.some((p) => p.product))
-      .map((customer) => {
-        const validProducts = customer.products.filter((p) => p.product);
+    let filteredCustomers = customers.filter((customer) =>
+      customer.products.some((p) => p.product)
+    );
 
-        return {
-          customerName: customer.name,
-          productNames: validProducts
-            .map((p) => p.product?.productName || "N/A")
-            .join(", "),
-          sizes: validProducts
-            .map((p) => p.productSize || p.product?.size || "N/A")
-            .join(", "),
-          quantities: validProducts.map((p) => p.quantity).join(", "),
-          date: moment(customer.startDate).format("DD/MM/YYYY"),
-        };
-      });
+    // Apply product name and size filters
+    if (productName && productName.trim() !== "") {
+      const productNameRegex = new RegExp(productName, "i");
+      filteredCustomers = filteredCustomers.filter((customer) =>
+        customer.products.some(
+          (p) => p.product && productNameRegex.test(p.product.productName)
+        )
+      );
+    }
+
+    if (size && size.trim() !== "") {
+      const sizeRegex = new RegExp(size, "i");
+      filteredCustomers = filteredCustomers.filter((customer) =>
+        customer.products.some(
+          (p) =>
+            p.product &&
+            (sizeRegex.test(p.productSize) || sizeRegex.test(p.product?.size))
+        )
+      );
+    }
+
+    const response = filteredCustomers.map((customer) => {
+      const allProducts = customer.products.filter((p) => p.product);
+
+      return {
+        customerName: customer.name,
+        productNames: allProducts
+          .map((p) => p.product?.productName || "N/A")
+          .join(", "),
+        sizes: allProducts
+          .map((p) => p.productSize || p.product?.size || "N/A")
+          .join(", "),
+        quantities: allProducts.map((p) => p.quantity).join(", "),
+        date: moment(customer.startDate).format("DD/MM/YYYY"),
+      };
+    });
 
     // ---- Pagination ----
-    const totalPages = Math.ceil(totalOnBoardedCustomers / limit);
+    const totalFilteredCustomers = response.length;
+    const totalPages = Math.ceil(totalFilteredCustomers / limit);
     const hasPrevious = page > 1;
     const hasNext = page < totalPages;
 
@@ -406,7 +420,7 @@ const getNewOnboardCustomers = async (req, res) => {
         from: startDate.format("DD/MM/YYYY"),
         to: endDate.format("DD/MM/YYYY"),
       },
-      totalOnBoardedCustomers: response.length,
+      totalOnBoardedCustomers: totalFilteredCustomers,
       totalPages,
       currentPage: page,
       previous: hasPrevious,
@@ -435,11 +449,7 @@ const getEarningOverview = async (req, res) => {
       error: error.message,
     });
   }
-
 };
-
-
-
 
 //✅ Get Product Of The Day
 const getProductOfTheDay = async (req, res) => {
@@ -492,7 +502,7 @@ const getProductOfTheDay = async (req, res) => {
     ];
 
     const result = await CustomerOrder.aggregate(pipeline);
-console.log("result", result)
+
     if (!result || result.length === 0) {
       return res.status(404).json({
         success: false,
@@ -553,7 +563,7 @@ const getLowestProductSale = async (req, res) => {
         $group: {
           _id: "$products._id",
           productName: { $first: "$products.productName" },
-          productSize:{$first:"$products.productSize"},
+          productSize: { $first: "$products.productSize" },
           totalQuantity: { $sum: "$products.quantity" },
           totalRevenue: { $sum: "$products.totalPrice" },
         },
@@ -580,13 +590,12 @@ const getLowestProductSale = async (req, res) => {
       (p) => p.totalQuantity === minQuantity
     );
 
-
     const lowestSalesCount = lowestProducts.length;
     return res.status(200).json({
       success: true,
       message: "Lowest sold product(s) fetched successfully",
       lowestSalesCount,
-      lowestProductSale:lowestProducts,
+      lowestProductSale: lowestProducts,
     });
   } catch (error) {
     console.error("getLowestProductSale Error:", error);
@@ -597,7 +606,6 @@ const getLowestProductSale = async (req, res) => {
     });
   }
 };
-
 
 //✅ Get Total Delivered Product Unit
 const getTotalDeliveredProductUnit = async (req, res) => {
@@ -717,8 +725,6 @@ const getTotalDeliveredProductUnit = async (req, res) => {
 
     const result = await CustomerOrder.aggregate(pipeline);
 
-
-
     if (!result || result.length === 0) {
       return res.status(404).json({
         success: false,
@@ -731,7 +737,7 @@ const getTotalDeliveredProductUnit = async (req, res) => {
       success: true,
       message: "Delivered Product Units Fetched Successfully",
       period: period || "All",
-      deliveredUnits:grandTotalUnits,
+      deliveredUnits: grandTotalUnits,
       result,
     });
   } catch (error) {
@@ -743,8 +749,6 @@ const getTotalDeliveredProductUnit = async (req, res) => {
     });
   }
 };
-
-
 
 const getPendingPayments = async (req, res, next) => {
   const { page = 1, limit = 10 } = req.query;
@@ -800,6 +804,5 @@ module.exports = {
   getProductOfTheDay,
   getProductOfTheDay,
   getLowestProductSale,
-  getTotalDeliveredProductUnit
-
+  getTotalDeliveredProductUnit,
 };
