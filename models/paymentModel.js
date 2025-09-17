@@ -1,8 +1,6 @@
-
 const mongoose = require("mongoose");
 const paymentSchema = new mongoose.Schema(
   {
-
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
@@ -12,16 +10,16 @@ const paymentSchema = new mongoose.Schema(
     },
     paidAmount: {
       type: Number,
-      default:0
+      default: 0,
     },
-    balanceAmount:{
-        type:Number,
-        default:0
+    balanceAmount: {
+      type: Number,
+      default: 0,
     },
     paidDates: [
       {
-        type: Date,
-      }
+        type: String,
+      },
     ],
     paymentMethod: {
       type: String,
@@ -32,30 +30,31 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       enum: ["Paid", "Unpaid", "Partially Paid"],
     },
-    month:{
-        type:String,
-        default: new Date().toLocaleString("default", { month: "long" }),
+    month: {
+      type: String,
+      default: new Date().toLocaleString("default", { month: "long" }),
     },
-    year:{
-        type:String,
-        default: new Date().getFullYear(),
+    year: {
+      type: String,
+      default: new Date().getFullYear(),
     },
-    razorpayLinkId:{
-        type:String,
-    },
-    razorpayLinkStatus:{
-        type:String,
-    },
-    razorpayPaymentId:{
-        type:String,
-    },
-    razorpayLinkUrl: {              // ✅ Add this field
+    razorpayLinkId: {
       type: String,
     },
-    carryForwardBalance:{
-      type:Number,
-      default:0
-    }
+    razorpayLinkStatus: {
+      type: String,
+    },
+    razorpayPaymentId: {
+      type: String,
+    },
+    razorpayLinkUrl: {
+      // ✅ Add this field
+      type: String,
+    },
+    carryForwardBalance: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );

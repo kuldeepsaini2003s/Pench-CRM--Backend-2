@@ -905,7 +905,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       currentPage: page,
       previous: hasPrevious,
       next: hasNext,
-      products: result,
+      customer: result,
     });
   } catch (error) {
     console.error("❌ Error in getTotalProductDeliverTommorow:", error);

@@ -175,8 +175,6 @@ const createPaymentForCustomer = async (req, res) => {
   }
 };
 
-
-
 // ✅ New Verify Payment Code
 const verifyPayment = async (req, res) => {
   try {
@@ -435,6 +433,20 @@ const makePaymentForBalance = async (req, res) => {
   }
 };
 
+// Helper function to generate date range
+const generateDateRange = (startDate, endDate) => {
+  const dates = [];
+  const currentDate = new Date(startDate);
+  const lastDate = new Date(endDate);
+
+  while (currentDate <= lastDate) {
+    dates.push(formatDateToDDMMYYYY(currentDate));
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return dates;
+};
+
 //✅ Get All Payments by Payment Status
 const getAllPaymentsByStatus = async (req, res) => {
   try {
@@ -457,7 +469,8 @@ const getAllPaymentsByStatus = async (req, res) => {
     if (!validStatuses.includes(paymentStatus)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid paymentStatus. Use: All, Paid, Partially Paid, or Unpaid",
+        message:
+          "Invalid paymentStatus. Use: All, Paid, Partially Paid, or Unpaid",
       });
     }
 
@@ -479,14 +492,25 @@ const getAllPaymentsByStatus = async (req, res) => {
       filter.paymentMethod = paymentMode;
     }
 
-    // ---- Date Filter ----
-    if (from || to) {
-      const paidDatesFilter = {};
-      if (from) paidDatesFilter.$gte = new Date(from);
-      if (to) paidDatesFilter.$lte = new Date(to);
-      if (Object.keys(paidDatesFilter).length > 0) {
-        filter.createdAt = paidDatesFilter;
-      }
+    // Handle date filtering
+    if (from && to) {
+      // Both from and to provided - generate date range
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
+      const dateRange = generateDateRange(fromDate, toDate);
+      filter.paidDates = { $in: dateRange };
+    } else if (from) {
+      // Only from provided - generate dates from fromDate to today
+      const fromDate = new Date(from);
+      const today = new Date();
+      const dateRange = generateDateRange(fromDate, today);
+      filter.paidDates = { $in: dateRange };
+    } else if (to) {
+      // Only to provided - generate dates from beginning to toDate
+      const beginning = new Date("2020-01-01"); // Start from a reasonable date
+      const toDate = new Date(to);
+      const dateRange = generateDateRange(beginning, toDate);
+      filter.paidDates = { $in: dateRange };
     }
 
     // ---- Aggregation Pipeline ----
@@ -521,6 +545,9 @@ const getAllPaymentsByStatus = async (req, res) => {
           _id: "$_id",
           customerName: { $first: "$customer.name" },
           phoneNumber: { $first: "$customer.phoneNumber" },
+          totalAmount: { $first: "$totalAmount" },
+          paidAmount: { $first: "$paidAmount" },
+          balanceAmount: { $first: "$balanceAmount" },
           productNames: { $push: "$productInfo.productName" },
           productSizes: { $push: "$customer.products.productSize" },
           paymentStatus: { $first: "$paymentStatus" },
@@ -547,16 +574,35 @@ const getAllPaymentsByStatus = async (req, res) => {
           _id: 1,
           customerName: 1,
           phoneNumber: 1,
-          productName: { $reduce: {
-            input: "$productNames",
-            initialValue: "",
-            in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] }
-          }},
-          productSize: { $reduce: {
-            input: "$productSizes",
-            initialValue: "",
-            in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] }
-          }},
+          totalAmount: 1,
+          paidAmount: 1,
+          balanceAmount: 1,
+          productName: {
+            $reduce: {
+              input: "$productNames",
+              initialValue: "",
+              in: {
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
+                ],
+              },
+            },
+          },
+          productSize: {
+            $reduce: {
+              input: "$productSizes",
+              initialValue: "",
+              in: {
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
+                ],
+              },
+            },
+          },
           date: { $dateToString: { format: "%d/%m/%Y", date: "$createdAt" } },
           paymentMode: "$paymentMethod",
           status: "$paymentStatus",
@@ -567,21 +613,19 @@ const getAllPaymentsByStatus = async (req, res) => {
     ];
 
     // ---- Count Pipeline ----
-    const countPipeline = [
-      { $match: filter },
-      { $count: "total" },
-    ];
+    const countPipeline = [{ $match: filter }, { $count: "total" }];
 
-    // ---- Parallel Queries ----
-    const [results, countResult, countPartiallyPaid, countPaid, countUnpaid] = await Promise.all([
-      Payment.aggregate(pipeline),
-      Payment.aggregate(countPipeline),
-      Payment.countDocuments({ paymentStatus: "Partially Paid" }),
-      Payment.countDocuments({ paymentStatus: "Paid" }),
-      Payment.countDocuments({ paymentStatus: "Unpaid" }),
-    ]);
+    // Execute all queries in parallel
+    const [results, countResult, countPartiallyPaid, countPaid, countUnpaid] =
+      await Promise.all([
+        Payment.aggregate(pipeline),
+        Payment.aggregate(countPipeline),
+        Payment.countDocuments({ paymentStatus: "Partially Paid" }),
+        Payment.countDocuments({ paymentStatus: "Paid" }),
+        Payment.countDocuments({ paymentStatus: "Unpaid" }),
+      ]);
 
-    const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
+    const totalRecords = countResult[0]?.total || 0;
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
@@ -590,6 +634,7 @@ const getAllPaymentsByStatus = async (req, res) => {
       partiallyPaid: countPartiallyPaid,
       paid: countPaid,
       pending: countUnpaid,
+      totalRecords,
       totalPages,
       currentPage: page,
       previous: page > 1,
@@ -597,7 +642,7 @@ const getAllPaymentsByStatus = async (req, res) => {
       data: results,
     });
   } catch (error) {
-    console.error("getAllCashPaymentsForDeliveryBoy Error:", error);
+    console.error("getAllPaymentsByStatus Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed To Fetch Payments",
@@ -605,253 +650,6 @@ const getAllPaymentsByStatus = async (req, res) => {
     });
   }
 };
-
-// // 🔹 Common Helper for Aggregation
-// const buildPaymentsPipeline = (filter, { page, limit, productName, productSize }) => {
-//   return [
-//     { $match: filter },
-//     {
-//       $lookup: {
-//         from: "customers",
-//         localField: "customer",
-//         foreignField: "_id",
-//         as: "customer",
-//       },
-//     },
-//     { $unwind: "$customer" },
-//     {
-//       $unwind: {
-//         path: "$customer.products",
-//         preserveNullAndEmptyArrays: true,
-//       },
-//     },
-//     {
-//       $lookup: {
-//         from: "products",
-//         localField: "customer.products.product",
-//         foreignField: "_id",
-//         as: "productInfo",
-//       },
-//     },
-//     { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
-//     {
-//       $group: {
-//         _id: "$_id",
-//         customerName: { $first: "$customer.name" },
-//         phoneNumber: { $first: "$customer.phoneNumber" },
-//         productNames: { $push: "$productInfo.productName" },
-//         productSizes: { $push: "$customer.products.productSize" },
-//         paymentStatus: { $first: "$paymentStatus" },
-//         paymentMethod: { $first: "$paymentMethod" },
-//         createdAt: { $first: "$createdAt" },
-//       },
-//     },
-//     ...(productName || productSize
-//       ? [
-//           {
-//             $match: {
-//               ...(productName && {
-//                 productNames: { $regex: productName, $options: "i" },
-//               }),
-//               ...(productSize && {
-//                 productSizes: { $regex: productSize, $options: "i" },
-//               }),
-//             },
-//           },
-//         ]
-//       : []),
-//     {
-//       $project: {
-//         _id: 1,
-//         customerName: 1,
-//         phoneNumber: 1,
-//         productName: {
-//           $reduce: {
-//             input: "$productNames",
-//             initialValue: "",
-//             in: {
-//               $cond: [
-//                 { $eq: ["$$value", ""] },
-//                 "$$this",
-//                 { $concat: ["$$value", ", ", "$$this"] },
-//               ],
-//             },
-//           },
-//         },
-//         productSize: {
-//           $reduce: {
-//             input: "$productSizes",
-//             initialValue: "",
-//             in: {
-//               $cond: [
-//                 { $eq: ["$$value", ""] },
-//                 "$$this",
-//                 { $concat: ["$$value", ", ", "$$this"] },
-//               ],
-//             },
-//           },
-//         },
-//         date: { $dateToString: { format: "%d/%m/%Y", date: "$createdAt" } },
-//         paymentMode: "$paymentMethod",
-//         status: "$paymentStatus",
-//       },
-//     },
-//     { $skip: (page - 1) * limit },
-//     { $limit: limit },
-//   ];
-// };
-
-// // 🔹 Common Fetcher
-// const fetchPayments = async (filter, options) => {
-//   const pipeline = buildPaymentsPipeline(filter, options);
-
-//   const countPipeline = [{ $match: filter }, { $count: "total" }];
-
-//   const [results, countResult] = await Promise.all([
-//     Payment.aggregate(pipeline),
-//     Payment.aggregate(countPipeline),
-//   ]);
-
-//   const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
-//   const totalPages = Math.ceil(totalRecords / options.limit);
-
-//   return { results, totalRecords, totalPages };
-// };
-
-// // 🔹 Existing API (All Payments)
-// const getAllPaymentsByStatus = async (req, res) => {
-//   try {
-//     let {
-//       page = 1,
-//       limit = 10,
-//       paymentStatus = "All",
-//       paymentMode = "All",
-//       productName = "",
-//       productSize = "",
-//       from = "",
-//       to = "",
-//     } = req.query;
-
-//     page = parseInt(page);
-//     limit = parseInt(limit);
-
-//     // ---- Base Filter ----
-//     const filter = {};
-//     if (paymentStatus !== "All") filter.paymentStatus = paymentStatus;
-//     if (paymentMode !== "All") filter.paymentMethod = paymentMode;
-
-//     // ---- Date Filter ----
-//     if (from || to) {
-//       const paidDatesFilter = {};
-//       if (from) paidDatesFilter.$gte = new Date(from);
-//       if (to) paidDatesFilter.$lte = new Date(to);
-//       if (Object.keys(paidDatesFilter).length > 0) {
-//         filter.createdAt = paidDatesFilter;
-//       }
-//     }
-
-//     const { results, totalRecords, totalPages } = await fetchPayments(filter, {
-//       page,
-//       limit,
-//       productName,
-//       productSize,
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: `Payments fetched successfully`,
-//       totalRecords,
-//       totalPages,
-//       currentPage: page,
-//       previous: page > 1,
-//       next: page < totalPages,
-//       data: results,
-//     });
-//   } catch (error) {
-//     console.error("getAllPaymentsByStatus Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed To Fetch Payments",
-//       error: error.message,
-//     });
-//   }
-// };
-
-// // 🔹 New API - Partially Paid
-// const getAllPartiallyPaidPayments = async (req, res) => {
-//   try {
-//     let { page = 1, limit = 10, productName = "", productSize = "" } = req.query;
-//     page = parseInt(page);
-//     limit = parseInt(limit);
-
-//     const filter = { paymentStatus: "Partially Paid" };
-
-//     const { results, totalRecords, totalPages } = await fetchPayments(filter, {
-//       page,
-//       limit,
-//       productName,
-//       productSize,
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Partially Paid Payments fetched successfully",
-//       totalRecords,
-//       totalPages,
-//       currentPage: page,
-//       previous: page > 1,
-//       next: page < totalPages,
-//       data: results,
-//     });
-//   } catch (error) {
-//     console.error("getAllPartiallyPaidPayments Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed To Fetch Partially Paid Payments",
-//       error: error.message,
-//     });
-//   }
-// };
-
-// // 🔹 New API - Pending (Unpaid)
-// const getAllPendingPayments = async (req, res) => {
-//   try {
-//     let { page = 1, limit = 10, productName = "", productSize = "" } = req.query;
-//     page = parseInt(page);
-//     limit = parseInt(limit);
-
-//     const filter = { paymentStatus: "Unpaid" };
-
-//     const { results, totalRecords, totalPages } = await fetchPayments(filter, {
-//       page,
-//       limit,
-//       productName,
-//       productSize,
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Pending Payments fetched successfully",
-//       totalRecords,
-//       totalPages,
-//       currentPage: page,
-//       previous: page > 1,
-//       next: page < totalPages,
-//       data: results,
-//     });
-//   } catch (error) {
-//     console.error("getAllPendingPayments Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed To Fetch Pending Payments",
-//       error: error.message,
-//     });
-//   }
-// };
-
-
-
-
 
 //✅ Get All Cash Realted Payments For DeliveryBoy
 const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
@@ -882,7 +680,8 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     // ---- Format data for UI ----
     const results = orders.map((order) => {
       let status =
-        order.paymentStatus === "Paid" || order.paymentStatus === "Partially Paid"
+        order.paymentStatus === "Paid" ||
+        order.paymentStatus === "Partially Paid"
           ? "Received"
           : "Pending";
 
@@ -897,34 +696,46 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     });
 
     // ---- Totals (for summary cards) ----
-    const [totalCollectedAgg, pendingCollectionsAgg, customersPaidList] = await Promise.all([
-      // Total Collected
-      CustomerOrders.aggregate([
-        { $match: { ...orderFilter, paymentStatus: { $in: ["Paid", "Partially Paid"] } } },
-        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-      ]),
-    
-      // Pending Collections
-      CustomerOrders.aggregate([
-        { $match: { ...orderFilter, paymentStatus: { $in: ["Pending", "Unpaid"] } } },
-        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-      ]),
-    
-      // Unique Customers Paid
-      CustomerOrders.distinct("customer", {
-        ...orderFilter,
-        paymentStatus: { $in: ["Paid", "Partially Paid"] },
-      }),
-    ]);
-    
+    const [totalCollectedAgg, pendingCollectionsAgg, customersPaidList] =
+      await Promise.all([
+        // Total Collected
+        CustomerOrders.aggregate([
+          {
+            $match: {
+              ...orderFilter,
+              paymentStatus: { $in: ["Paid", "Partially Paid"] },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ]),
+
+        // Pending Collections
+        CustomerOrders.aggregate([
+          {
+            $match: {
+              ...orderFilter,
+              paymentStatus: { $in: ["Pending", "Unpaid"] },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ]),
+
+        // Unique Customers Paid
+        CustomerOrders.distinct("customer", {
+          ...orderFilter,
+          paymentStatus: { $in: ["Paid", "Partially Paid"] },
+        }),
+      ]);
+
     // const summary = {
     //   totalCollected: totalCollectedAgg[0]?.total || 0,
     //   pendingCollections: pendingCollectionsAgg[0]?.total || 0,
     //   customersPaid: customersPaidList.length,
     // };
-    
+
     // ---- Count total records for pagination ----
     const totalRecords = await CustomerOrders.countDocuments(orderFilter);
+
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
@@ -952,21 +763,10 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
-
-
-
 module.exports = {
   createPaymentForCustomer,
   verifyPayment,
   makePaymentForBalance,
-  // getAllPartiallyPaid,
   getAllCashPaymentsForDeliveryBoy,
   getAllPaymentsByStatus,
 
