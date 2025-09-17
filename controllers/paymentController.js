@@ -145,103 +145,6 @@ const createPaymentForCustomer = async (req, res) => {
 
 
 
-
-// ✅ Verify Payment
-// const verifyPayment = async (req, res) => {
-//   try {
-//     const {
-//       razorpay_payment_id,
-//       razorpay_payment_link_id,
-//       razorpay_payment_link_status,
-//       customerId, // from query string
-//     } = req.query;
-
-//     if (!razorpay_payment_id || !razorpay_payment_link_id || !customerId) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid payment verification request",
-//       });
-//     }
-
-//     // 🔍 Find payment record by link ID
-//     const paymentDoc = await Payment.findOne({
-//       customer: customerId,
-//       razorpayLinkId: razorpay_payment_link_id,
-//     });
-
-//     if (!paymentDoc) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Payment record not found for this link",
-//       });
-//     }
-
-//     // ✅ Fetch payment details from Razorpay
-//     const payment = await razorpay.payments.fetch(razorpay_payment_id);
-//     const paidAmount = payment.amount / 100; // paise → INR
-
-//     if (!paidAmount || paidAmount <= 0) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid payment amount",
-//       });
-//     }
-
-//     // ✅ Update Payment model
-//     paymentDoc.paidAmount += paidAmount;
-//     paymentDoc.balanceAmount = paymentDoc.totalAmount - paymentDoc.paidAmount;
-//     paymentDoc.razorpayPaymentId = razorpay_payment_id;               // 🔥 store payment id
-//     paymentDoc.razorpayLinkStatus = razorpay_payment_link_status;     // 🔥 update link status
-
-//     if (paymentDoc.paidAmount < paymentDoc.totalAmount) {
-//       paymentDoc.paymentStatus = "Partially Paid";
-//     } else {
-//       paymentDoc.paymentStatus = "Paid";
-//       paymentDoc.balanceAmount = 0;
-//     }
-//     await paymentDoc.save();
-
-//     // ✅ Update Customer model
-//     const customer = await Customer.findById(customerId);
-//     if (customer) {
-//       customer.amountPaidTillDate = paymentDoc.paidAmount;
-//       customer.amountDue = paymentDoc.balanceAmount;
-//       customer.paymentStatus = paymentDoc.paymentStatus;
-//       await customer.save();
-//     }
-
-//     // ✅ Update all Delivered CustomerOrders
-//     await CustomerOrders.updateMany(
-//       { customer: customerId, status: "Delivered" },
-//       {
-//         $set: {
-//           paymentStatus: paymentDoc.paymentStatus,
-//           paymentMethod: paymentDoc.paymentMethod || "Online",
-//         },
-//       }
-//     );
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Payment verified successfully",
-//       paymentDetails: {
-//         paidAmount,
-//         totalPaid: paymentDoc.paidAmount,
-//         balance: paymentDoc.balanceAmount,
-//         status: paymentDoc.paymentStatus,
-//       },
-//       payment: paymentDoc,
-//     });
-//   } catch (error) {
-//     console.error("verifyPayment Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Error verifying payment",
-//       error: error.message,
-//     });
-//   }
-// };
-
 // ✅ New Verify Payment Code
 const verifyPayment = async (req, res) => {
   try {
@@ -362,123 +265,6 @@ const verifyPayment = async (req, res) => {
 };
 
 //✅ Make Payment for Balance
-// const makePaymentForBalance = async (req, res) => {
-//   try {
-//     const { customerId } = req.params;
-
-//     // 🔍 Validate Razorpay credentials & BASE_URL
-//     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-//       return res.status(500).json({
-//         success: false,
-//         message: "Razorpay configuration missing. Please check environment variables.",
-//       });
-//     }
-//     if (!process.env.BASE_URL) {
-//       return res.status(500).json({
-//         success: false,
-//         message: "BASE_URL environment variable is not configured.",
-//       });
-//     }
-
-//     // 🔍 Find existing unpaid/partial payment record
-//     const paymentDoc = await Payment.findOne({
-//       customer: customerId,
-//       paymentStatus: { $in: ["Unpaid", "Partially Paid"] }
-//     }).populate("customer");
-
-//     if (!paymentDoc) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "No pending balance found for this customer",
-//       });
-//     }
-
-//     const customer = paymentDoc.customer;
-//     const balanceAmount = paymentDoc.balanceAmount;
-
-//     if (!balanceAmount || balanceAmount <= 0) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "No balance left to pay. Already settled.",
-//       });
-//     }
-
-//     if (!customer || !customer.name || !customer.phoneNumber) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Customer data is incomplete or missing.",
-//       });
-//     }
-
-//     // ✅ Razorpay per-link max = 10,00,000 INR
-//     const MAX_LIMIT = 1000000;
-//     const amountToPay = balanceAmount > MAX_LIMIT ? MAX_LIMIT : balanceAmount;
-
-//     // 🔑 Create a short unique reference_id (max 40 chars)
-//     const shortId = Math.random().toString(36).substring(2, 10); // 8-char random string
-//     const referenceId = `balpay_${shortId}`;
-
-//     // ✅ Create Razorpay link
-//     let paymentLink;
-//     try {
-//       paymentLink = await razorpay.paymentLink.create({
-//         amount: Math.round(amountToPay * 100), // in paise
-//         currency: "INR",
-//         description: `Balance Payment of ₹${amountToPay} for ${customer.name}`,
-//         customer: {
-//           name: customer.name,
-//           email: customer.email || "customer@example.com",
-//           contact: String(customer.phoneNumber).replace(/\D/g, "").slice(-10),
-//         },
-//         reference_id: referenceId,
-//         callback_url: `${process.env.BASE_URL}/api/payment/verifyPayment?customerId=${customerId}`,
-//         callback_method: "get",
-//       });
-//     } catch (error) {
-//       console.error("Razorpay error:", error);
-//       return res.status(500).json({
-//         success: false,
-//         message: "Failed to create Razorpay link for balance",
-//         error: error.message,
-//       });
-//     }
-
-//     if (!paymentLink || !paymentLink.id || !paymentLink.short_url) {
-//       return res.status(500).json({
-//         success: false,
-//         message: "Invalid payment link response from Razorpay",
-//       });
-//     }
-
-//     // ✅ Update Payment record
-//     paymentDoc.razorpayLinkId = paymentLink.id;
-//     paymentDoc.razorpayLinkStatus = paymentLink.status || "created";
-//     paymentDoc.razorpayLinkUrl = paymentLink.short_url;
-//     paymentDoc.paidDates.push(new Date()); // 🆕 Track when new link generated
-//     await paymentDoc.save();
-
-//     // ✅ Convert to object & hide razorpayLinkUrl inside payment
-//     const paymentObj = paymentDoc.toObject();
-//     delete paymentObj.razorpayLinkUrl;
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Balance payment link generated successfully",
-//       balance: balanceAmount,
-//       amountToPay,
-//       payment: paymentObj,
-//       paymentUrl: paymentLink.short_url, // ✅ Only expose here
-//     });
-//   } catch (error) {
-//     console.error("makePaymentForBalance Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Error generating balance payment link",
-//       error: error.message,
-//     });
-//   }
-// };
-
 const makePaymentForBalance = async (req, res) => {
   try {
     const { customerId } = req.params;
@@ -615,131 +401,56 @@ const makePaymentForBalance = async (req, res) => {
 //✅ Get All Payments whose paymnetStatus is Paid
 const getAllPartiallyPaid = async (req, res) => {
   try {
-    let { page = 1, limit = 10, sortOrder = "", search = "" } = req.query;
+    let { page = 1, limit = 10, search = "" } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
 
+    // ---- Base Filter ----
     const filter = { paymentStatus: "Partially Paid" };
 
-    const pipeline = [
-      { $match: filter },
-
-      // Join Customer
-      {
-        $lookup: {
-          from: "customers",
-          localField: "customer",
-          foreignField: "_id",
-          as: "customer",
+    // ---- Fetch Payments ----
+    const payments = await Payment.find(filter)
+      .populate("customer")
+      .populate({
+        path: "customer",
+        populate: {
+          path: "orders",
         },
-      },
-      { $unwind: "$customer" },
+      })
+      .sort({ createdAt: -1 }) // default sorting
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
 
-      // Join Orders
-      {
-        $lookup: {
-          from: "customerorders",
-          localField: "customer._id",
-          foreignField: "customer",
-          as: "orders",
-        },
-      },
+    // ---- Process each payment ----
+    const results = payments.map((payment) => {
+      const orders = payment.customer.orders || [];
+      const productNames = [];
+      const sizes = [];
 
-      // Flatten products
-      { $unwind: "$orders" },
-      { $unwind: "$orders.products" },
+      orders.forEach((order) => {
+        (order.products || []).forEach((product) => {
+          productNames.push(product.productName);
+          sizes.push(product.productSize);
+        });
+      });
 
-      // ---- Group by Payment ID ----
-      {
-        $group: {
-          _id: "$_id",
-          customerName: { $first: "$customer.name" },
-          phoneNumber: { $first: "$customer.phoneNumber" },
-          paymentStatus: { $first: "$paymentStatus" },
-          products: { $addToSet: "$orders.products.productName" },
-          sizes: { $addToSet: "$orders.products.productSize" },
-          paidDates: { $first: "$paidDates" }, // ✅ take the array from Payment model
-        },
-      },
+      return {
+        _id: payment._id,
+        customerName: payment.customer.name,
+        phoneNumber: payment.customer.phoneNumber,
+        paymentStatus: payment.paymentStatus,
+        productName: productNames.join(", "),
+        size: sizes.join(", "),
+        paymentDate: payment.paidDates && payment.paidDates.length > 0
+          ? new Date(payment.paidDates[0]).toLocaleDateString("en-GB")
+          : null,
+      };
+    });
 
-      // ---- Project comma-separated strings and formatted date ----
-      {
-        $project: {
-          _id: 1,
-          customerName: 1,
-          phoneNumber: 1,
-          paymentStatus: 1,
-          productName: {
-            $reduce: {
-              input: "$products",
-              initialValue: "",
-              in: {
-                $concat: [
-                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] }] },
-                  "$$this",
-                ],
-              },
-            },
-          },
-          size: {
-            $reduce: {
-              input: "$sizes",
-              initialValue: "",
-              in: {
-                $concat: [
-                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] }] },
-                  "$$this",
-                ],
-              },
-            },
-          },
-          paymentDate: {
-            $dateToString: {
-              format: "%d/%m/%Y",
-              date: { $arrayElemAt: ["$paidDates", 0] }, // ✅ 0th index
-            },
-          },
-        },
-      },
-
-      // ---- Search Filter ----
-      ...(search
-        ? [
-            {
-              $match: {
-                $or: [
-                  { customerName: { $regex: search, $options: "i" } },
-                  { phoneNumber: { $regex: search, $options: "i" } },
-                  { productName: { $regex: search, $options: "i" } },
-                  { size: { $regex: search, $options: "i" } },
-                ],
-              },
-            },
-          ]
-        : []),
-
-      // ---- Sorting ----
-      { $sort: sortOrder ? { [sortOrder]: sortOrder === "asc" ? 1 : -1 } : { paymentDate: -1 } },
-
-      // ---- Pagination ----
-      { $skip: (page - 1) * limit },
-      { $limit: limit },
-    ];
-
-    // Execute pipeline
-    const results = await Payment.aggregate(pipeline);
-
-    // ---- Count Total ----
-    const countPipeline = pipeline.filter(
-      (stage) => !("$skip" in stage) && !("$limit" in stage) && !("$sort" in stage)
-    );
-    countPipeline.push({ $count: "total" });
-    const totalCountResult = await Payment.aggregate(countPipeline);
-    const totalRecords = totalCountResult.length > 0 ? totalCountResult[0].total : 0;
-
+    // ---- Total Records Count ----
+    const totalRecords = await Payment.countDocuments(filter);
     const totalPages = Math.ceil(totalRecords / limit);
-    const hasPrevious = page > 1;
-    const hasNext = page < totalPages;
 
     return res.status(200).json({
       success: true,
@@ -747,8 +458,8 @@ const getAllPartiallyPaid = async (req, res) => {
       totalRecords,
       totalPages,
       currentPage: page,
-      previous: hasPrevious,
-      next: hasNext,
+      previous: page > 1,
+      next: page < totalPages,
       data: results,
     });
   } catch (error) {
@@ -761,6 +472,7 @@ const getAllPartiallyPaid = async (req, res) => {
   }
 };
 
+// ✅ Get All Cash Realted Payments For DeliveryBoy
 
 
 
