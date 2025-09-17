@@ -102,6 +102,7 @@ const loginDeliveryBoy = async (req, res) => {
         phoneNumber: deliveryBoy.phoneNumber,
         area: deliveryBoy.area,
         profileImage: deliveryBoy.profileImage,
+        shareToken: deliveryBoy.shareToken,
       },
     });
   } catch (error) {
