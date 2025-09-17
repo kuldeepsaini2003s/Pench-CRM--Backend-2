@@ -69,8 +69,8 @@ const customerOrdersSchema = new mongoose.Schema(
 
     paymentStatus: {
       type: String,
-      enum: ["Pending", "Unpaid", "Partially Paid", "Paid"],
-      default: "Pending",
+      enum: ["Unpaid", "Partially Paid", "Paid"],
+      default: "Unpaid",
     },
 
     products: [productOrderSchema],
@@ -93,13 +93,11 @@ const customerOrdersSchema = new mongoose.Schema(
       default: 0,
     },
 
-
-    bottleReturnSize:[
+    bottleReturnSize: [
       {
         type: String,
-      }
-    ]
-
+      },
+    ],
 
     // wantToPay: {
     //   type: Boolean,
