@@ -452,11 +452,11 @@ const getAllPaymentsByStatus = async (req, res) => {
     limit = parseInt(limit);
 
     // Validate paymentStatus
-    const validStatuses = ["All", "Paid", "Partially Paid"];
+    const validStatuses = ["All", "Paid", "Partially Paid", "Unpaid"];
     if (!validStatuses.includes(paymentStatus)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid paymentStatus. Use: All, Paid, and Partially Paid",
+        message: "Invalid paymentStatus. Use: All, Paid, Partially Paid, or Unpaid",
       });
     }
 
@@ -469,10 +469,8 @@ const getAllPaymentsByStatus = async (req, res) => {
       });
     }
 
-    // Base Filter - Only fetch Paid and Partially Paid payments
-    const filter = {
-      paymentStatus: { $in: ["Paid", "Partially Paid"] },
-    };
+    // ---- Base Filter ----
+    const filter = {};
     if (paymentStatus !== "All") {
       filter.paymentStatus = paymentStatus;
     }
@@ -480,28 +478,17 @@ const getAllPaymentsByStatus = async (req, res) => {
       filter.paymentMethod = paymentMode;
     }
 
-    // Date filter - Convert from/to dates to DD/MM/YYYY format for paidDates filtering
+    // ---- Date Filter ----
     if (from || to) {
       const paidDatesFilter = {};
-
-      if (from) {
-        const fromDate = new Date(from);
-        const fromDateFormatted = formatDateToDDMMYYYY(fromDate);
-        paidDatesFilter.$gte = fromDateFormatted;
-      }
-
-      if (to) {
-        const toDate = new Date(to);
-        const toDateFormatted = formatDateToDDMMYYYY(toDate);
-        paidDatesFilter.$lte = toDateFormatted;
-      }
-
+      if (from) paidDatesFilter.$gte = new Date(from);
+      if (to) paidDatesFilter.$lte = new Date(to);
       if (Object.keys(paidDatesFilter).length > 0) {
-        filter.paidDates = { $elemMatch: paidDatesFilter };
+        filter.createdAt = paidDatesFilter;
       }
     }
 
-    // Aggregation Pipeline
+    // ---- Aggregation Pipeline ----
     const pipeline = [
       { $match: filter },
       {
@@ -514,14 +501,11 @@ const getAllPaymentsByStatus = async (req, res) => {
       },
       { $unwind: "$customer" },
       {
-        $lookup: {
-          from: "products",
-          localField: "customer.products.product",
-          foreignField: "_id",
-          as: "productDetails",
+        $unwind: {
+          path: "$customer.products",
+          preserveNullAndEmptyArrays: true,
         },
       },
-      { $unwind: "$customer.products" },
       {
         $lookup: {
           from: "products",
@@ -530,7 +514,7 @@ const getAllPaymentsByStatus = async (req, res) => {
           as: "productInfo",
         },
       },
-      { $unwind: "$productInfo" },
+      { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
       {
         $group: {
           _id: "$_id",
@@ -543,7 +527,6 @@ const getAllPaymentsByStatus = async (req, res) => {
           createdAt: { $first: "$createdAt" },
         },
       },
-      // Apply product filters after grouping
       ...(productName || productSize
         ? [
             {
@@ -560,41 +543,20 @@ const getAllPaymentsByStatus = async (req, res) => {
         : []),
       {
         $project: {
-          _id: 0,
+          _id: 1,
           customerName: 1,
           phoneNumber: 1,
-          productName: {
-            $reduce: {
-              input: "$productNames",
-              initialValue: "",
-              in: {
-                $cond: [
-                  { $eq: ["$$value", ""] },
-                  "$$this",
-                  { $concat: ["$$value", ", ", "$$this"] },
-                ],
-              },
-            },
-          },
-          productSize: {
-            $reduce: {
-              input: "$productSizes",
-              initialValue: "",
-              in: {
-                $cond: [
-                  { $eq: ["$$value", ""] },
-                  "$$this",
-                  { $concat: ["$$value", ", ", "$$this"] },
-                ],
-              },
-            },
-          },
-          date: {
-            $dateToString: {
-              format: "%d/%m/%Y",
-              date: "$createdAt",
-            },
-          },
+          productName: { $reduce: {
+            input: "$productNames",
+            initialValue: "",
+            in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] }
+          }},
+          productSize: { $reduce: {
+            input: "$productSizes",
+            initialValue: "",
+            in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] }
+          }},
+          date: { $dateToString: { format: "%d/%m/%Y", date: "$createdAt" } },
           paymentMode: "$paymentMethod",
           status: "$paymentStatus",
         },
@@ -603,124 +565,21 @@ const getAllPaymentsByStatus = async (req, res) => {
       { $limit: limit },
     ];
 
-    // Count Pipeline
+    // ---- Count Pipeline ----
     const countPipeline = [
       { $match: filter },
-      {
-        $lookup: {
-          from: "customers",
-          localField: "customer",
-          foreignField: "_id",
-          as: "customer",
-        },
-      },
-      { $unwind: "$customer" },
-      {
-        $lookup: {
-          from: "products",
-          localField: "customer.products.product",
-          foreignField: "_id",
-          as: "productDetails",
-        },
-      },
-      { $unwind: "$customer.products" },
-      {
-        $lookup: {
-          from: "products",
-          localField: "customer.products.product",
-          foreignField: "_id",
-          as: "productInfo",
-        },
-      },
-      { $unwind: "$productInfo" },
-      {
-        $group: {
-          _id: "$_id",
-          productNames: { $push: "$productInfo.productName" },
-          productSizes: { $push: "$customer.products.productSize" },
-        },
-      },
-      // Apply product filters after grouping
-      ...(productName || productSize
-        ? [
-            {
-              $match: {
-                ...(productName && {
-                  productNames: { $regex: productName, $options: "i" },
-                }),
-                ...(productSize && {
-                  productSizes: { $regex: productSize, $options: "i" },
-                }),
-              },
-            },
-          ]
-        : []),
       { $count: "total" },
     ];
 
-    // Get counts for partially paid and paid
-    const countPartiallyPaid = await Payment.countDocuments({
-      paymentStatus: "Partially Paid",
-    });
-    const countPaid = await Payment.countDocuments({ paymentStatus: "Paid" });
-
-    const [results, countResult] = await Promise.all([
+    // ---- Parallel Queries ----
+    const [results, countResult, countPartiallyPaid, countPaid] = await Promise.all([
       Payment.aggregate(pipeline),
       Payment.aggregate(countPipeline),
+      Payment.countDocuments({ paymentStatus: "Partially Paid" }),
+      Payment.countDocuments({ paymentStatus: "Paid" }),
     ]);
 
     const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
-
-    let { page = 1, limit = 10, search = "" } = req.query;
-    page = parseInt(page);
-    limit = parseInt(limit);
-
-    // ---- Base Filter ----
-    const filter = { paymentStatus: "Partially Paid" };
-
-    // ---- Fetch Payments ----
-    const payments = await Payment.find(filter)
-      .populate("customer")
-      .populate({
-        path: "customer",
-        populate: {
-          path: "orders",
-        },
-      })
-      .sort({ createdAt: -1 }) // default sorting
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
-
-    // ---- Process each payment ----
-    const results = payments.map((payment) => {
-      const orders = payment.customer.orders || [];
-      const productNames = [];
-      const sizes = [];
-
-      orders.forEach((order) => {
-        (order.products || []).forEach((product) => {
-          productNames.push(product.productName);
-          sizes.push(product.productSize);
-        });
-      });
-
-      return {
-        _id: payment._id,
-        customerName: payment.customer.name,
-        phoneNumber: payment.customer.phoneNumber,
-        paymentStatus: payment.paymentStatus,
-        productName: productNames.join(", "),
-        size: sizes.join(", "),
-        paymentDate: payment.paidDates && payment.paidDates.length > 0
-          ? new Date(payment.paidDates[0]).toLocaleDateString("en-GB")
-          : null,
-      };
-    });
-
-    // ---- Total Records Count ----
-    const totalRecords = await Payment.countDocuments(filter);
-
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
@@ -743,6 +602,7 @@ const getAllPaymentsByStatus = async (req, res) => {
     });
   }
 };
+
 
 
 // ✅ Get All Cash Realted Payments For DeliveryBoy
