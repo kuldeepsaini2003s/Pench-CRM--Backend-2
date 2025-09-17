@@ -131,14 +131,20 @@ const createCustomer = async (req, res) => {
       }
 
       // Product validate
-      const productDoc = await Product.findOne({ productName, size: productSize });
+      const productDoc = await Product.findOne({
+        productName,
+        size: productSize,
+      });
 
       if (!productDoc) {
         const allProducts = await Product.find({}, "productName size");
         return res.status(400).json({
           success: false,
           message: `Invalid product name: ${productName}. Please select from dropdown.`,
-          availableProducts: allProducts.map((p) => ({ productName: p.productName, size: p.size })),
+          availableProducts: allProducts.map((p) => ({
+            productName: p.productName,
+            size: p.size,
+          })),
         });
       }
 
@@ -276,17 +282,6 @@ const getAllCustomers = async (req, res) => {
       }
     }
 
-    if (productSize) {
-      filter["products"] = {
-        $elemMatch: {
-          product: { $exists: true, $ne: null },
-          ...(productSize && {
-            productSize: { $regex: productSize, $options: "i" },
-          }),
-        },
-      };
-    }
-
     const customers = await Customer.find(filter)
       .populate({
         path: "products.product",
@@ -297,22 +292,33 @@ const getAllCustomers = async (req, res) => {
 
     let filteredCustomers = customers;
 
+    // Apply product name filter
     if (productName) {
-      filteredCustomers = customers.filter((customer) => {
+      const productNameRegex = new RegExp(productName, "i");
+      filteredCustomers = filteredCustomers.filter((customer) => {
         return customer.products.some((product) => {
           return (
             product.product &&
             product.product.productName &&
-            product.product.productName
-              .toLowerCase()
-              .includes(productName.toLowerCase())
+            productNameRegex.test(product.product.productName)
+          );
+        });
+      });
+    }
+
+    // Apply product size filter
+    if (productSize) {
+      const productSizeRegex = new RegExp(productSize, "i");
+      filteredCustomers = filteredCustomers.filter((customer) => {
+        return customer.products.some((product) => {
+          return (
+            product.productSize && productSizeRegex.test(product.productSize)
           );
         });
       });
     }
 
     const totalCustomers = filteredCustomers.length;
-    console.log("get All Customer", totalCustomers)
 
     const paginatedCustomers = filteredCustomers.slice(
       (page - 1) * limit,
@@ -933,14 +939,16 @@ const addProductToCustomer = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: `Product "${productName}" not found. Please select from available products.`,
-        availableProducts: allProducts.map((p) => ({ productName: p.productName, size: p.size })),
+        availableProducts: allProducts.map((p) => ({
+          productName: p.productName,
+          size: p.size,
+        })),
       });
     }
 
     const existingProduct = customer.products.find(
       (p) => p.product.toString() === product._id.toString()
     );
-    console.log("existingProduct", existingProduct);
 
     if (existingProduct) {
       return res.status(400).json({
@@ -1071,11 +1079,9 @@ const updateCustomerProduct = async (req, res) => {
 
     if (productName) {
       product = await Product.findOne({ productName });
-      console.log(productName);
 
       if (!product) {
         const allProducts = await Product.find({}, "productName");
-        console.log("allProducts", allProducts);
         return res.status(404).json({
           success: false,
           message: `Product "${productName}" not found. Please select from available products.`,
@@ -1087,8 +1093,6 @@ const updateCustomerProduct = async (req, res) => {
       productIndex = customer.products.findIndex(
         (p) => p.product.toString() === product._id.toString()
       );
-
-      console.log("productIndex", productIndex);
 
       if (productIndex === -1) {
         return res.status(404).json({

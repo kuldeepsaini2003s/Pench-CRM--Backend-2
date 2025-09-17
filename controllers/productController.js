@@ -32,18 +32,18 @@ const createProduct = async (req, res) => {
       });
     }
 
-    // ✅ Normalize size 
+    // ✅ Normalize size
     let normalizeSize = size.replace(/\s+/g, "").toLowerCase();
 
-     // ✅ Validation: only allow formats ending with ltr, gm, or kg
-     const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/; // 
-     if (!sizePattern.test(normalizeSize)) {
-       return res.status(400).json({
-         success: false,
-         message:
-           "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
-       });
-     }
+    // ✅ Validation: only allow formats ending with ltr, gm, or kg
+    const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/; //
+    if (!sizePattern.test(normalizeSize)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
+      });
+    }
 
     // ✅ Check for duplicate product (same productName + same size)
     const duplicateProduct = await Product.findOne({
@@ -52,11 +52,11 @@ const createProduct = async (req, res) => {
       isDeleted: false,
     });
 
-    if(!sizePattern.test(normalizeSize)){
-        return res.status(400).json({
-            success: false,
-            message: `Invalid size. Use: ${sizePattern}`,
-          });
+    if (!sizePattern.test(normalizeSize)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid size. Use: ${sizePattern}`,
+      });
     }
     if (duplicateProduct) {
       return res.status(400).json({
@@ -211,23 +211,23 @@ const updateProduct = async (req, res) => {
     const productImage = req?.file;
 
     // Build update object dynamically
-    const updateData ={}
-    if(productName) updateData.productName = productName
-    if(description) updateData.description = description
-    if(size){
+    const updateData = {};
+    if (productName) updateData.productName = productName;
+    if (description) updateData.description = description;
+    if (size) {
       const normalizeSize = size.replace(/\s+/g, "").toLowerCase();
-        // ✅ Validate size format
-        const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
-        if (!sizePattern.test(normalizeSize)) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
-          });
-        }
-  
-        updateData.size = normalizeSize;
-        
+      // ✅ Validate size format
+      const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
+      if (!sizePattern.test(normalizeSize)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
+        });
+      }
+
+      updateData.size = normalizeSize;
+
       // ✅ Check for duplicate product (same productName + same size )
       const duplicateProduct = await Product.findOne({
         _id: { $ne: id },
@@ -242,11 +242,10 @@ const updateProduct = async (req, res) => {
           message: `Product with same name and size already exists`,
         });
       }
-
     }
-    if(price) updateData.price = price
-    if(stock) updateData.stock = stock
-    if(productImage) updateData.productImage = productImage.path
+    if (price) updateData.price = price;
+    if (stock) updateData.stock = stock;
+    if (productImage) updateData.productImage = productImage.path;
 
     // ⚡ Single DB call, no validation re-run
     const updatedProduct = await Product.findByIdAndUpdate(id, updateData, {
@@ -730,14 +729,39 @@ const getTopSellingProductSold = async (req, res) => {
 //✅ Get Total Product Deliver Tommorow
 const getTotalProductDeliverTommorow = async (req, res) => {
   try {
-    let { page = 1, limit = 10, sortOrder = "desc" } = req.query;
+    let {
+      page = 1,
+      limit = 10,
+      productName,
+      productSize,
+      sortOrder = "desc",
+    } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
 
     const tomorrow = moment().add(1, "day").format("DD/MM/YYYY");
 
+    const matchConditions = {
+      deliveryDate: tomorrow,
+      status: "Pending",
+    };
+
+    if (productName) {
+      matchConditions["products.productName"] = {
+        $regex: productName,
+        $options: "i",
+      };
+    }
+
+    if (productSize) {
+      matchConditions["products.productSize"] = {
+        $regex: productSize,
+        $options: "i",
+      };
+    }
+
     const pipeline = [
-      { $match: { deliveryDate: tomorrow } },
+      { $match: matchConditions },
       {
         $lookup: {
           from: "customers",
@@ -748,61 +772,79 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       },
       { $unwind: "$customer" },
       { $unwind: "$products" },
+      // Apply product filters after unwinding products
+      ...(productName || productSize
+        ? [
+            {
+              $match: {
+                ...(productName && {
+                  productName: {
+                    $regex: productName,
+                    $options: "i",
+                  },
+                }),
+                ...(productSize && {
+                  productSize: {
+                    $regex: productSize,
+                    $options: "i",
+                  },
+                }),
+              },
+            },
+          ]
+        : []),
       {
         $group: {
-          _id: "$_id",
+          _id: "$customer._id",
           customerName: { $first: "$customer.name" },
           deliveryDate: { $first: "$deliveryDate" },
-          products: { $push: "$products" },
+          productNames: { $push: "$products.productName" },
+          productSizes: { $push: "$products.productSize" },
+          quantities: { $push: "$products.quantity" },
         },
       },
       {
         $project: {
-          _id: 1,
+          _id: 0,
+          customerId: "$_id",
           customerName: 1,
           deliveryDate: 1,
-          productType: {
+          productName: {
             $reduce: {
-              input: "$products.productName",
+              input: "$productNames",
               initialValue: "",
               in: {
-                $concat: [
-                  {
-                    $cond: [
-                      { $eq: ["$$value", ""] },
-                      "",
-                      { $concat: ["$$value", ", "] },
-                    ],
-                  },
+                $cond: [
+                  { $eq: ["$$value", ""] },
                   "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
                 ],
               },
             },
           },
           productSize: {
             $reduce: {
-              input: "$products.productSize",
+              input: "$productSizes",
               initialValue: "",
               in: {
-                $concat: [
-                  {
-                    $cond: [
-                      { $eq: ["$$value", ""] },
-                      "",
-                      { $concat: ["$$value", ", "] },
-                    ],
-                  },
+                $cond: [
+                  { $eq: ["$$value", ""] },
                   "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
                 ],
               },
             },
           },
           quantity: {
             $reduce: {
-              input: "$products.quantity",
-              initialValue: 0,
+              input: "$quantities",
+              initialValue: "",
               in: {
-                $sum: ["$$value", "$$this"],
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  { $toString: "$$this" },
+                  { $concat: ["$$value", ", ", { $toString: "$$this" }] },
+                ],
               },
             },
           },
@@ -813,8 +855,44 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       { $limit: limit },
     ];
 
-    const result = await CustomerOrder.aggregate(pipeline);
-    const totalRecords = result.length;
+    const countPipeline = [
+      { $match: matchConditions },
+      { $unwind: "$products" },
+      // Apply product filters after unwinding products
+      ...(productName || productSize
+        ? [
+            {
+              $match: {
+                ...(productName && {
+                  productName: {
+                    $regex: productName,
+                    $options: "i",
+                  },
+                }),
+                ...(productSize && {
+                  productSize: {
+                    $regex: productSize,
+                    $options: "i",
+                  },
+                }),
+              },
+            },
+          ]
+        : []),
+      {
+        $group: {
+          _id: "$customer",
+        },
+      },
+      { $count: "total" },
+    ];
+
+    const [result, countResult] = await Promise.all([
+      CustomerOrder.aggregate(pipeline),
+      CustomerOrder.aggregate(countPipeline),
+    ]);
+
+    const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
     const totalPages = Math.ceil(totalRecords / limit);
     const hasPrevious = page > 1;
     const hasNext = page < totalPages;
@@ -827,7 +905,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       currentPage: page,
       previous: hasPrevious,
       next: hasNext,
-      tommorrowDeliveryProducts: result,
+      products: result,
     });
   } catch (error) {
     console.error("❌ Error in getTotalProductDeliverTommorow:", error);
