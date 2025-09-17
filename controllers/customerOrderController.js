@@ -369,6 +369,7 @@ const createAdditionalOrder = async (req, res) => {
           0
         ),
         status: "Pending",
+        paymentStatus: "Unpaid",
       });
 
       savedOrder = await newOrder.save();
