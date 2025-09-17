@@ -3,12 +3,11 @@ const CustomerOrders = require("../models/customerOrderModel"); // daily orders
 const Payment = require("../models/paymentModel");
 const Invoice = require("../models/customerInvoicesModel");
 const Razorpay = require("razorpay");
+const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
-
-
 
 // ✅ Create Payment for Customer
 const createPaymentForCustomer = async (req, res) => {
@@ -19,27 +18,45 @@ const createPaymentForCustomer = async (req, res) => {
     // 🔍 Find customer
     const customer = await Customer.findById(customerId);
     if (!customer) {
-      return res.status(404).json({ success: false, message: "Customer not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
     }
 
     if (!wantToPay) {
-      return res.status(400).json({ success: false, message: "wantToPay must be true to create a payment" });
+      return res.status(400).json({
+        success: false,
+        message: "wantToPay must be true to create a payment",
+      });
     }
 
     if (!paymentMethod || !["Online", "COD"].includes(paymentMethod)) {
-      return res.status(400).json({ success: false, message: "Invalid paymentMethod" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid paymentMethod" });
     }
 
     if (!paidAmount || paidAmount <= 0) {
-      return res.status(400).json({ success: false, message: "Provide a valid paidAmount" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Provide a valid paidAmount" });
     }
 
     // ✅ Fetch all delivered orders (oldest first)
-    const allOrders = await CustomerOrders.find({ customer: customerId, status: "Delivered" }).sort({ createdAt: 1 });
-    const totalAmount = allOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+    const allOrders = await CustomerOrders.find({
+      customer: customerId,
+      status: "Delivered",
+    }).sort({ createdAt: 1 });
+    const totalAmount = allOrders.reduce(
+      (sum, order) => sum + (order.totalAmount || 0),
+      0
+    );
 
     if (paidAmount > totalAmount) {
-      return res.status(400).json({ success: false, message: `Paid amount cannot exceed total amount (${totalAmount})` });
+      return res.status(400).json({
+        success: false,
+        message: `Paid amount cannot exceed total amount (${totalAmount})`,
+      });
     }
 
     let paymentDocData = {
@@ -48,7 +65,7 @@ const createPaymentForCustomer = async (req, res) => {
       paidAmount: 0,
       balanceAmount: totalAmount,
       carryForwardBalance: 0,
-      paidDates: [new Date()],
+      paidDates: [formatDateToDDMMYYYY(new Date())],
       paymentMethod,
       paymentStatus: "Unpaid",
     };
@@ -72,10 +89,13 @@ const createPaymentForCustomer = async (req, res) => {
         paymentDocData.razorpayLinkId = paymentLink.id;
         paymentDocData.razorpayLinkStatus = paymentLink.status;
         paymentDocData.razorpayLinkUrl = paymentLink.short_url; // ✅ actual clickable link
-       
       } catch (err) {
         console.error("Razorpay error:", err);
-        return res.status(500).json({ success: false, message: "Failed to create Razorpay link", error: err.message });
+        return res.status(500).json({
+          success: false,
+          message: "Failed to create Razorpay link",
+          error: err.message,
+        });
       }
     }
 
@@ -114,7 +134,11 @@ const createPaymentForCustomer = async (req, res) => {
 
       paymentDocData.balanceAmount = totalAmount - paymentDocData.paidAmount;
       paymentDocData.paymentStatus =
-        paymentDocData.balanceAmount === 0 ? "Paid" : paymentDocData.paidAmount > 0 ? "Partially Paid" : "Unpaid";
+        paymentDocData.balanceAmount === 0
+          ? "Paid"
+          : paymentDocData.paidAmount > 0
+          ? "Partially Paid"
+          : "Unpaid";
     }
 
     // ✅ Save Payment doc
@@ -128,18 +152,25 @@ const createPaymentForCustomer = async (req, res) => {
     // ✅ Update Customer
     customer.amountPaidTillDate += paymentDoc.paidAmount;
     customer.amountDue = totalAmount - customer.amountPaidTillDate;
-    customer.paymentStatus = customer.amountPaidTillDate < totalAmount ? "Partially Paid" : "Paid";
+    customer.paymentStatus =
+      customer.amountPaidTillDate < totalAmount ? "Partially Paid" : "Paid";
     await customer.save();
 
     res.status(200).json({
       success: true,
       message: "Payment recorded successfully",
       payment: paymentObj,
-      ...(paymentMethod === "Online" && { paymentUrl: paymentDoc.razorpayLinkUrl }), // ✅ clickable link
+      ...(paymentMethod === "Online" && {
+        paymentUrl: paymentDoc.razorpayLinkUrl,
+      }), // ✅ clickable link
     });
   } catch (error) {
     console.error("createPaymentForCustomer Error:", error);
-    res.status(500).json({ success: false, message: "Error creating payment", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Error creating payment",
+      error: error.message,
+    });
   }
 };
 
@@ -187,7 +218,10 @@ const verifyPayment = async (req, res) => {
     }
 
     // ✅ Allocate paidAmount to orders (oldest first)
-    const allOrders = await CustomerOrders.find({ customer: customerId, status: "Delivered" }).sort({ createdAt: 1 });
+    const allOrders = await CustomerOrders.find({
+      customer: customerId,
+      status: "Delivered",
+    }).sort({ createdAt: 1 });
 
     let remainingAmount = paidAmount;
     let totalPaidNow = 0;
@@ -239,7 +273,8 @@ const verifyPayment = async (req, res) => {
     if (customer) {
       customer.amountPaidTillDate += totalPaidNow; // 🔥 increment not overwrite
       customer.amountDue = paymentDoc.totalAmount - customer.amountPaidTillDate;
-      customer.paymentStatus = customer.amountDue > 0 ? "Partially Paid" : "Paid";
+      customer.paymentStatus =
+        customer.amountDue > 0 ? "Partially Paid" : "Paid";
       await customer.save();
     }
 
@@ -268,13 +303,14 @@ const verifyPayment = async (req, res) => {
 const makePaymentForBalance = async (req, res) => {
   try {
     const { customerId } = req.params;
-    const { payAmount } = req.body; 
+    const { payAmount } = req.body;
 
     // 🔍 Validate Razorpay credentials & BASE_URL
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
       return res.status(500).json({
         success: false,
-        message: "Razorpay configuration missing. Please check environment variables.",
+        message:
+          "Razorpay configuration missing. Please check environment variables.",
       });
     }
     if (!process.env.BASE_URL) {
@@ -287,7 +323,7 @@ const makePaymentForBalance = async (req, res) => {
     // 🔍 Find existing unpaid/partial payment record
     const paymentDoc = await Payment.findOne({
       customer: customerId,
-      paymentStatus: { $in: ["Unpaid", "Partially Paid"] }
+      paymentStatus: { $in: ["Unpaid", "Partially Paid"] },
     }).populate("customer");
 
     if (!paymentDoc) {
@@ -398,9 +434,243 @@ const makePaymentForBalance = async (req, res) => {
   }
 };
 
-//✅ Get All Payments whose paymnetStatus is Paid
-const getAllPartiallyPaid = async (req, res) => {
+//✅ Get All Payments by Payment Status
+const getAllPaymentsByStatus = async (req, res) => {
   try {
+    let {
+      page = 1,
+      limit = 10,
+      paymentStatus = "All",
+      paymentMode = "All",
+      productName = "",
+      productSize = "",
+      from = "",
+      to = "",
+    } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    // Validate paymentStatus
+    const validStatuses = ["All", "Paid", "Partially Paid"];
+    if (!validStatuses.includes(paymentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid paymentStatus. Use: All, Paid, and Partially Paid",
+      });
+    }
+
+    // Validate paymentMode
+    const validModes = ["All", "COD", "Online"];
+    if (!validModes.includes(paymentMode)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid paymentMode. Use: All, COD, or Online",
+      });
+    }
+
+    // Base Filter - Only fetch Paid and Partially Paid payments
+    const filter = {
+      paymentStatus: { $in: ["Paid", "Partially Paid"] },
+    };
+    if (paymentStatus !== "All") {
+      filter.paymentStatus = paymentStatus;
+    }
+    if (paymentMode !== "All") {
+      filter.paymentMethod = paymentMode;
+    }
+
+    // Date filter - Convert from/to dates to DD/MM/YYYY format for paidDates filtering
+    if (from || to) {
+      const paidDatesFilter = {};
+
+      if (from) {
+        const fromDate = new Date(from);
+        const fromDateFormatted = formatDateToDDMMYYYY(fromDate);
+        paidDatesFilter.$gte = fromDateFormatted;
+      }
+
+      if (to) {
+        const toDate = new Date(to);
+        const toDateFormatted = formatDateToDDMMYYYY(toDate);
+        paidDatesFilter.$lte = toDateFormatted;
+      }
+
+      if (Object.keys(paidDatesFilter).length > 0) {
+        filter.paidDates = { $elemMatch: paidDatesFilter };
+      }
+    }
+
+    // Aggregation Pipeline
+    const pipeline = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customer",
+          foreignField: "_id",
+          as: "customer",
+        },
+      },
+      { $unwind: "$customer" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "customer.products.product",
+          foreignField: "_id",
+          as: "productDetails",
+        },
+      },
+      { $unwind: "$customer.products" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "customer.products.product",
+          foreignField: "_id",
+          as: "productInfo",
+        },
+      },
+      { $unwind: "$productInfo" },
+      {
+        $group: {
+          _id: "$_id",
+          customerName: { $first: "$customer.name" },
+          phoneNumber: { $first: "$customer.phoneNumber" },
+          productNames: { $push: "$productInfo.productName" },
+          productSizes: { $push: "$customer.products.productSize" },
+          paymentStatus: { $first: "$paymentStatus" },
+          paymentMethod: { $first: "$paymentMethod" },
+          createdAt: { $first: "$createdAt" },
+        },
+      },
+      // Apply product filters after grouping
+      ...(productName || productSize
+        ? [
+            {
+              $match: {
+                ...(productName && {
+                  productNames: { $regex: productName, $options: "i" },
+                }),
+                ...(productSize && {
+                  productSizes: { $regex: productSize, $options: "i" },
+                }),
+              },
+            },
+          ]
+        : []),
+      {
+        $project: {
+          _id: 0,
+          customerName: 1,
+          phoneNumber: 1,
+          productName: {
+            $reduce: {
+              input: "$productNames",
+              initialValue: "",
+              in: {
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
+                ],
+              },
+            },
+          },
+          productSize: {
+            $reduce: {
+              input: "$productSizes",
+              initialValue: "",
+              in: {
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
+                ],
+              },
+            },
+          },
+          date: {
+            $dateToString: {
+              format: "%d/%m/%Y",
+              date: "$createdAt",
+            },
+          },
+          paymentMode: "$paymentMethod",
+          status: "$paymentStatus",
+        },
+      },
+      { $skip: (page - 1) * limit },
+      { $limit: limit },
+    ];
+
+    // Count Pipeline
+    const countPipeline = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customer",
+          foreignField: "_id",
+          as: "customer",
+        },
+      },
+      { $unwind: "$customer" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "customer.products.product",
+          foreignField: "_id",
+          as: "productDetails",
+        },
+      },
+      { $unwind: "$customer.products" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "customer.products.product",
+          foreignField: "_id",
+          as: "productInfo",
+        },
+      },
+      { $unwind: "$productInfo" },
+      {
+        $group: {
+          _id: "$_id",
+          productNames: { $push: "$productInfo.productName" },
+          productSizes: { $push: "$customer.products.productSize" },
+        },
+      },
+      // Apply product filters after grouping
+      ...(productName || productSize
+        ? [
+            {
+              $match: {
+                ...(productName && {
+                  productNames: { $regex: productName, $options: "i" },
+                }),
+                ...(productSize && {
+                  productSizes: { $regex: productSize, $options: "i" },
+                }),
+              },
+            },
+          ]
+        : []),
+      { $count: "total" },
+    ];
+
+    // Get counts for partially paid and paid
+    const countPartiallyPaid = await Payment.countDocuments({
+      paymentStatus: "Partially Paid",
+    });
+    const countPaid = await Payment.countDocuments({ paymentStatus: "Paid" });
+
+    const [results, countResult] = await Promise.all([
+      Payment.aggregate(pipeline),
+      Payment.aggregate(countPipeline),
+    ]);
+
+    const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
+
     let { page = 1, limit = 10, search = "" } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
@@ -450,12 +720,14 @@ const getAllPartiallyPaid = async (req, res) => {
 
     // ---- Total Records Count ----
     const totalRecords = await Payment.countDocuments(filter);
+
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
       success: true,
-      message: "Partially Paid Records Fetched Successfully",
-      totalRecords,
+      message: `Payments fetched successfully`,
+      partiallyPaid: countPartiallyPaid,
+      paid: countPaid,
       totalPages,
       currentPage: page,
       previous: page > 1,
@@ -466,13 +738,15 @@ const getAllPartiallyPaid = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       success: false,
-      message: "Failed To Fetch Partially Paid Records",
+      message: "Failed To Fetch Payments",
       error: error.message,
     });
   }
 };
 
+
 // ✅ Get All Cash Realted Payments For DeliveryBoy
+
 
 
 
@@ -484,5 +758,5 @@ module.exports = {
   createPaymentForCustomer,
   verifyPayment,
   makePaymentForBalance,
-  getAllPartiallyPaid,
+  getAllPaymentsByStatus,
 };
