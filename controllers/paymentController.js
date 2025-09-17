@@ -433,6 +433,20 @@ const makePaymentForBalance = async (req, res) => {
   }
 };
 
+// Helper function to generate date range
+const generateDateRange = (startDate, endDate) => {
+  const dates = [];
+  const currentDate = new Date(startDate);
+  const lastDate = new Date(endDate);
+
+  while (currentDate <= lastDate) {
+    dates.push(formatDateToDDMMYYYY(currentDate));
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return dates;
+};
+
 //✅ Get All Payments by Payment Status
 const getAllPaymentsByStatus = async (req, res) => {
   try {
@@ -455,7 +469,8 @@ const getAllPaymentsByStatus = async (req, res) => {
     if (!validStatuses.includes(paymentStatus)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid paymentStatus. Use: All, Paid, Partially Paid, or Unpaid",
+        message:
+          "Invalid paymentStatus. Use: All, Paid, Partially Paid, or Unpaid",
       });
     }
 
@@ -477,21 +492,27 @@ const getAllPaymentsByStatus = async (req, res) => {
       filter.paymentMethod = paymentMode;
     }
 
-      if (from && to) {
-        // Both from and to provided - generate date range
-        const dateRange = generateDateRange(fromDate, toDate);
-        filter.paidDates = { $in: dateRange };
-      } else if (from) {
-        // Only from provided - generate dates from fromDate to today
-        const today = new Date();
-        const dateRange = generateDateRange(fromDate, today);
-        filter.paidDates = { $in: dateRange };
-      } else if (to) {
-        // Only to provided - generate dates from beginning to toDate
-        const beginning = new Date("2020-01-01"); // Start from a reasonable date
-        const dateRange = generateDateRange(beginning, toDate);
-        filter.paidDates = { $in: dateRange };
-        
+    // Handle date filtering
+    if (from && to) {
+      // Both from and to provided - generate date range
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
+      const dateRange = generateDateRange(fromDate, toDate);
+      filter.paidDates = { $in: dateRange };
+    } else if (from) {
+      // Only from provided - generate dates from fromDate to today
+      const fromDate = new Date(from);
+      const today = new Date();
+      const dateRange = generateDateRange(fromDate, today);
+      filter.paidDates = { $in: dateRange };
+    } else if (to) {
+      // Only to provided - generate dates from beginning to toDate
+      const beginning = new Date("2020-01-01"); // Start from a reasonable date
+      const toDate = new Date(to);
+      const dateRange = generateDateRange(beginning, toDate);
+      filter.paidDates = { $in: dateRange };
+    }
+
     // ---- Aggregation Pipeline ----
     const pipeline = [
       { $match: filter },
@@ -524,6 +545,9 @@ const getAllPaymentsByStatus = async (req, res) => {
           _id: "$_id",
           customerName: { $first: "$customer.name" },
           phoneNumber: { $first: "$customer.phoneNumber" },
+          totalAmount: { $first: "$totalAmount" },
+          paidAmount: { $first: "$paidAmount" },
+          balanceAmount: { $first: "$balanceAmount" },
           productNames: { $push: "$productInfo.productName" },
           productSizes: { $push: "$customer.products.productSize" },
           paymentStatus: { $first: "$paymentStatus" },
@@ -550,16 +574,35 @@ const getAllPaymentsByStatus = async (req, res) => {
           _id: 1,
           customerName: 1,
           phoneNumber: 1,
-          productName: { $reduce: {
-            input: "$productNames",
-            initialValue: "",
-            in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] }
-          }},
-          productSize: { $reduce: {
-            input: "$productSizes",
-            initialValue: "",
-            in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] }
-          }},
+          totalAmount: 1,
+          paidAmount: 1,
+          balanceAmount: 1,
+          productName: {
+            $reduce: {
+              input: "$productNames",
+              initialValue: "",
+              in: {
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
+                ],
+              },
+            },
+          },
+          productSize: {
+            $reduce: {
+              input: "$productSizes",
+              initialValue: "",
+              in: {
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
+                ],
+              },
+            },
+          },
           date: { $dateToString: { format: "%d/%m/%Y", date: "$createdAt" } },
           paymentMode: "$paymentMethod",
           status: "$paymentStatus",
@@ -570,25 +613,19 @@ const getAllPaymentsByStatus = async (req, res) => {
     ];
 
     // ---- Count Pipeline ----
-    const countPipeline = [
-      { $match: filter },
-      { $count: "total" },
-      Payment.aggregate(pipeline),
-      Payment.aggregate(countPipeline),
-      Payment.countDocuments({ paymentStatus: "Partially Paid" }),
-      Payment.countDocuments({ paymentStatus: "Paid" }),
-      Payment.countDocuments({ paymentStatus: "Unpaid" }),
-    ]);
-    ];
+    const countPipeline = [{ $match: filter }, { $count: "total" }];
 
+    // Execute all queries in parallel
+    const [results, countResult, countPartiallyPaid, countPaid, countUnpaid] =
+      await Promise.all([
+        Payment.aggregate(pipeline),
+        Payment.aggregate(countPipeline),
+        Payment.countDocuments({ paymentStatus: "Partially Paid" }),
+        Payment.countDocuments({ paymentStatus: "Paid" }),
+        Payment.countDocuments({ paymentStatus: "Unpaid" }),
+      ]);
 
-    // Get counts for partially paid and paid
-    const countPartiallyPaid = await Payment.countDocuments({
-      paymentStatus: "Partially Paid",
-    });
-
-    const countPaid = await Payment.countDocuments({ paymentStatus: "Paid" });
-
+    const totalRecords = countResult[0]?.total || 0;
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
@@ -597,6 +634,7 @@ const getAllPaymentsByStatus = async (req, res) => {
       partiallyPaid: countPartiallyPaid,
       paid: countPaid,
       pending: countUnpaid,
+      totalRecords,
       totalPages,
       currentPage: page,
       previous: page > 1,
@@ -604,7 +642,7 @@ const getAllPaymentsByStatus = async (req, res) => {
       data: results,
     });
   } catch (error) {
-    console.error("getAllCashPaymentsForDeliveryBoy Error:", error);
+    console.error("getAllPaymentsByStatus Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed To Fetch Payments",
@@ -612,8 +650,6 @@ const getAllPaymentsByStatus = async (req, res) => {
     });
   }
 };
-
-
 
 //✅ Get All Cash Realted Payments For DeliveryBoy
 const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
@@ -644,7 +680,8 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     // ---- Format data for UI ----
     const results = orders.map((order) => {
       let status =
-        order.paymentStatus === "Paid" || order.paymentStatus === "Partially Paid"
+        order.paymentStatus === "Paid" ||
+        order.paymentStatus === "Partially Paid"
           ? "Received"
           : "Pending";
 
@@ -659,32 +696,43 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     });
 
     // ---- Totals (for summary cards) ----
-    const [totalCollectedAgg, pendingCollectionsAgg, customersPaidList] = await Promise.all([
-      // Total Collected
-      CustomerOrders.aggregate([
-        { $match: { ...orderFilter, paymentStatus: { $in: ["Paid", "Partially Paid"] } } },
-        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-      ]),
-    
-      // Pending Collections
-      CustomerOrders.aggregate([
-        { $match: { ...orderFilter, paymentStatus: { $in: ["Pending", "Unpaid"] } } },
-        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-      ]),
-    
-      // Unique Customers Paid
-      CustomerOrders.distinct("customer", {
-        ...orderFilter,
-        paymentStatus: { $in: ["Paid", "Partially Paid"] },
-      }),
-    ]);
-    
+    const [totalCollectedAgg, pendingCollectionsAgg, customersPaidList] =
+      await Promise.all([
+        // Total Collected
+        CustomerOrders.aggregate([
+          {
+            $match: {
+              ...orderFilter,
+              paymentStatus: { $in: ["Paid", "Partially Paid"] },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ]),
+
+        // Pending Collections
+        CustomerOrders.aggregate([
+          {
+            $match: {
+              ...orderFilter,
+              paymentStatus: { $in: ["Pending", "Unpaid"] },
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+        ]),
+
+        // Unique Customers Paid
+        CustomerOrders.distinct("customer", {
+          ...orderFilter,
+          paymentStatus: { $in: ["Paid", "Partially Paid"] },
+        }),
+      ]);
+
     // const summary = {
     //   totalCollected: totalCollectedAgg[0]?.total || 0,
     //   pendingCollections: pendingCollectionsAgg[0]?.total || 0,
     //   customersPaid: customersPaidList.length,
     // };
-    
+
     // ---- Count total records for pagination ----
     const totalRecords = await CustomerOrders.countDocuments(orderFilter);
 
