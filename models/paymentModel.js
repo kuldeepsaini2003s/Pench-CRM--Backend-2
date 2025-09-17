@@ -48,6 +48,13 @@ const paymentSchema = new mongoose.Schema(
     },
     razorpayPaymentId:{
         type:String,
+    },
+    razorpayLinkUrl: {              // ✅ Add this field
+      type: String,
+    },
+    carryForwardBalance:{
+      type:Number,
+      default:0
     }
   },
   { timestamps: true }
