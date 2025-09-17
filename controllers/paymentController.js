@@ -175,8 +175,6 @@ const createPaymentForCustomer = async (req, res) => {
   }
 };
 
-
-
 // ✅ New Verify Payment Code
 const verifyPayment = async (req, res) => {
   try {
@@ -479,16 +477,21 @@ const getAllPaymentsByStatus = async (req, res) => {
       filter.paymentMethod = paymentMode;
     }
 
-    // ---- Date Filter ----
-    if (from || to) {
-      const paidDatesFilter = {};
-      if (from) paidDatesFilter.$gte = new Date(from);
-      if (to) paidDatesFilter.$lte = new Date(to);
-      if (Object.keys(paidDatesFilter).length > 0) {
-        filter.createdAt = paidDatesFilter;
-      }
-    }
-
+      if (from && to) {
+        // Both from and to provided - generate date range
+        const dateRange = generateDateRange(fromDate, toDate);
+        filter.paidDates = { $in: dateRange };
+      } else if (from) {
+        // Only from provided - generate dates from fromDate to today
+        const today = new Date();
+        const dateRange = generateDateRange(fromDate, today);
+        filter.paidDates = { $in: dateRange };
+      } else if (to) {
+        // Only to provided - generate dates from beginning to toDate
+        const beginning = new Date("2020-01-01"); // Start from a reasonable date
+        const dateRange = generateDateRange(beginning, toDate);
+        filter.paidDates = { $in: dateRange };
+        
     // ---- Aggregation Pipeline ----
     const pipeline = [
       { $match: filter },
@@ -570,18 +573,22 @@ const getAllPaymentsByStatus = async (req, res) => {
     const countPipeline = [
       { $match: filter },
       { $count: "total" },
-    ];
-
-    // ---- Parallel Queries ----
-    const [results, countResult, countPartiallyPaid, countPaid, countUnpaid] = await Promise.all([
       Payment.aggregate(pipeline),
       Payment.aggregate(countPipeline),
       Payment.countDocuments({ paymentStatus: "Partially Paid" }),
       Payment.countDocuments({ paymentStatus: "Paid" }),
       Payment.countDocuments({ paymentStatus: "Unpaid" }),
     ]);
+    ];
 
-    const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
+
+    // Get counts for partially paid and paid
+    const countPartiallyPaid = await Payment.countDocuments({
+      paymentStatus: "Partially Paid",
+    });
+
+    const countPaid = await Payment.countDocuments({ paymentStatus: "Paid" });
+
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
@@ -680,6 +687,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     
     // ---- Count total records for pagination ----
     const totalRecords = await CustomerOrders.countDocuments(orderFilter);
+
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
@@ -707,21 +715,10 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
-
-
-
-
 module.exports = {
   createPaymentForCustomer,
   verifyPayment,
   makePaymentForBalance,
-  // getAllPartiallyPaid,
   getAllCashPaymentsForDeliveryBoy,
   getAllPaymentsByStatus,
 };
