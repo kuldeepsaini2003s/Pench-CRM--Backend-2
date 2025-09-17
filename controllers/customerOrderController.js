@@ -389,7 +389,7 @@ const createAdditionalOrder = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, bottleReturnSize } = req.body;
+    const { status, bottleReturnSize, bottlesReturned } = req.body; // ✅ added bottlesReturned
 
     const order = await CustomerOrders.findById(orderId).populate("customer");
 
@@ -418,22 +418,26 @@ const updateOrderStatus = async (req, res) => {
       order.status = status;
     }
 
-    // ✅ Handle bottle return
+    // ✅ Handle bottle return size if provided
     if (bottleReturnSize) {
       order.bottleReturnSize = bottleReturnSize;
+    }
 
-      // Increase bottleReturned count
-      order.bottlesReturned = (order.bottlesReturned || 0) + 1;
+    // ✅ Handle bottlesReturned count manually from body
+    if (typeof bottlesReturned === "number" && bottlesReturned >= 0) {
+      order.bottlesReturned = bottlesReturned;
     }
 
     await order.save();
 
     return res.status(200).json({
       success: true,
-      message: message,
+      message: "Order updated successfully",
       _id: order?._id,
       orderNumber: order?.orderNumber,
       status: order?.status,
+      bottlesReturned: order?.bottlesReturned,
+      bottleReturnSize: order?.bottleReturnSize,
     });
   } catch (error) {
     console.error("updateOrderStatus Error:", error);
@@ -444,6 +448,7 @@ const updateOrderStatus = async (req, res) => {
     });
   }
 };
+
 
 module.exports = {
   createAutomaticOrdersForCustomer,

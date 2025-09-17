@@ -606,6 +606,251 @@ const getAllPaymentsByStatus = async (req, res) => {
   }
 };
 
+// // 🔹 Common Helper for Aggregation
+// const buildPaymentsPipeline = (filter, { page, limit, productName, productSize }) => {
+//   return [
+//     { $match: filter },
+//     {
+//       $lookup: {
+//         from: "customers",
+//         localField: "customer",
+//         foreignField: "_id",
+//         as: "customer",
+//       },
+//     },
+//     { $unwind: "$customer" },
+//     {
+//       $unwind: {
+//         path: "$customer.products",
+//         preserveNullAndEmptyArrays: true,
+//       },
+//     },
+//     {
+//       $lookup: {
+//         from: "products",
+//         localField: "customer.products.product",
+//         foreignField: "_id",
+//         as: "productInfo",
+//       },
+//     },
+//     { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
+//     {
+//       $group: {
+//         _id: "$_id",
+//         customerName: { $first: "$customer.name" },
+//         phoneNumber: { $first: "$customer.phoneNumber" },
+//         productNames: { $push: "$productInfo.productName" },
+//         productSizes: { $push: "$customer.products.productSize" },
+//         paymentStatus: { $first: "$paymentStatus" },
+//         paymentMethod: { $first: "$paymentMethod" },
+//         createdAt: { $first: "$createdAt" },
+//       },
+//     },
+//     ...(productName || productSize
+//       ? [
+//           {
+//             $match: {
+//               ...(productName && {
+//                 productNames: { $regex: productName, $options: "i" },
+//               }),
+//               ...(productSize && {
+//                 productSizes: { $regex: productSize, $options: "i" },
+//               }),
+//             },
+//           },
+//         ]
+//       : []),
+//     {
+//       $project: {
+//         _id: 1,
+//         customerName: 1,
+//         phoneNumber: 1,
+//         productName: {
+//           $reduce: {
+//             input: "$productNames",
+//             initialValue: "",
+//             in: {
+//               $cond: [
+//                 { $eq: ["$$value", ""] },
+//                 "$$this",
+//                 { $concat: ["$$value", ", ", "$$this"] },
+//               ],
+//             },
+//           },
+//         },
+//         productSize: {
+//           $reduce: {
+//             input: "$productSizes",
+//             initialValue: "",
+//             in: {
+//               $cond: [
+//                 { $eq: ["$$value", ""] },
+//                 "$$this",
+//                 { $concat: ["$$value", ", ", "$$this"] },
+//               ],
+//             },
+//           },
+//         },
+//         date: { $dateToString: { format: "%d/%m/%Y", date: "$createdAt" } },
+//         paymentMode: "$paymentMethod",
+//         status: "$paymentStatus",
+//       },
+//     },
+//     { $skip: (page - 1) * limit },
+//     { $limit: limit },
+//   ];
+// };
+
+// // 🔹 Common Fetcher
+// const fetchPayments = async (filter, options) => {
+//   const pipeline = buildPaymentsPipeline(filter, options);
+
+//   const countPipeline = [{ $match: filter }, { $count: "total" }];
+
+//   const [results, countResult] = await Promise.all([
+//     Payment.aggregate(pipeline),
+//     Payment.aggregate(countPipeline),
+//   ]);
+
+//   const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
+//   const totalPages = Math.ceil(totalRecords / options.limit);
+
+//   return { results, totalRecords, totalPages };
+// };
+
+// // 🔹 Existing API (All Payments)
+// const getAllPaymentsByStatus = async (req, res) => {
+//   try {
+//     let {
+//       page = 1,
+//       limit = 10,
+//       paymentStatus = "All",
+//       paymentMode = "All",
+//       productName = "",
+//       productSize = "",
+//       from = "",
+//       to = "",
+//     } = req.query;
+
+//     page = parseInt(page);
+//     limit = parseInt(limit);
+
+//     // ---- Base Filter ----
+//     const filter = {};
+//     if (paymentStatus !== "All") filter.paymentStatus = paymentStatus;
+//     if (paymentMode !== "All") filter.paymentMethod = paymentMode;
+
+//     // ---- Date Filter ----
+//     if (from || to) {
+//       const paidDatesFilter = {};
+//       if (from) paidDatesFilter.$gte = new Date(from);
+//       if (to) paidDatesFilter.$lte = new Date(to);
+//       if (Object.keys(paidDatesFilter).length > 0) {
+//         filter.createdAt = paidDatesFilter;
+//       }
+//     }
+
+//     const { results, totalRecords, totalPages } = await fetchPayments(filter, {
+//       page,
+//       limit,
+//       productName,
+//       productSize,
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       message: `Payments fetched successfully`,
+//       totalRecords,
+//       totalPages,
+//       currentPage: page,
+//       previous: page > 1,
+//       next: page < totalPages,
+//       data: results,
+//     });
+//   } catch (error) {
+//     console.error("getAllPaymentsByStatus Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed To Fetch Payments",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// // 🔹 New API - Partially Paid
+// const getAllPartiallyPaidPayments = async (req, res) => {
+//   try {
+//     let { page = 1, limit = 10, productName = "", productSize = "" } = req.query;
+//     page = parseInt(page);
+//     limit = parseInt(limit);
+
+//     const filter = { paymentStatus: "Partially Paid" };
+
+//     const { results, totalRecords, totalPages } = await fetchPayments(filter, {
+//       page,
+//       limit,
+//       productName,
+//       productSize,
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Partially Paid Payments fetched successfully",
+//       totalRecords,
+//       totalPages,
+//       currentPage: page,
+//       previous: page > 1,
+//       next: page < totalPages,
+//       data: results,
+//     });
+//   } catch (error) {
+//     console.error("getAllPartiallyPaidPayments Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed To Fetch Partially Paid Payments",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// // 🔹 New API - Pending (Unpaid)
+// const getAllPendingPayments = async (req, res) => {
+//   try {
+//     let { page = 1, limit = 10, productName = "", productSize = "" } = req.query;
+//     page = parseInt(page);
+//     limit = parseInt(limit);
+
+//     const filter = { paymentStatus: "Unpaid" };
+
+//     const { results, totalRecords, totalPages } = await fetchPayments(filter, {
+//       page,
+//       limit,
+//       productName,
+//       productSize,
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Pending Payments fetched successfully",
+//       totalRecords,
+//       totalPages,
+//       currentPage: page,
+//       previous: page > 1,
+//       next: page < totalPages,
+//       data: results,
+//     });
+//   } catch (error) {
+//     console.error("getAllPendingPayments Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed To Fetch Pending Payments",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
 
 
 //✅ Get All Cash Realted Payments For DeliveryBoy
@@ -724,4 +969,5 @@ module.exports = {
   // getAllPartiallyPaid,
   getAllCashPaymentsForDeliveryBoy,
   getAllPaymentsByStatus,
+
 };
