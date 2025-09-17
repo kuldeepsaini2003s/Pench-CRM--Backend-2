@@ -268,27 +268,36 @@ const createAdditionalOrder = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "All product fields are required",
+          requiredFields: [
+            "productName",
+            "price",
+            "productSize",
+            "quantity",
+            "totalPrice",
+          ],
         });
       }
 
       const productDoc = await Product.findOne({ productName: productName });
 
       if (!productDoc) {
+        const availableProducts = await Product.find({}, "productName size");
         return res.status(400).json({
           success: false,
-          message: `Product ${productName} not found. Please select from the available products.`,
-          availableProducts: await Product.find({}, "productName"),
+          message: `Product '${productName}' not found. Please select from the available products.`,
+          availableProducts: availableProducts.map((p) => ({
+            productName: p.productName,
+          })),
         });
       }
 
-      if (productDoc.size && productDoc.size.length > 0) {
-        if (!productDoc.size.includes(productSize)) {
-          return res.status(400).json({
-            success: false,
-            message: `Product size ${productSize} is not available for ${productName}.`,
-            availableSizes: productDoc.size.map((size) => size),
-          });
-        }
+      // Validate product size - compare strings directly since size is a string field
+      if (productDoc.size && productDoc.size !== productSize) {
+        return res.status(400).json({
+          success: false,
+          message: `Product size '${productSize}' is not available for '${productName}'.`,
+          availableSize: productDoc.size,
+        });
       }
 
       item._id = productDoc._id;

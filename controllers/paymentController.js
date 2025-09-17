@@ -174,8 +174,6 @@ const createPaymentForCustomer = async (req, res) => {
   }
 };
 
-
-
 // ✅ New Verify Payment Code
 const verifyPayment = async (req, res) => {
   try {
@@ -480,24 +478,38 @@ const getAllPaymentsByStatus = async (req, res) => {
       filter.paymentMethod = paymentMode;
     }
 
-    // Date filter - Convert from/to dates to DD/MM/YYYY format for paidDates filtering
+    // Date filter - Filter by paidDates field (DD/MM/YYYY string format)
     if (from || to) {
-      const paidDatesFilter = {};
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
 
-      if (from) {
-        const fromDate = new Date(from);
-        const fromDateFormatted = formatDateToDDMMYYYY(fromDate);
-        paidDatesFilter.$gte = fromDateFormatted;
-      }
+      // Generate all dates in the range
+      const generateDateRange = (start, end) => {
+        const dates = [];
+        const current = new Date(start);
+        const endDate = new Date(end);
 
-      if (to) {
-        const toDate = new Date(to);
-        const toDateFormatted = formatDateToDDMMYYYY(toDate);
-        paidDatesFilter.$lte = toDateFormatted;
-      }
+        while (current <= endDate) {
+          dates.push(formatDateToDDMMYYYY(current));
+          current.setDate(current.getDate() + 1);
+        }
+        return dates;
+      };
 
-      if (Object.keys(paidDatesFilter).length > 0) {
-        filter.paidDates = { $elemMatch: paidDatesFilter };
+      if (from && to) {
+        // Both from and to provided - generate date range
+        const dateRange = generateDateRange(fromDate, toDate);
+        filter.paidDates = { $in: dateRange };
+      } else if (from) {
+        // Only from provided - generate dates from fromDate to today
+        const today = new Date();
+        const dateRange = generateDateRange(fromDate, today);
+        filter.paidDates = { $in: dateRange };
+      } else if (to) {
+        // Only to provided - generate dates from beginning to toDate
+        const beginning = new Date("2020-01-01"); // Start from a reasonable date
+        const dateRange = generateDateRange(beginning, toDate);
+        filter.paidDates = { $in: dateRange };
       }
     }
 
@@ -662,6 +674,7 @@ const getAllPaymentsByStatus = async (req, res) => {
     const countPartiallyPaid = await Payment.countDocuments({
       paymentStatus: "Partially Paid",
     });
+
     const countPaid = await Payment.countDocuments({ paymentStatus: "Paid" });
 
     const [results, countResult] = await Promise.all([
@@ -670,57 +683,6 @@ const getAllPaymentsByStatus = async (req, res) => {
     ]);
 
     const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
-
-    let { page = 1, limit = 10, search = "" } = req.query;
-    page = parseInt(page);
-    limit = parseInt(limit);
-
-    // ---- Base Filter ----
-    const filter = { paymentStatus: "Partially Paid" };
-
-    // ---- Fetch Payments ----
-    const payments = await Payment.find(filter)
-      .populate("customer")
-      .populate({
-        path: "customer",
-        populate: {
-          path: "orders",
-        },
-      })
-      .sort({ createdAt: -1 }) // default sorting
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
-
-    // ---- Process each payment ----
-    const results = payments.map((payment) => {
-      const orders = payment.customer.orders || [];
-      const productNames = [];
-      const sizes = [];
-
-      orders.forEach((order) => {
-        (order.products || []).forEach((product) => {
-          productNames.push(product.productName);
-          sizes.push(product.productSize);
-        });
-      });
-
-      return {
-        _id: payment._id,
-        customerName: payment.customer.name,
-        phoneNumber: payment.customer.phoneNumber,
-        paymentStatus: payment.paymentStatus,
-        productName: productNames.join(", "),
-        size: sizes.join(", "),
-        paymentDate: payment.paidDates && payment.paidDates.length > 0
-          ? new Date(payment.paidDates[0]).toLocaleDateString("en-GB")
-          : null,
-      };
-    });
-
-    // ---- Total Records Count ----
-    const totalRecords = await Payment.countDocuments(filter);
-
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
@@ -743,16 +705,6 @@ const getAllPaymentsByStatus = async (req, res) => {
     });
   }
 };
-
-
-// ✅ Get All Cash Realted Payments For DeliveryBoy
-
-
-
-
-
-
-
 
 module.exports = {
   createPaymentForCustomer,
