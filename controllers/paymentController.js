@@ -616,34 +616,13 @@ const makePaymentForBalance = async (req, res) => {
 const getAllPartiallyPaid = async (req, res) => {
   try {
     let { page = 1, limit = 10, sortOrder = "", search = "" } = req.query;
-
     page = parseInt(page);
     limit = parseInt(limit);
 
-    // ---- Base Filter ----
     const filter = { paymentStatus: "Partially Paid" };
 
-    // ---- Search Filter ----
-    if (search) {
-      filter.$or = [
-        { "customer.fullName": { $regex: search, $options: "i" } },
-        { "customer.phoneNumber": { $regex: search, $options: "i" } },
-        { "orders.products.productName": { $regex: search, $options: "i" } },
-        { "orders.products.productSize": { $regex: search, $options: "i" } },
-      ];
-    }
-
-    // ---- Sorting ----
-    let sort = {};
-    if (sortOrder) {
-      sort[sortOrder] = sortOrder === "asc" ? 1 : -1;
-    } else {
-      sort = { createdAt: -1 };
-    }
-
-    // ---- Aggregation ----
     const pipeline = [
-      { $match: { paymentStatus: "Partially Paid" } },
+      { $match: filter },
 
       // Join Customer
       {
@@ -666,53 +645,88 @@ const getAllPartiallyPaid = async (req, res) => {
         },
       },
 
-      // Flatten Orders
+      // Flatten products
       { $unwind: "$orders" },
       { $unwind: "$orders.products" },
 
-      // Project Required Fields
+      // ---- Group by Payment ID ----
+      {
+        $group: {
+          _id: "$_id",
+          customerName: { $first: "$customer.name" },
+          phoneNumber: { $first: "$customer.phoneNumber" },
+          paymentStatus: { $first: "$paymentStatus" },
+          products: { $addToSet: "$orders.products.productName" },
+          sizes: { $addToSet: "$orders.products.productSize" },
+          paidDates: { $first: "$paidDates" }, // ✅ take the array from Payment model
+        },
+      },
+
+      // ---- Project comma-separated strings and formatted date ----
       {
         $project: {
           _id: 1,
-          customerName: "$customer.name",
-          phoneNumber: "$customer.phoneNumber",
-          productName: "$orders.products.productName",
-          size: "$orders.products.productSize",
+          customerName: 1,
+          phoneNumber: 1,
           paymentStatus: 1,
-          createdAt: {
+          productName: {
+            $reduce: {
+              input: "$products",
+              initialValue: "",
+              in: {
+                $concat: [
+                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] }] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          size: {
+            $reduce: {
+              input: "$sizes",
+              initialValue: "",
+              in: {
+                $concat: [
+                  { $cond: [{ $eq: ["$$value", ""] }, "", { $concat: ["$$value", ", "] }] },
+                  "$$this",
+                ],
+              },
+            },
+          },
+          paymentDate: {
             $dateToString: {
               format: "%d/%m/%Y",
-              date: "$createdAt",
+              date: { $arrayElemAt: ["$paidDates", 0] }, // ✅ 0th index
             },
           },
         },
       },
 
-      // Search filter
+      // ---- Search Filter ----
       ...(search
         ? [
-          {
-            $match: {
-              $or: [
-                { customerName: { $regex: search, $options: "i" } },
-                { phoneNumber: { $regex: search, $options: "i" } },
-                { productName: { $regex: search, $options: "i" } },
-                { size: { $regex: search, $options: "i" } },
-              ],
+            {
+              $match: {
+                $or: [
+                  { customerName: { $regex: search, $options: "i" } },
+                  { phoneNumber: { $regex: search, $options: "i" } },
+                  { productName: { $regex: search, $options: "i" } },
+                  { size: { $regex: search, $options: "i" } },
+                ],
+              },
             },
-          },
-        ]
+          ]
         : []),
 
-      // Sort
-      { $sort: sort },
+      // ---- Sorting ----
+      { $sort: sortOrder ? { [sortOrder]: sortOrder === "asc" ? 1 : -1 } : { paymentDate: -1 } },
 
-      // Pagination
+      // ---- Pagination ----
       { $skip: (page - 1) * limit },
       { $limit: limit },
     ];
 
-    // ---- Execute Query ----
+    // Execute pipeline
     const results = await Payment.aggregate(pipeline);
 
     // ---- Count Total ----
@@ -720,7 +734,6 @@ const getAllPartiallyPaid = async (req, res) => {
       (stage) => !("$skip" in stage) && !("$limit" in stage) && !("$sort" in stage)
     );
     countPipeline.push({ $count: "total" });
-
     const totalCountResult = await Payment.aggregate(countPipeline);
     const totalRecords = totalCountResult.length > 0 ? totalCountResult[0].total : 0;
 
@@ -747,6 +760,10 @@ const getAllPartiallyPaid = async (req, res) => {
     });
   }
 };
+
+
+
+
 
 
 
