@@ -510,7 +510,7 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
     for (const order of orders) {
       // issued bottles (only milk bottles)
       for (const p of order.products) {
-        if (p.productName=== "Milk") {
+        if (p.productName === "Milk") {
           if (p.productSize === "1ltr") {
             oneLtrIssued += p.quantity;
           } else if (p.productSize === "1/2ltr") {
@@ -566,7 +566,86 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
   }
 };
 
+//✅ Order history 
+const getOrderHistory = async (req, res) => {
+  try {
+    const deliveryBoyId = req.deliveryBoy.id; // 👈 authorization middleware se aayega
+   let { status = "All", page = 1, limit = 10 } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
+    // Pagination
+    const skip = (page - 1) * limit;
 
+    // Base filter
+    let filter = { deliveryBoy: deliveryBoyId };
+
+    // Status filter
+    if (status !== "All") {
+      filter.status = { $regex: new RegExp(`^${status}$`, "i") }; 
+    }
+    
+
+
+    // Get total count
+    const totalOrders = await CustomerOrders.countDocuments(filter);
+
+    // Query with populate
+    const orders = await CustomerOrders.find(filter)
+      .populate({
+        path: "customer",
+        select: "name phoneNumber image address", // 👈 from Customer model
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Format response
+    const formattedOrders = orders.map((order) => ({
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      totalAmount: order.totalAmount,
+      deliveryDate: order.deliveryDate,
+
+      customer: {
+        name: order.customer?.name,
+        phoneNumber: order.customer?.phoneNumber,
+        image: order.customer?.image,
+        address: order.customer?.address,
+      },
+
+      products: order.products.map((p) => ({
+        productName: p.productName,
+        productSize: p.productSize,
+        productImage: p.productImage, // 👈 check if you added in schema
+        // quantity: p.quantity,
+        // totalPrice: p.totalPrice,
+      })),
+    }));
+
+    const totalPages = Math.ceil(totalOrders / limit);
+    const hasPrevious = page > 1;
+    const hasNext = page < totalPages;
+    return res.status(200).json({
+      success: true,
+      message: "Order history fetched successfully",
+      totalOrders,
+      currentPage:page,
+      totalPages:totalPages,
+      previous: hasPrevious,
+      next: hasNext,
+      orders: formattedOrders,
+    });
+  } catch (error) {
+    console.error("getOrderHistory Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get order history",
+      error: error.message,
+    });
+  }
+};
 
 
 module.exports = {
@@ -579,5 +658,6 @@ module.exports = {
   getDeliveryBoyById,
   getOrdersByDeliveryBoy,
   shareConsumeToken,
-  getDeliveryBoyOwnBootleTrackingRecord
+  getDeliveryBoyOwnBootleTrackingRecord,
+  getOrderHistory
 };

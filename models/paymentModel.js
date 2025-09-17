@@ -39,6 +39,15 @@ const paymentSchema = new mongoose.Schema(
     year:{
         type:String,
         default: new Date().getFullYear(),
+    },
+    razorpayLinkId:{
+        type:String,
+    },
+    razorpayLinkStatus:{
+        type:String,
+    },
+    razorpayPaymentId:{
+        type:String,
     }
   },
   { timestamps: true }
