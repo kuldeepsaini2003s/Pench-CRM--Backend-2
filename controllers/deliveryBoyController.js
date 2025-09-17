@@ -411,6 +411,35 @@ const getOrdersByDeliveryBoy = async (req, res) => {
     const today = new Date();
     const todayFormatted = formatDateToDDMMYYYY(today);
 
+    // Debug: Check what orders exist for this delivery boy
+    console.log("=== DEBUG INFO ===");
+    console.log("Delivery Boy ID:", deliveryBoyId);
+    console.log("Today formatted:", todayFormatted);
+    
+    // Check all orders for this delivery boy
+    const allOrdersForDeliveryBoy = await CustomerOrders.find({ deliveryBoy: deliveryBoyId });
+    console.log("Total orders for delivery boy:", allOrdersForDeliveryBoy.length);
+    
+    // Check orders for today
+    const todayOrders = await CustomerOrders.find({ 
+      deliveryBoy: deliveryBoyId, 
+      deliveryDate: todayFormatted 
+    });
+    console.log("Orders for today:", todayOrders.length);
+    console.log("Today orders details:", todayOrders.map(o => ({ 
+      id: o._id, 
+      status: o.status, 
+      deliveryDate: o.deliveryDate 
+    })));
+    
+    // Check pending orders for today
+    const pendingTodayOrders = await CustomerOrders.find({ 
+      deliveryBoy: deliveryBoyId, 
+      deliveryDate: todayFormatted,
+      status: "Pending"
+    });
+    console.log("Pending orders for today:", pendingTodayOrders.length);
+
     const filter = {
       deliveryBoy: deliveryBoyId,
       deliveryDate: todayFormatted,
@@ -426,7 +455,7 @@ const getOrdersByDeliveryBoy = async (req, res) => {
         .skip((page - 1) * limit)
         .limit(limit),
     ]);
-
+console.log("orders", orders);
     const transformedOrders = orders.map((order) => ({
       ...order.toObject(),
       products: order.products.map((product) => ({
@@ -439,6 +468,7 @@ const getOrdersByDeliveryBoy = async (req, res) => {
         totalPrice: product?.totalPrice,
       })),
     }));
+console.log("transformedOrders", transformedOrders);
 
     const totalPages = Math.ceil(totalOrders / limit);
     const hasPrevious = page > 1;
@@ -623,11 +653,20 @@ const getOrderHistory = async (req, res) => {
     let { status = "All", page = 1, limit = 10 } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
-    // Pagination
     const skip = (page - 1) * limit;
 
+    // Get today's date in dd/mm/yyyy format
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, "0");
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const year = today.getFullYear();
+    const todayDate = `${day}/${month}/${year}`;
+
     // Base filter
-    let filter = { deliveryBoy: deliveryBoyId };
+    let filter = { 
+      deliveryBoy: deliveryBoyId, 
+      deliveryDate: todayDate   // 👈 sirf aaj ki date ke orders
+    };
 
     // Status filter
     if (status !== "All") {
@@ -641,7 +680,7 @@ const getOrderHistory = async (req, res) => {
     const orders = await CustomerOrders.find(filter)
       .populate({
         path: "customer",
-        select: "name phoneNumber image address", // 👈 from Customer model
+        select: "name phoneNumber image address", 
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -666,21 +705,20 @@ const getOrderHistory = async (req, res) => {
       products: order.products.map((p) => ({
         productName: p.productName,
         productSize: p.productSize,
-        productImage: p.productImage, // 👈 check if you added in schema
-        // quantity: p.quantity,
-        // totalPrice: p.totalPrice,
+        productImage: p.productImage,
       })),
     }));
 
     const totalPages = Math.ceil(totalOrders / limit);
     const hasPrevious = page > 1;
     const hasNext = page < totalPages;
+
     return res.status(200).json({
       success: true,
       message: "Order history fetched successfully",
       totalOrders,
       currentPage: page,
-      totalPages: totalPages,
+      totalPages,
       previous: hasPrevious,
       next: hasNext,
       orders: formattedOrders,
@@ -694,6 +732,8 @@ const getOrderHistory = async (req, res) => {
     });
   }
 };
+
+
 
 module.exports = {
   registerDeliveryBoy,
