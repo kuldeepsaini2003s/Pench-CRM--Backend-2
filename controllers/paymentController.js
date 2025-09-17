@@ -2,6 +2,7 @@ const Customer = require("../models/customerModel");
 const CustomerOrders = require("../models/customerOrderModel"); // daily orders
 const Payment = require("../models/paymentModel");
 const Invoice = require("../models/customerInvoicesModel");
+const DeliveryBoy = require("../models/deliveryBoyModel");
 const Razorpay = require("razorpay");
 const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 const razorpay = new Razorpay({
@@ -572,11 +573,12 @@ const getAllPaymentsByStatus = async (req, res) => {
     ];
 
     // ---- Parallel Queries ----
-    const [results, countResult, countPartiallyPaid, countPaid] = await Promise.all([
+    const [results, countResult, countPartiallyPaid, countPaid, countUnpaid] = await Promise.all([
       Payment.aggregate(pipeline),
       Payment.aggregate(countPipeline),
       Payment.countDocuments({ paymentStatus: "Partially Paid" }),
       Payment.countDocuments({ paymentStatus: "Paid" }),
+      Payment.countDocuments({ paymentStatus: "Unpaid" }),
     ]);
 
     const totalRecords = countResult.length > 0 ? countResult[0].total : 0;
@@ -587,6 +589,7 @@ const getAllPaymentsByStatus = async (req, res) => {
       message: `Payments fetched successfully`,
       partiallyPaid: countPartiallyPaid,
       paid: countPaid,
+      pending: countUnpaid,
       totalPages,
       currentPage: page,
       previous: page > 1,
@@ -594,7 +597,7 @@ const getAllPaymentsByStatus = async (req, res) => {
       data: results,
     });
   } catch (error) {
-    console.error(error);
+    console.error("getAllCashPaymentsForDeliveryBoy Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed To Fetch Payments",
@@ -605,7 +608,107 @@ const getAllPaymentsByStatus = async (req, res) => {
 
 
 
-// ✅ Get All Cash Realted Payments For DeliveryBoy
+//✅ Get All Cash Realted Payments For DeliveryBoy
+const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
+  try {
+    let { page = 1, limit = 10, search = "" } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    // Base filter: only delivered COD orders
+    let orderFilter = { status: "Delivered", paymentMethod: "COD" };
+
+    if (search) {
+      orderFilter.$or = [
+        { orderNumber: { $regex: search, $options: "i" } },
+        { "customer.name": { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // ---- Fetch paginated orders ----
+    const orders = await CustomerOrders.find(orderFilter)
+      .populate("customer", "name")
+      .populate("deliveryBoy", "name")
+      .sort({ deliveryDate: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    // ---- Format data for UI ----
+    const results = orders.map((order) => {
+      let status =
+        order.paymentStatus === "Paid" || order.paymentStatus === "Partially Paid"
+          ? "Received"
+          : "Pending";
+
+      return {
+        customerName: order.customer?.name || "N/A",
+        orderNumber: order.orderNumber,
+        amount: order.totalAmount,
+        paymentStatus: status,
+        deliveryBoy: order.deliveryBoy?.name || "N/A",
+        date: order.deliveryDate,
+      };
+    });
+
+    // ---- Totals (for summary cards) ----
+    const [totalCollectedAgg, pendingCollectionsAgg, customersPaidList] = await Promise.all([
+      // Total Collected
+      CustomerOrders.aggregate([
+        { $match: { ...orderFilter, paymentStatus: { $in: ["Paid", "Partially Paid"] } } },
+        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+      ]),
+    
+      // Pending Collections
+      CustomerOrders.aggregate([
+        { $match: { ...orderFilter, paymentStatus: { $in: ["Pending", "Unpaid"] } } },
+        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+      ]),
+    
+      // Unique Customers Paid
+      CustomerOrders.distinct("customer", {
+        ...orderFilter,
+        paymentStatus: { $in: ["Paid", "Partially Paid"] },
+      }),
+    ]);
+    
+    // const summary = {
+    //   totalCollected: totalCollectedAgg[0]?.total || 0,
+    //   pendingCollections: pendingCollectionsAgg[0]?.total || 0,
+    //   customersPaid: customersPaidList.length,
+    // };
+    
+    // ---- Count total records for pagination ----
+    const totalRecords = await CustomerOrders.countDocuments(orderFilter);
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    return res.status(200).json({
+      success: true,
+      message: "Cash Payments for Delivery Boy fetched successfully",
+      summary: {
+        totalCollected: totalCollectedAgg[0]?.total || 0,
+        pendingCollections: pendingCollectionsAgg[0]?.total || 0,
+        customersPaid: customersPaidList.length,
+      },
+      totalRecords,
+      totalPages,
+      currentPage: page,
+      previous: page > 1,
+      next: page < totalPages,
+      data: results,
+    });
+  } catch (error) {
+    console.error("getAllCashPaymentsForDeliveryBoy Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch cash payments",
+      error: error.message,
+    });
+  }
+};
+
+
+
 
 
 
@@ -618,5 +721,7 @@ module.exports = {
   createPaymentForCustomer,
   verifyPayment,
   makePaymentForBalance,
+  // getAllPartiallyPaid,
+  getAllCashPaymentsForDeliveryBoy,
   getAllPaymentsByStatus,
 };
