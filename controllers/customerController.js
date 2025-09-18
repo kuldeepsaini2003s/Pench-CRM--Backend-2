@@ -684,7 +684,7 @@ const deleteCustomer = async (req, res) => {
 // Make Absent Days
 const makeAbsentDays = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { customerId } = req.params;
     const { date } = req.body;
 
     if (!date) {
@@ -694,7 +694,7 @@ const makeAbsentDays = async (req, res) => {
       });
     }
 
-    const customer = await Customer.findById(id)
+    const customer = await Customer.findById(customerId)
       .populate("products.product")
       .populate("deliveryBoy", "name phoneNumber");
 
@@ -728,7 +728,7 @@ const makeAbsentDays = async (req, res) => {
     customer.absentDays.push(formattedInputDate);
     
     const deletedOrders = await CustomerOrders.deleteOne({
-      customer: id,
+      customer: customerId,
       deliveryDate: date,
     });
 

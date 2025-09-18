@@ -25,7 +25,7 @@ router.get("/getAllCustomers", getAllCustomers);
 router.get("/getCustomerById/:id", getCustomerById);
 router.put("/update/:id", upload.single("image"), updateCustomer);
 router.put("/delete/:id", deleteCustomer);
-router.post("/makeAbsentDays/:id", makeAbsentDays);
+router.post("/makeAbsentDays/:customerId", makeAbsentDays);
 router.get("/getDeliveryDays", getDeliveryDays);
 router.get("/getSubscriptionPlan", getSubscriptionPlan);
 router.get("/payment-methods", getPaymentMethods);
