@@ -771,7 +771,7 @@ const getPendingBottles = async (req, res) => {
           name: cust.name,
           phoneNumber: cust.phoneNumber,
           address: cust.address,
-          pendingBottleQuantity: 0,
+          totalPendingBottleQuantity: 0,
           totalBottleReturnedQuantity: 0,
           products: [],
         };
@@ -806,7 +806,7 @@ const getPendingBottles = async (req, res) => {
         });
 
         // ✅ Update customer totals
-        customersMap[cust._id].pendingBottleQuantity +=
+        customersMap[cust._id].totalPendingBottleQuantity +=
           order.pendingBottleQuantity || 0;
         customersMap[cust._id].totalBottleReturnedQuantity += totalReturnedForOrder;
       }
