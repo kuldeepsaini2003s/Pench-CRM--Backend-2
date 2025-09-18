@@ -37,7 +37,7 @@ router.get("/getOrdersByDeliveryBoy",  verifyDeliveryBoyToken,  getOrdersByDeliv
 router.get("/shareToken", shareConsumeToken);
 router.get("/getDeliveryBoyBootleTracking", verifyDeliveryBoyToken, getDeliveryBoyOwnBootleTrackingRecord);
 router.get("/getOrderHistory", verifyDeliveryBoyToken, getOrderHistory);
-router.get("/getPendingBottles/:customerId", verifyDeliveryBoyToken, getPendingBottles);
+router.get("/getPendingBottles", verifyDeliveryBoyToken, getPendingBottles);
 
 
 module.exports = router;

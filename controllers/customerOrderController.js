@@ -478,10 +478,11 @@ const updateOrderStatus = async (req, res) => {
 };
 
 //✅ Update Bottle Returns
+
 const updateBottleReturns = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { bottleReturnSize, bottlesReturned } = req.body;
+    const { bottleReturns } = req.body; // 👈 expect array of { size, quantity }
 
     const order = await CustomerOrders.findById(orderId).populate("customer");
 
@@ -492,30 +493,43 @@ const updateBottleReturns = async (req, res) => {
       });
     }
 
-    const allowedBottleReturnSize = ["1ltr", "1/2ltr"];
-    if (bottleReturnSize && !allowedBottleReturnSize.includes(bottleReturnSize)) {
+    // ✅ Validate bottleReturns array
+    if (!Array.isArray(bottleReturns) || bottleReturns.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Invalid bottle return size",
-        allowedBottleReturnSize,
+        message: "bottleReturns must be a non-empty array",
       });
     }
 
-    // ✅ Update bottleReturnSize
-    if (bottleReturnSize) {
-      order.bottleReturnSize = bottleReturnSize;
+    // ✅ Validate each entry
+    const allowedSizes = ["1ltr", "1/2ltr"];
+    for (const ret of bottleReturns) {
+      if (!allowedSizes.includes(ret.size)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid bottle size: ${ret.size}`,
+          allowedSizes,
+        });
+      }
+      if (typeof ret.quantity !== "number" || ret.quantity <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid quantity for size ${ret.size}`,
+        });
+      }
     }
 
-    // ✅ Update bottlesReturned + decrease pendingBottleQuantity
-    if (typeof bottlesReturned === "number" && bottlesReturned >= 0) {
-      order.bottlesReturned = bottlesReturned;
+    // ✅ Update bottleReturns in DB
+    order.bottleReturns = bottleReturns;
 
-      order.pendingBottleQuantity =
-        (order.pendingBottleQuantity || 0) - bottlesReturned;
+    // ✅ Decrease pendingBottleQuantity
+    const totalReturned = bottleReturns.reduce((sum, ret) => sum + ret.quantity, 0);
 
-      if (order.pendingBottleQuantity < 0) {
-        order.pendingBottleQuantity = 0; // Prevent negative
-      }
+    order.pendingBottleQuantity =
+      (order.pendingBottleQuantity || 0) - totalReturned;
+
+    if (order.pendingBottleQuantity < 0) {
+      order.pendingBottleQuantity = 0; // Prevent negative
     }
 
     await order.save();
@@ -527,8 +541,7 @@ const updateBottleReturns = async (req, res) => {
       orderNumber: order?.orderNumber,
       customerId: order?.customer?._id,
       customerName: order?.customer?.name,
-      bottlesReturned: order?.bottlesReturned,
-      bottleReturnSize: order?.bottleReturnSize,
+      bottleReturns: order?.bottleReturns,
       pendingBottleQuantity: order?.pendingBottleQuantity,
     });
   } catch (error) {

@@ -93,11 +93,13 @@ const customerOrdersSchema = new mongoose.Schema(
       default: 0,
     },
 
-    bottleReturnSize: [
+    bottleReturns: [
       {
-        type: String,
-      },
+        size: { type: String, enum: ["1ltr", "1/2ltr"], required: true },
+        quantity: { type: Number, required: true, min: 1 },
+      }
     ],
+    
     pendingBottleQuantity: {
       type: Number,
       default: 0,

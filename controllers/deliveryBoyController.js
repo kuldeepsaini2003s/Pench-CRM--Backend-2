@@ -737,85 +737,101 @@ const getOrderHistory = async (req, res) => {
 const getPendingBottles = async (req, res) => {
   try {
     const deliveryBoyId = req.deliveryBoy?._id;
-    if(!deliveryBoyId){
+    if (!deliveryBoyId) {
       return res.status(400).json({
         success: false,
         message: "Delivery Boy ID is required",
       });
     }
-    const { customerId } = req.params;
 
-    if (!customerId) {
-      return res.status(400).json({
-        success: false,
-        message: "CustomerId is required",
-      });
-    }
-
-    // ✅ Fetch customer with orders + populate product
-    const orders = await CustomerOrders.find({ customer: customerId,deliveryBoy:deliveryBoyId, status:"Delivered"})
+    // ✅ Get all delivered orders with pending bottles
+    const orders = await CustomerOrders.find({
+      deliveryBoy: deliveryBoyId,
+      status: "Delivered",
+      pendingBottleQuantity: { $gt: 0 },
+    })
       .populate("customer", "_id name phoneNumber address")
-      .populate("products._id", "productImage"); // productImage + _id auto milega
-console.log("orders",orders)
+      .populate("products._id", "productImage");
+
     if (!orders.length) {
       return res.status(404).json({
         success: false,
-        message: "No orders found for this customer",
+        message: "No pending bottles found for any customer",
       });
     }
 
-    let pendingBottleQuantity = 0;
-    let totalBottleReturnedQuantity = 0;
-    let products = [];
+    // ✅ Group data by customer
+    const customersMap = {};
 
     orders.forEach((order) => {
-      // Sirf wahi orders consider karo jisme abhi pendingBottleQuantity > 0 hai
-      if ((order.pendingBottleQuantity || 0) > 0) {
-        order.products.forEach((p) => {
-          if (p.productName.toLowerCase() === "milk") {
-            products.push({
-              orderId: order._id,
-              orderNumber: order.orderNumber,
-              // productId: p._id?._id || p._id,
-              productName: p.productName,
-              productImage: p._id?.productImage || null,
-              productSize: p.productSize,
-              quantity: p.quantity,
-              bottlePendingQuantity: order.pendingBottleQuantity || 0,
-              bottlesReturned: order.bottlesReturned || 0,
-            });
-          }
+      const cust = order.customer;
+      if (!customersMap[cust._id]) {
+        customersMap[cust._id] = {
+          customerId: cust._id,
+          name: cust.name,
+          phoneNumber: cust.phoneNumber,
+          address: cust.address,
+          pendingBottleQuantity: 0,
+          totalBottleReturnedQuantity: 0,
+          products: [],
+        };
+      }
+
+      // ✅ Collect milk products for this order
+      const milkProducts = order.products.filter(
+        (p) => p.productName.toLowerCase() === "milk"
+      );
+
+      if (milkProducts.length > 0) {
+        const productNames = milkProducts.map((p) => p.productName).join(", ");
+        const productSizes = milkProducts.map((p) => p.productSize).join(", ");
+        const productQuantities = milkProducts.map((p) => p.quantity).join(", ");
+
+        // ✅ Total bottles returned for this order (from array)
+        const totalReturnedForOrder = (order.bottleReturns || []).reduce(
+          (sum, b) => sum + b.quantity,
+          0
+        );
+
+        customersMap[cust._id].products.push({
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          productName: productNames,
+          productSize: productSizes,
+          quantity: productQuantities,
+          productImage: order.products[0]._id?.productImage || null,
+          bottlePendingQuantity: order.pendingBottleQuantity || 0,
+          bottleReturns: order.bottleReturns || [], // 👈 return full array
+          bottlesReturned: totalReturnedForOrder,
         });
 
-        // ✅ Total pending count update karo
-        pendingBottleQuantity += order.pendingBottleQuantity || 0;
-        totalBottleReturnedQuantity += order.bottlesReturned || 0;
+        // ✅ Update customer totals
+        customersMap[cust._id].pendingBottleQuantity +=
+          order.pendingBottleQuantity || 0;
+        customersMap[cust._id].totalBottleReturnedQuantity += totalReturnedForOrder;
       }
     });
 
+    const customers = Object.values(customersMap);
 
     return res.status(200).json({
       success: true,
       message: "Pending bottles data fetched successfully",
-      customer: {
-        _id: orders[0].customer._id,
-        name: orders[0].customer.name,
-        phoneNumber: orders[0].customer.phoneNumber,
-        address: orders[0].customer.address,
-      },
-      pendingBottleQuantity,
-      totalBottleReturnedQuantity,
-      products,
+      totalCustomers: customers.length,
+      customers,
     });
   } catch (error) {
     console.error("getPendingBottles Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Error In  fetching pending bottles",
+      message: "Error fetching pending bottles",
       error: error.message,
     });
   }
 };
+
+
+
 
 
 module.exports = {
