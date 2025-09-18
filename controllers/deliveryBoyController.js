@@ -212,6 +212,7 @@ const getDeliveryBoyById = async (req, res) => {
       const productSizes = c.products.map((p) => p.productSize);
 
       return {
+        _id: c._id,
         name: c.name,
         phoneNumber: c.phoneNumber,
         startDate: c.startDate,
