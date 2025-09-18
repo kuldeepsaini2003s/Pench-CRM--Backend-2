@@ -51,9 +51,30 @@ const parseUniversalDate = (dateStr) => {
 
 const formatDateToDDMMYYYY = (date) => {
   if (!date) return null;
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
+
+  // If it's already a string in DD/MM/YYYY format, return as is
+  if (typeof date === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
+    return date;
+  }
+
+  // If it's a string in DD-MM-YYYY format, convert to DD/MM/YYYY
+  if (typeof date === "string" && /^\d{2}-\d{2}-\d{4}$/.test(date)) {
+    return date.replace(/-/g, "/");
+  }
+
+  // If it's not a Date object, try to parse it first
+  let dateObj = date;
+  if (!(date instanceof Date)) {
+    dateObj = parseUniversalDate(date);
+    if (!dateObj) return null;
+  }
+
+  // Check if it's a valid Date object
+  if (isNaN(dateObj.getTime())) return null;
+
+  const day = String(dateObj.getDate()).padStart(2, "0");
+  const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const year = dateObj.getFullYear();
   return `${day}/${month}/${year}`;
 };
 

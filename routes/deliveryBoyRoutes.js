@@ -2,6 +2,7 @@ const express = require("express");
 const {
   registerDeliveryBoy,
   loginDeliveryBoy,
+  logoutDeliveryBoy,
   getAllDeliveryBoys,
   updateDeliveryBoy,
   deleteDeliveryBoy,
@@ -11,10 +12,10 @@ const {
   shareConsumeToken,
   getDeliveryBoyOwnBootleTrackingRecord,
   getOrderHistory,
-  getPendingBottles
+  getPendingBottles,
 } = require("../controllers/deliveryBoyController");
 
-const {upload} = require("../config/cloudinary");
+const { upload } = require("../config/cloudinary");
 const {
   verifyDeliveryBoyToken,
 } = require("../middlewares/deliveryBoy.middleware");
@@ -31,13 +32,24 @@ router.get(
   getDeliveryBoyProfile
 );
 router.get("/getDeliveryBoyById/:id", getDeliveryBoyById);
-router.put("/updateDeliveryBoyProfile/:id", upload.single("profileImage"), updateDeliveryBoy);
+router.put(
+  "/updateDeliveryBoyProfile/:id",
+  upload.single("profileImage"),
+  updateDeliveryBoy
+);
 router.put("/delete/:id", deleteDeliveryBoy);
-router.get("/getOrdersByDeliveryBoy",  verifyDeliveryBoyToken,  getOrdersByDeliveryBoy);
+router.get(
+  "/getOrdersByDeliveryBoy",
+  verifyDeliveryBoyToken,
+  getOrdersByDeliveryBoy
+);
 router.get("/shareToken", shareConsumeToken);
-router.get("/getDeliveryBoyBootleTracking", verifyDeliveryBoyToken, getDeliveryBoyOwnBootleTrackingRecord);
+router.get(
+  "/getDeliveryBoyBootleTracking",
+  verifyDeliveryBoyToken,
+  getDeliveryBoyOwnBootleTrackingRecord
+);
 router.get("/getOrderHistory", verifyDeliveryBoyToken, getOrderHistory);
 router.get("/getPendingBottles", verifyDeliveryBoyToken, getPendingBottles);
-
-
+router.post("/logout", verifyDeliveryBoyToken, logoutDeliveryBoy);
 module.exports = router;
