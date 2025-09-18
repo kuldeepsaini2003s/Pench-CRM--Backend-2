@@ -65,6 +65,7 @@ const dashboardRoutes = require("./routes/dashboardRoutes");
 const termsAndConditionRoutes = require("./routes/termsAndConditionRoutes");
 const helpAndSupportRoutes = require("./routes/helpAndSupportRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
@@ -78,6 +79,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/termsAndCondition", termsAndConditionRoutes);
 app.use("/api/helpAndSupport", helpAndSupportRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/notification", notificationRoutes);
 
 // Connect DB then start server
 db().then(async () => {

@@ -3,6 +3,7 @@ const CustomerOrders = require("../models/customerOrderModel");
 const mongoose = require("mongoose");
 const DeliveryBoy = require("../models/deliveryBoyModel");
 const Product = require("../models/productModel");
+const Notification = require("../models/notificationModel");
 const {
   formatDateToDDMMYYYY,
   parseUniversalDate,
@@ -680,134 +681,98 @@ const deleteCustomer = async (req, res) => {
   }
 };
 
-// ✅ Make Absent Days
+// Make Absent Days
 const makeAbsentDays = async (req, res) => {
   try {
     const { id } = req.params;
-    const { dates } = req.body; // array of YYYY-MM-DD strings
+    const { date } = req.body;
 
-    if (!dates || !Array.isArray(dates)) {
+    if (!date) {
       return res.status(400).json({
         success: false,
-        error: "dates must be an array of ISO date strings (YYYY-MM-DD)",
+        error: "Date is required in (DD-MM-YYYY) format",
       });
     }
 
-    const customer = await Customer.findById(id).populate("products.product");
+    const customer = await Customer.findById(id)
+      .populate("products.product")
+      .populate("deliveryBoy", "name phoneNumber");
+
     if (!customer) {
       return res.status(404).json({
         success: false,
         error: "Customer not found",
       });
     }
+    
+    const normalizedDate = parseUniversalDate(date);
 
-    const updatedAbsentDays = customer.absentDays.map(
-      (d) => d.toISOString().split("T")[0]
-    ); // convert to YYYY-MM-DD array
-    const deliveryHistoryEntries = [];
+    if (!normalizedDate) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid date format. Please use DD-MM-YYYY format",
+      });
+    }
+    
+    const formattedInputDate = formatDateToDDMMYYYY(normalizedDate);
+    
+    const isAlreadyAbsent = customer.absentDays.includes(formattedInputDate);
 
-    for (const dateStr of dates) {
-      const [year, month, day] = dateStr.split("-").map(Number);
-      const normalizedDate = new Date(Date.UTC(year, month - 1, day));
+    if (isAlreadyAbsent) {
+      return res.status(400).json({
+        success: false,
+        error: "Customer is already marked absent for this date",
+      });
+    }
+    
+    customer.absentDays.push(formattedInputDate);
+    
+    const deletedOrders = await CustomerOrders.deleteOne({
+      customer: id,
+      deliveryDate: date,
+    });
 
-      // Check if already absent
-      const isAlreadyAbsent = updatedAbsentDays.includes(dateStr);
+    await customer.save();
 
-      if (isAlreadyAbsent) {
-        // 🔹 Remove from absent
-        customer.absentDays = customer.absentDays.filter(
-          (d) => d.toISOString().split("T")[0] !== dateStr
-        );
-
-        // 🔹 Remove from DeliveryHistory
-        await DeliveryHistory.deleteMany({
-          customer: id,
-          date: normalizedDate,
-          status: "Missed",
+    if (customer.deliveryBoy) {
+      try {        
+        const existingNotification = await Notification.findOne({
+          deliveryBoy: customer.deliveryBoy._id,
+          customer: customer._id,
+          type: "customer_absent",
+          deliveryDate: formattedInputDate,
         });
 
-        deliveryHistoryEntries.push({
-          date: dateStr,
-          action: "removed",
-        });
-      } else {
-        // 🔹 Mark as absent
-        customer.absentDays.push(normalizedDate);
-
-        // Fetch custom orders for this date
-        const startOfDay = new Date(Date.UTC(year, month - 1, day));
-        const endOfDay = new Date(
-          Date.UTC(year, month - 1, day, 23, 59, 59, 999)
-        );
-
-        const customOrders = await CustomerOrders.find({
-          customer: id,
-          date: { $gte: startOfDay, $lt: endOfDay },
-        }).populate("product");
-
-        const allProducts = [
-          // Subscription products
-          ...customer.products.map((product) => ({
-            product: product.product,
-            price: product.price,
-            quantity: product.quantity,
-            isDelivered: false,
-            status: "absent",
-            totalPrice: product.totalPrice,
-            orderType: "subscription",
-          })),
-          // Custom orders
-          ...customOrders.map((customOrder) => ({
-            product: customOrder.product,
-            quantity: customOrder.quantity,
-            price: customOrder.price,
-            isDelivered: false,
-            status: "absent",
-            totalPrice: customOrder.totalPrice,
-            orderType: "custom",
-            customOrderId: customOrder._id,
-          })),
-        ];
-
-        const historyEntry = await DeliveryHistory.create({
-          customer: id,
-          date: normalizedDate,
-          totalPrice: allProducts.reduce(
-            (sum, item) => sum + (item.totalPrice || 0),
-            0
-          ),
-          status: "Missed",
-          remarks: "Customer absent",
-          deliveryBoy: customer.deliveryBoy,
-          products: allProducts,
-        });
-
-        deliveryHistoryEntries.push({
-          date: dateStr,
-          action: "added",
-          historyId: historyEntry._id,
+        if (!existingNotification) {
+          await Notification.createCustomerAbsentNotification(
+            customer.deliveryBoy._id,
+            customer._id,
+            [formattedInputDate],
+            customer.name
+          );
+        }
+      } catch (notificationError) {
+        console.error("Error sending notification:", notificationError);
+        return res.status(500).json({
+          success: false,
+          message: "Error while sending notification",
         });
       }
     }
 
-    await customer.save();
-
-    res.json({
+    return res.json({
       success: true,
-      message: "Absent days updated successfully",
-      data: {
-        customer: {
-          _id: customer._id,
-          name: customer.name,
-          phoneNumber: customer.phoneNumber,
-          absentDays: customer.absentDays,
-        },
-        changes: deliveryHistoryEntries,
+      message: "Customer marked absent successfully",
+      customer: {
+        _id: customer._id,
+        name: customer.name,
+        phoneNumber: customer.phoneNumber,
+        absentDays: customer.absentDays,
       },
     });
   } catch (err) {
-    console.error("Error in toggleAbsentDays:", err);
-    res.status(500).json({
+    console.error("Error in makeAbsentDays:", err);
+    return res.status(500).json({
       success: false,
       error: err.message,
     });
