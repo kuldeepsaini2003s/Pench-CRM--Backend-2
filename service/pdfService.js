@@ -44,12 +44,30 @@ async function generateInvoicePDF(invoice) {
       // Prepare delivery stats (if available from getCustomerData)
       const deliveryStats = invoice.deliveryStats || null;
 
-      // Read CSS file
-      const cssPath = path.join(
+      // Prepare logo as base64 data URI for PDF generation
+      const logoPath = path.join(
         __dirname,
-        "../public/templates/invoice-styles.css"
+        "../public/templates/PenchLogo.png"
       );
-      const cssContent = fs.readFileSync(cssPath, "utf8");
+
+      // Convert logo to base64 data URI
+      let logoBase64 = "";
+      try {
+        const logoBuffer = fs.readFileSync(logoPath);
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString("base64")}`;
+      } catch (error) {
+        console.warn("Logo file not found, using placeholder");
+        logoBase64 =
+          "data:image/svg+xml;base64," +
+          Buffer.from(
+            `
+          <svg width="112" height="40" xmlns="http://www.w3.org/2000/svg">
+            <rect width="112" height="40" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1"/>
+            <text x="56" y="25" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">LOGO</text>
+          </svg>
+        `
+          ).toString("base64");
+      }
 
       // Render the EJS template
       ejs.renderFile(
@@ -62,18 +80,13 @@ async function generateInvoicePDF(invoice) {
           periodEnd,
           partialPayment,
           deliveryStats,
+          logoBase64,
         },
         (err, html) => {
           if (err) {
             reject(err);
             return;
           }
-
-          // Inject CSS into HTML
-          const htmlWithCSS = html.replace(
-            "</head>",
-            `<style>${cssContent}</style></head>`
-          );
 
           // PDF options
           const options = {
@@ -100,7 +113,7 @@ async function generateInvoicePDF(invoice) {
           };
 
           // Generate PDF
-          pdf.create(htmlWithCSS, options).toBuffer((err, buffer) => {
+          pdf.create(html, options).toBuffer((err, buffer) => {
             if (err) {
               reject(err);
               return;
