@@ -337,7 +337,7 @@ const getAllCustomers = async (req, res) => {
         subscriptionStatus: customer?.subscriptionStatus,
         customDeliveryDates: customer?.customDeliveryDates,
         products: customer?.products.map((product) => ({
-          _id: product?._id,
+          _id: product?.product?._id,
           productName: product?.product?.productName,
           productSize: product?.productSize,
         })),

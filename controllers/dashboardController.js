@@ -313,21 +313,18 @@ const getNewOnboardCustomers = async (req, res) => {
       size = "",
       range = "prev",
     } = req.query;
+
     page = parseInt(page);
     limit = parseInt(limit);
     const skip = (page - 1) * limit;
 
     const today = moment().startOf("day");
-    const weekday = today.isoWeekday(); // 1 = Monday ... 7 = Sunday
-
     let startDate, endDate;
 
     if (range === "prev") {
-      // Last same weekday → Today
       startDate = moment(today).subtract(1, "week").startOf("day");
       endDate = moment(today).endOf("day");
     } else if (range === "next") {
-      // Today  → Next same weekday
       startDate = moment(today).startOf("day");
       endDate = moment(today).add(1, "week").endOf("day");
     } else {
@@ -337,26 +334,21 @@ const getNewOnboardCustomers = async (req, res) => {
       });
     }
 
-    // ---- Base filter ----
+    // ---- Base filter for customers ----
     const filter = {
       isDeleted: false,
       createdAt: { $gte: startDate.toDate(), $lte: endDate.toDate() },
     };
 
-    // ---- Count + Query ----
-    const [totalOnBoardedCustomers, customers] = await Promise.all([
-      Customer.countDocuments(filter),
-      Customer.find(filter)
-        .populate({
-          path: "products.product",
-          model: Product,
-          select: "productName size",
-        })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-    ]);
+    // ---- Fetch customers and populate products ----
+    let customers = await Customer.find(filter)
+      .populate({
+        path: "products.product",
+        model: Product,
+        select: "productName size",
+      })
+      .sort({ createdAt: -1 })
+      .lean();
 
     if (!customers || customers.length === 0) {
       return res.status(404).json({
@@ -365,53 +357,36 @@ const getNewOnboardCustomers = async (req, res) => {
       });
     }
 
-    // ---- Format Response ----
-    let filteredCustomers = customers.filter((customer) =>
-      customer.products.some((p) => p.product)
-    );
-
-    // Apply product name and size filters
-    if (productName && productName.trim() !== "") {
-      const productNameRegex = new RegExp(productName, "i");
-      filteredCustomers = filteredCustomers.filter((customer) =>
-        customer.products.some(
-          (p) => p.product && productNameRegex.test(p.product.productName)
-        )
-      );
-    }
-
-    if (size && size.trim() !== "") {
-      const sizeRegex = new RegExp(size, "i");
-      filteredCustomers = filteredCustomers.filter((customer) =>
+    // ---- Filter by productName and size ----
+    if (productName || size) {
+      customers = customers.filter((customer) =>
         customer.products.some(
           (p) =>
             p.product &&
-            (sizeRegex.test(p.productSize) || sizeRegex.test(p.product?.size))
+            (!productName || p.product.productName.toLowerCase().includes(productName.toLowerCase())) &&
+            (!size || p.product.size.toLowerCase().includes(size.toLowerCase()))
         )
       );
     }
 
-    const response = filteredCustomers.map((customer) => {
-      const allProducts = customer.products.filter((p) => p.product);
+    // ---- Pagination ----
+    const totalFilteredCustomers = customers.length;
+    const totalPages = Math.ceil(totalFilteredCustomers / limit);
+    const paginatedCustomers = customers.slice(skip, skip + limit);
 
+    // ---- Format response ----
+    const response = paginatedCustomers.map((customer) => {
+      const allProducts = customer.products.filter((p) => p.product);
       return {
+        _id: customer._id,
         customerName: customer.name,
-        productNames: allProducts
-          .map((p) => p.product?.productName || "N/A")
-          .join(", "),
-        sizes: allProducts
-          .map((p) => p.productSize || p.product?.size || "N/A")
-          .join(", "),
+        // productId: allProducts.map((p) => p.product._id),
+        productNames: allProducts.map((p) => p.product?.productName || "N/A").join(", "),
+        sizes: allProducts.map((p) => p.productSize || p.product?.size || "N/A").join(", "),
         quantities: allProducts.map((p) => p.quantity).join(", "),
-        date: moment(customer.startDate).format("DD/MM/YYYY"),
+        date: moment(customer.createdAt).format("DD/MM/YYYY"),
       };
     });
-
-    // ---- Pagination ----
-    const totalFilteredCustomers = response.length;
-    const totalPages = Math.ceil(totalFilteredCustomers / limit);
-    const hasPrevious = page > 1;
-    const hasNext = page < totalPages;
 
     return res.status(200).json({
       success: true,
@@ -423,8 +398,8 @@ const getNewOnboardCustomers = async (req, res) => {
       totalOnBoardedCustomers: totalFilteredCustomers,
       totalPages,
       currentPage: page,
-      previous: hasPrevious,
-      next: hasNext,
+      previous: page > 1,
+      next: page < totalPages,
       customers: response,
     });
   } catch (error) {
@@ -436,6 +411,8 @@ const getNewOnboardCustomers = async (req, res) => {
     });
   }
 };
+
+
 
 const getEarningOverview = async (req, res) => {
   try {
