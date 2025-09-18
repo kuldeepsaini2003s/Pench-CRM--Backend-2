@@ -36,4 +36,5 @@ router.post("/removeProduct/:customerId", removeProductFromCustomer);
 router.put("/updateCustomerProduct/:customerId", updateCustomerProduct);
 router.get("/ordersByMonth/:customerId", getCustomerOrdersByMonth);
 
+
 module.exports = router;

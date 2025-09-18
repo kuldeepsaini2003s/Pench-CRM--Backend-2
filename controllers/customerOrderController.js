@@ -3,13 +3,8 @@ const Customer = require("../models/customerModel");
 const { generateOrderNumber } = require("../utils/generateOrderNumber");
 const Product = require("../models/productModel");
 const DeliveryBoy = require("../models/deliveryBoyModel");
-const Invoice = require("../models/customerInvoicesModel");
-const { generateInvoicePDF } = require("../service/pdfService");
-const { cloudinary } = require("../config/cloudinary");
-const generateInvoiceNumber = require("../utils/generateInvoiceNumber");
 const moment = require("moment");
 const Razorpay = require("razorpay");
-
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -399,9 +394,11 @@ const createAdditionalOrder = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, bottleReturnSize, bottlesReturned } = req.body; // ✅ added bottlesReturned
+    const { status } = req.body;
 
-    const order = await CustomerOrders.findById(orderId).populate("customer");
+    const order = await CustomerOrders.findById(orderId)
+    .populate("customer")
+    .populate("products._id");
 
     if (!order) {
       return res.status(404).json({
@@ -410,44 +407,65 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    const allowedBottleReturnSize = ["1ltr", "1/2ltr"];
-
-    if (
-      bottleReturnSize &&
-      !allowedBottleReturnSize.includes(bottleReturnSize)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid bottle return size",
-        allowedBottleReturnSize,
-      });
-    }
+ 
 
     // ✅ Update status if provided
     if (status) {
+      // Agar already Delivered hai, to dobara increment mat karo
+      if (status === "Delivered" && order.status !== "Delivered") {
+        let milkQuantity = 0;
+        order.products.forEach((p) => {
+          if (p.productName.toLowerCase() === "milk") {
+            milkQuantity += p.quantity;
+          }
+        });
+
+        // Sirf ek baar Delivered hone par hi add karo
+        order.pendingBottleQuantity =
+          (order.pendingBottleQuantity || 0) + milkQuantity;
+      }
+
       order.status = status;
     }
 
-    // ✅ Handle bottle return size if provided
-    if (bottleReturnSize) {
-      order.bottleReturnSize = bottleReturnSize;
-    }
 
-    // ✅ Handle bottlesReturned count manually from body
-    if (typeof bottlesReturned === "number" && bottlesReturned >= 0) {
-      order.bottlesReturned = bottlesReturned;
-    }
+    // // ✅ Handle bottle return size if provided
+    // if (bottleReturnSize) {
+    //   order.bottleReturnSize = bottleReturnSize;
+    // }
+
+    // // ✅ Handle bottlesReturned count manually from body
+    // if (typeof bottlesReturned === "number" && bottlesReturned >= 0) {
+    //   order.bottlesReturned = bottlesReturned;
+
+    //   // Decrease pendingBottleQuantity based on returned bottles
+    //   order.pendingBottleQuantity =
+    //     (order.pendingBottleQuantity || 0) - bottlesReturned;
+
+    //   if (order.pendingBottleQuantity < 0) {
+    //     order.pendingBottleQuantity = 0; // prevent negative
+    //   }
+    // }
 
     await order.save();
+
+    //✅ Comma Seprated value
+    const productNames = order.products.map((p)=>p.productName).join(", ");
+    const productSizes = order.products.map((p)=>p.productSize).join(", ");
+    const productQuantities = order.products.map((p)=>p.quantity).join(", ");
 
     return res.status(200).json({
       success: true,
       message: "Order updated successfully",
       _id: order?._id,
       orderNumber: order?.orderNumber,
+      customerId: order?.customer?._id,
+      customerName: order?.customer?.name,
+      productName: productNames,
+      productSize: productSizes,
+      quantity: productQuantities,
       status: order?.status,
-      bottlesReturned: order?.bottlesReturned,
-      bottleReturnSize: order?.bottleReturnSize,
+      pendingBottleQuantity: order?.pendingBottleQuantity,
     });
   } catch (error) {
     console.error("updateOrderStatus Error:", error);
@@ -459,10 +477,165 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
+//✅ Update Bottle Returns
+const updateBottleReturns = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { bottleReturnSize, bottlesReturned } = req.body;
+
+    const order = await CustomerOrders.findById(orderId).populate("customer");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const allowedBottleReturnSize = ["1ltr", "1/2ltr"];
+    if (bottleReturnSize && !allowedBottleReturnSize.includes(bottleReturnSize)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bottle return size",
+        allowedBottleReturnSize,
+      });
+    }
+
+    // ✅ Update bottleReturnSize
+    if (bottleReturnSize) {
+      order.bottleReturnSize = bottleReturnSize;
+    }
+
+    // ✅ Update bottlesReturned + decrease pendingBottleQuantity
+    if (typeof bottlesReturned === "number" && bottlesReturned >= 0) {
+      order.bottlesReturned = bottlesReturned;
+
+      order.pendingBottleQuantity =
+        (order.pendingBottleQuantity || 0) - bottlesReturned;
+
+      if (order.pendingBottleQuantity < 0) {
+        order.pendingBottleQuantity = 0; // Prevent negative
+      }
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Bottle return details updated successfully",
+      _id: order?._id,
+      orderNumber: order?.orderNumber,
+      customerId: order?.customer?._id,
+      customerName: order?.customer?.name,
+      bottlesReturned: order?.bottlesReturned,
+      bottleReturnSize: order?.bottleReturnSize,
+      pendingBottleQuantity: order?.pendingBottleQuantity,
+    });
+  } catch (error) {
+    console.error("updateBottleReturns Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating bottle return details",
+      error: error.message,
+    });
+  }
+};
+
+
+//✅ Get Pending Bottles
+const getPendingBottles = async (req, res) => {
+  try {
+    const deliveryBoyId = req.deliveryBoy?._id;
+    if(!deliveryBoyId){
+      return res.status(400).json({
+        success: false,
+        message: "Delivery Boy ID is required",
+      });
+    }
+    const { customerId } = req.params;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "CustomerId is required",
+      });
+    }
+
+    // ✅ Fetch customer with orders + populate product
+    const orders = await CustomerOrders.find({ customer: customerId,deliveryBoy:deliveryBoyId, status:"Delivered"})
+      .populate("customer", "_id name phoneNumber address")
+      .populate("products._id", "productImage"); // productImage + _id auto milega
+console.log("orders",orders)
+    if (!orders.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No orders found for this customer",
+      });
+    }
+
+    let pendingBottleQuantity = 0;
+    let totalBottleReturnedQuantity = 0;
+    let products = [];
+
+    orders.forEach((order) => {
+      // Sirf wahi orders consider karo jisme abhi pendingBottleQuantity > 0 hai
+      if ((order.pendingBottleQuantity || 0) > 0) {
+        order.products.forEach((p) => {
+          if (p.productName.toLowerCase() === "milk") {
+            products.push({
+              orderId: order._id,
+              orderNumber: order.orderNumber,
+              // productId: p._id?._id || p._id,
+              productName: p.productName,
+              productImage: p._id?.productImage || null,
+              productSize: p.productSize,
+              quantity: p.quantity,
+              bottlePendingQuantity: order.pendingBottleQuantity || 0,
+              bottlesReturned: order.bottlesReturned || 0,
+            });
+          }
+        });
+
+        // ✅ Total pending count update karo
+        pendingBottleQuantity += order.pendingBottleQuantity || 0;
+        totalBottleReturnedQuantity += order.bottlesReturned || 0;
+      }
+    });
+
+
+    return res.status(200).json({
+      success: true,
+      message: "Pending bottles data fetched successfully",
+      customer: {
+        _id: orders[0].customer._id,
+        name: orders[0].customer.name,
+        phoneNumber: orders[0].customer.phoneNumber,
+        address: orders[0].customer.address,
+      },
+      pendingBottleQuantity,
+      totalBottleReturnedQuantity,
+      products,
+    });
+  } catch (error) {
+    console.error("getPendingBottles Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error In  fetching pending bottles",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
 
 module.exports = {
   createAutomaticOrdersForCustomer,
   createAdditionalOrder,
   initializeOrders,
   updateOrderStatus,
+  getPendingBottles,
+  updateBottleReturns,
 };

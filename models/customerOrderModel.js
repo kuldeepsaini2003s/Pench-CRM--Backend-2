@@ -98,6 +98,10 @@ const customerOrdersSchema = new mongoose.Schema(
         type: String,
       },
     ],
+    pendingBottleQuantity: {
+      type: Number,
+      default: 0,
+    },
 
     // wantToPay: {
     //   type: Boolean,
