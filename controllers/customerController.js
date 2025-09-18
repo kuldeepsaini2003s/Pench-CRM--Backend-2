@@ -704,7 +704,7 @@ const makeAbsentDays = async (req, res) => {
         error: "Customer not found",
       });
     }
-    
+
     const normalizedDate = parseUniversalDate(date);
 
     if (!normalizedDate) {
@@ -713,20 +713,32 @@ const makeAbsentDays = async (req, res) => {
         error: "Invalid date format. Please use DD-MM-YYYY format",
       });
     }
-    
+
     const formattedInputDate = formatDateToDDMMYYYY(normalizedDate);
-    
+
     const isAlreadyAbsent = customer.absentDays.includes(formattedInputDate);
 
     if (isAlreadyAbsent) {
-      return res.status(400).json({
-        success: false,
-        error: "Customer is already marked absent for this date",
+      // Remove the date from absentDays to make customer present
+      customer.absentDays = customer.absentDays.filter(
+        (date) => date !== formattedInputDate
+      );
+      await customer.save();
+
+      return res.json({
+        success: true,
+        message: "Customer marked present for this date",
+        customer: {
+          _id: customer._id,
+          name: customer.name,
+          phoneNumber: customer.phoneNumber,
+          absentDays: customer.absentDays,
+        },
       });
     }
-    
+
     customer.absentDays.push(formattedInputDate);
-    
+
     const deletedOrders = await CustomerOrders.deleteOne({
       customer: id,
       deliveryDate: date,
@@ -735,7 +747,7 @@ const makeAbsentDays = async (req, res) => {
     await customer.save();
 
     if (customer.deliveryBoy) {
-      try {        
+      try {
         const existingNotification = await Notification.findOne({
           deliveryBoy: customer.deliveryBoy._id,
           customer: customer._id,
