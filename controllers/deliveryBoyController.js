@@ -2,7 +2,7 @@ const DeliveryBoy = require("../models/deliveryBoyModel");
 const mongoose = require("mongoose");
 const CustomerOrders = require("../models/customerOrderModel");
 const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
-
+const Customer = require("../models/customerModel");
 const FRONTEND_BASE =
   process.env.FRONTEND_BASE_URL || "https://pench-delivery-boy-app.netlify.app";
 const tokenExpiry = parseInt(process.env.TOKEN_TTL_MIN) || 15; // token expiry in minutes
@@ -203,6 +203,9 @@ const getDeliveryBoyById = async (req, res) => {
       });
     }
 
+    const customer = await Customer.find({deliveryBoy: id}).select("name")
+    const customerNames = customer.map((c)=>c.name)
+
     let plainPassword = null;
     try {
       plainPassword = deliveryBoy.getPlainPassword();
@@ -228,6 +231,7 @@ const getDeliveryBoyById = async (req, res) => {
         createdAt: deliveryBoy.createdAt,
         updatedAt: deliveryBoy.updatedAt,
         credentialShareableLink: deliveryBoyCredentialShareableLink,
+        assignedCustomers: customerNames,
       },
     });
   } catch (error) {
