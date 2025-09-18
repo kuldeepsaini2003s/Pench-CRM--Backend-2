@@ -1,112 +1,344 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Invoice Preview</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          Roboto, "Helvetica Neue", Arial;
+        background: #ffffff;
+        color: #000000;
+        padding: 12px;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .container {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+
+      /* header */
+      .header {
+        border-bottom: 1px solid #000000;
+        padding-bottom: 8px;
+        margin-bottom: 18px;
+      }
+      .logo {
+        margin-top: 8px;
+        margin-bottom: 8px;
+      }
+      .logo img {
+        width: 112px;
+        height: auto;
+        object-fit: contain;
+      }
+
+      /* invoice title */
+      .invoice-title {
+        text-align: center;
+        margin-bottom: 12px;
+      }
+      .invoice-title h2 {
+        margin: 0;
+        font-size: 34px;
+        color: #1f8a4f;
+        font-weight: 800;
+      }
+
+      /* top info */
+      .top-info {
+        display: table;
+        width: 100%;
+        font-size: 14px;
+        margin-bottom: 14px;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      .top-info .left {
+        display: table-cell;
+        width: 50%;
+        vertical-align: top;
+      }
+      .top-info .right {
+        display: table-cell;
+        width: 50%;
+        text-align: right;
+        color: #6b7280;
+        vertical-align: top;
+      }
+
+      /* bill grid */
+      .bill-grid {
+        display: table;
+        width: 100%;
+        margin-bottom: 12px;
+        color: #6b7280;
+        font-size: 14px;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      .bill-grid > div {
+        display: table-cell;
+        width: 33.33%;
+        vertical-align: top;
+        padding-right: 20px;
+      }
+      .bill-grid > div:last-child {
+        padding-right: 0;
+      }
+      .bill-grid h3 {
+        margin: 0 0 6px 0;
+        font-size: 16px;
+        color: #111827;
+        font-weight: 600;
+      }
+
+      /* table */
+      .table-wrap {
+        overflow-x: auto;
+        margin-bottom: 16px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+        table-layout: auto;
+      }
+      thead tr {
+        background: #f3f4f6;
+        font-weight: 700;
+        text-align: center;
+      }
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: center;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: left;
+        width: 30%;
+      }
+      th:nth-child(2),
+      td:nth-child(2) {
+        width: 20%;
+      }
+      th:nth-child(3),
+      td:nth-child(3) {
+        width: 15%;
+      }
+      th:nth-child(4),
+      td:nth-child(4) {
+        width: 20%;
+      }
+      th:last-child,
+      td:last-child {
+        width: 15%;
+      }
+      tbody tr {
+        background: #fff;
+        color: #111827;
+      }
+
+      /* footer totals */
+      .footer {
+        border-top: 1px solid #e5e7eb;
+        padding-top: 12px;
+        margin-top: 8px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .totals {
+        display: block;
+        margin-bottom: 8px;
+      }
+      .totals .row {
+        display: table;
+        width: 100%;
+        margin: 6px 0;
+        color: #111827;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      .totals .row > div:first-child {
+        display: table-cell;
+        text-align: left;
+        width: 70%;
+      }
+      .totals .row > div:last-child {
+        display: table-cell;
+        text-align: right;
+        width: 30%;
+      }
+      .status {
+        margin-top: 6px;
+        color: #111827;
+      }
+      .status-paid {
+        color: #059669;
+      }
+      .status-partially-paid {
+        color: #d97706;
+      }
+      .status-unpaid {
+        color: #dc2626;
+      }
+
+      /* note */
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+        color: #111827;
+      }
+      textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #000000;
+        border-radius: 6px;
+        resize: vertical;
+        font-family: inherit;
+        font-size: 14px;
+        color: #000000;
+      }
+
+      /* buttons */
+      .actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        min-width: 130px;
+        padding: 10px 14px;
+        background: #374151;
+        color: #fff;
+        border-radius: 8px;
+        border: 0;
+        cursor: pointer;
+        font-size: 14px;
+        text-align: center;
+      }
+
+      /* small screens */
+      @media (max-width: 420px) {
+        .invoice-title h2 {
+          font-size: 28px;
+        }
+        th,
+        td {
+          padding: 8px;
+          font-size: 13px;
+        }
+      }
+      .actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
+        flex-wrap: wrap;
+        border-top: 1px solid #000000; /* 👈 added top border */
+        padding-top: 12px; /* 👈 spacing so buttons don't stick to border */
+      }
+    </style>
   </head>
-  <body class="bg-white text-black w-full min-h-screen p-4 sm:p-6 font-sans">
-    <!-- Header Section -->
-    <div class="max-w-8xl mx-auto">
-      <div class="bg-white border-b border-black">
-        <div class="flex justify-between items-center mt-2 mb-2">
-          <div class="flex items-center gap-1">
-            <img
-              src="https://penchadmin.netlify.app/assets/pench-logo-BRUfmzHf.png"
-              alt="Logo"
-              class="logo"
-            />
-          </div>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <div class="logo">
+          <!-- replace src with your image path or keep as placeholder -->
+          <img src="<%= logoBase64 %>" alt="Logo" />
         </div>
-      </div>
+      </header>
 
-      <!-- Invoice Header -->
-      <div class="flex items-center flex-col gap-4 mb-6">
-        <div class="pt-4">
-          <h2 class="text-4xl font-bold text-green-800">Invoice</h2>
+      <!-- Invoice Title -->
+      <section class="invoice-title">
+        <h2>Invoice</h2>
+      </section>
+
+      <!-- Top Info -->
+      <section class="top-info">
+        <div class="left">
+          <p style="margin: 0">INV- <%= invoice.invoiceNumber || 'N/A' %></p>
+          <p style="margin: 4px 0 0 0">
+            GST-No: <%= invoice.gstNumber || 'N/A' %>
+          </p>
         </div>
-      </div>
 
-      <!-- Invoice Info -->
-      <div class="flex flex-col sm:flex-row gap-4 text-sm mb-2">
-        <!-- Left -->
+        <div class="right" aria-label="dates">
+          <p style="margin: 0">
+            <strong style="color: var(--muted); font-weight: 600"
+              >Issue Date:</strong
+            >
+            <%= formattedDate || 'N/A' %>
+          </p>
+        </div>
+      </section>
+
+      <!-- Bill From / To / Duration -->
+      <section class="bill-grid">
         <div>
-          <p>
-            <strong>Invoice No:</strong>
-            <span><%= invoice.invoiceNumber || 'N/A' %></span>
-          </p>
-          <p>
-            <strong>GST NO:</strong>
-            <span><%= invoice.gstNumber || 'N/A' %></span>
-          </p>
-        </div>
-        <!-- Right -->
-        <div class="ml-auto text-right">
-          <p>
-            <strong class="text-gray-500">Issue Date:</strong>
-            <span><%= formattedDate || 'N/A' %></span>
-          </p>
-        </div>
-      </div>
-
-      <!-- Bill From / To -->
-      <div
-        class="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-6 items-start text-gray-700 text-sm"
-      >
-        <div class="text-left">
-          <h3 class="text-lg font-semibold mb-1">Bill from:</h3>
-          <p>
+          <h3>Bill from:</h3>
+          <p style="margin: 0; line-height: 1.5">
             17, S Ambazari Rd, Madhav Nagar,<br />
             Nagpur 440010,<br />
             Maharashtra
           </p>
         </div>
 
-        <div class="text-center">
-          <h3 class="text-lg font-semibold mb-1">Bill to:</h3>
-          <p><strong><%= invoice.customer?.name || 'N/A' %></strong></p>
-          <p>Phone: <span><%= invoice.phoneNumber || 'N/A' %></span></p>
-          <p><%= invoice.address || 'N/A' %></p>
+        <div style="text-align: center">
+          <h3>Bill to:</h3>
+          <p style="margin: 0; line-height: 1.5; color: #111827">
+            <%= invoice.customer?.name || 'N/A' %>
+          </p>
         </div>
 
-        <div class="text-right">
-          <h3 class="text-lg font-semibold mb-1">Duration:</h3>
-          <p>
-            <span><%= periodStart || 'N/A' %></span> to
-            <span><%= periodEnd || 'N/A' %></span>
-          </p>
-          <p>
-            <strong>Plan:</strong>
-            <span><%= invoice.subscriptionPlan || 'N/A' %></span>
+        <div style="text-align: right">
+          <h3>Duration:</h3>
+          <p style="margin: 0; line-height: 1.5; color: #111827">
+            <%= periodStart || 'N/A' %> to <%= periodEnd || 'N/A' %>
           </p>
         </div>
-      </div>
+      </section>
 
       <!-- Items Table -->
-      <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-sm">
+      <div class="table-wrap">
+        <table aria-labelledby="items">
           <thead>
-            <tr class="bg-gray-200 font-semibold text-center">
-              <th class="p-2">Product Name</th>
-              <th class="p-2">Product Size</th>
-              <th class="p-2">Quantity</th>
-              <th class="p-2">Price(₹)</th>
-              <th class="p-2">Total(₹)</th>
+            <tr>
+              <th>Item</th>
+              <th>Product Size</th>
+              <th>Quantity</th>
+              <th>Price(₹)</th>
+              <th>Total(₹)</th>
             </tr>
           </thead>
-          <tbody class="bg-white text-center">
+          <tbody>
             <% if (invoice.products && invoice.products.length > 0) { %> <%
             invoice.products.forEach(function(product) { %>
             <tr>
-              <td class="p-2"><%= product.productName %></td>
-              <td class="p-2"><%= product.productSize %></td>
-              <td class="p-2"><%= product.quantity %></td>
-              <td class="p-2">₹<%= product.price %></td>
-              <td class="p-2">₹<%= product.totalPrice %></td>
+              <td><%= product.productName %></td>
+              <td><%= product.productSize %></td>
+              <td><%= product.quantity %></td>
+              <td>₹<%= product.price %></td>
+              <td>₹<%= product.totalPrice %></td>
             </tr>
             <% }); %> <% } else { %>
             <tr>
-              <td colspan="5" class="p-2 text-center text-gray-500">
+              <td colspan="5" style="text-align: center; color: #6b7280">
                 No products found
               </td>
             </tr>
@@ -115,157 +347,74 @@
         </table>
       </div>
 
-      <!-- Delivery Statistics -->
-      <% if (deliveryStats) { %>
-      <div class="mt-4 p-3 bg-gray-50 rounded">
-        <h4 class="font-semibold mb-2">Delivery Statistics</h4>
-        <div class="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <span class="text-gray-600">Actual Orders:</span>
-            <span class="font-semibold"
-              ><%= deliveryStats.actualOrders || 0 %></span
-            >
-          </div>
-          <div>
-            <span class="text-gray-600">Absent Days:</span>
-            <span class="font-semibold"
-              ><%= deliveryStats.absentDays || 0 %></span
-            >
-          </div>
-          <div>
-            <span class="text-gray-600">Deliveries:</span>
-            <span class="font-semibold"
-              ><%= deliveryStats.deliveries || 0 %></span
-            >
-          </div>
-        </div>
-      </div>
-      <% } %>
-
-      <!-- Footer Section -->
-      <div class="mt-2 border-t pt-2 text-sm">
-        <!-- Payment Summary -->
-        <div class="space-y-1">
-          <div class="flex justify-between">
-            <span class="font-semibold">Subtotal:</span>
-            <span class="font-semibold"
-              >₹<%= invoice.totals?.subtotal || 0 %></span
-            >
-          </div>
-
-          <% if (invoice.totals?.carryForwardAmount > 0) { %>
-          <div class="flex justify-between">
-            <span class="font-semibold">Carry Forward:</span>
-            <span class="font-semibold"
-              >₹<%= invoice.totals.carryForwardAmount %></span
-            >
-          </div>
-          <% } %>
-
-          <!-- Partial Payment Section (only shown if partially paid) -->
-          <% if (invoice.payment?.status === "Partially Paid" && partialPayment)
-          { %>
-          <div>
-            <div class="flex justify-between text-blue-600">
-              <span class="font-semibold">Partial Payment:</span>
-              <span class="font-semibold"
-                >₹<%= partialPayment.partialPaymentAmount %></span
-              >
+      <!-- Footer / Totals -->
+      <section class="footer">
+        <div class="totals">
+          <div
+            class="row"
+            style="
+              border-top: 1px solid #e5e7eb;
+              padding-top: 8px;
+              margin-top: 8px;
+            "
+          >
+            <div style="font-weight: 700; color: #111827; font-size: 16px">
+              Total Amount
             </div>
-            <div class="flex justify-between text-red-600">
-              <span class="font-semibold">Balance Amount:</span>
-              <span class="font-semibold"
-                >₹<%= partialPayment.balanceAmount %></span
-              >
-            </div>
-            <div class="flex justify-between text-gray-600">
-              <span class="font-semibold">Partial Days:</span>
-              <span class="font-semibold"
-                ><%= partialPayment.partialPaymentDays %> days</span
-              >
+            <div style="font-weight: 800; font-size: 16px">
+              ₹<%= (invoice.totals?.subtotal || 0) +
+              (invoice.totals?.carryForwardAmount || 0) %>
             </div>
           </div>
-          <% } else { %>
-          <!-- Regular Total (shown if not partially paid) -->
-          <div class="flex justify-between">
-            <span class="font-semibold">Total Amount:</span>
-            <span class="font-semibold"
-              >₹<%= (invoice.totals?.subtotal || 0) +
-              (invoice.totals?.carryForwardAmount || 0) %></span
-            >
-          </div>
-          <% } %>
 
-          <div class="flex justify-between">
-            <span class="font-semibold">Paid Amount:</span>
-            <span class="font-semibold"
-              >₹<%= invoice.totals?.paidAmount || 0 %></span
-            >
+          <div class="row">
+            <div style="font-weight: 600; color: #414141">Paid Amount</div>
+            <div style="font-weight: 700">
+              ₹<%= invoice.totals?.paidAmount || 0 %>
+            </div>
           </div>
 
-          <div class="flex justify-between border-t pt-1">
-            <span class="font-bold text-lg">Balance Due:</span>
-            <span class="font-bold text-lg"
-              >₹<%= invoice.totals?.balanceAmount || 0 %></span
-            >
+          <div
+            class="row"
+            style="
+              border-top: 1px solid #e5e7eb;
+              padding-top: 8px;
+              margin-top: 8px;
+            "
+          >
+            <div style="font-weight: 700; color: #111827">Balance Amount</div>
+            <% if ((invoice.totals?.balanceAmount || 0) > 0) { %>
+            <div style="font-weight: 800; color: #dc2626">
+              ₹<%= invoice.totals?.balanceAmount || 0 %>
+            </div>
+            <% } else { %>
+            <div style="font-weight: 800; color: #059669">
+              ₹<%= invoice.totals?.balanceAmount || 0 %>
+            </div>
+            <% } %>
           </div>
         </div>
 
-        <!-- Payment Status -->
-        <div class="mt-3 p-2 bg-gray-100 rounded">
-          <p class="text-sm">
-            <strong>Status:</strong>
+        <div class="status">
+          <p style="margin: 0">
+            Status:
             <span
-              class="font-semibold <%= invoice.payment?.status === 'Paid' ? 'text-green-600' : invoice.payment?.status === 'Partially Paid' ? 'text-yellow-600' : 'text-red-600' %>"
+              class="status-<%= (invoice.payment?.status || 'unpaid').toLowerCase().replace(' ', '-') %>"
+              style="font-weight: 700"
+              ><%= invoice.payment?.status || 'Unpaid' %></span
             >
-              <%= invoice.payment?.status || 'Unpaid' %>
-            </span>
           </p>
-          <p class="text-sm">
-            <strong>Payment Method:</strong>
-            <span><%= invoice.payment?.method || 'COD' %></span>
+          <p style="margin: 6px 0 0 0">
+            Payment Method: <%= invoice.payment?.method || 'COD' %>
           </p>
-          <% if (invoice.payment?.paidDate) { %>
-          <p class="text-sm">
-            <strong>Paid Date:</strong>
-            <span
-              ><%= new Date(invoice.payment.paidDate).toLocaleDateString()
-              %></span
-            >
+          <% if (invoice.totals?.paidDate) { %>
+          <p style="margin: 6px 0 0 0">
+            Paid Date: <%= new
+            Date(invoice.totals.paidDate).toLocaleDateString('en-GB') %>
           </p>
           <% } %>
         </div>
-      </div>
-
-      <!-- Partial Payment History -->
-      <% if (invoice.payment?.partialPayments &&
-      invoice.payment.partialPayments.length > 0) { %>
-      <div class="mt-4">
-        <h4 class="font-semibold mb-2">Partial Payment History</h4>
-        <div class="space-y-1">
-          <% invoice.payment.partialPayments.forEach(function(payment, index) {
-          %>
-          <div class="flex justify-between text-sm bg-gray-50 p-2 rounded">
-            <span>Payment <%= index + 1 %>:</span>
-            <span
-              >₹<%= payment.amount %> - <%= payment.method %> - <%= new
-              Date(payment.date).toLocaleDateString() %></span
-            >
-          </div>
-          <% }); %>
-        </div>
-      </div>
-      <% } %>
-
-      <!-- Note Section -->
-      <!-- <div class="mt-4">
-        <label for="note" class="font-semibold block mb-1">Note:</label>
-        <div
-          class="w-full border px-3 py-2 rounded-md border-[#000000] min-h-[60px]"
-        >
-          <%= invoice.notes || "Thank you for your business!" %>
-        </div>
-      </div> -->
+      </section>
     </div>
   </body>
 </html>
