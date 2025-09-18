@@ -35,14 +35,28 @@ const createProduct = async (req, res) => {
     // ✅ Normalize size
     let normalizeSize = size.replace(/\s+/g, "").toLowerCase();
 
-    // ✅ Validation: only allow formats ending with ltr, gm, or kg
-    const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/; //
-    if (!sizePattern.test(normalizeSize)) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
-      });
+
+    // ✅ Special validation for Milk
+    if (productName.toLowerCase() === "milk") {
+      // const allowedMilkSizes = ["1/2ltr", "1.5ltr", "2.5ltr", "3.5ltr"];
+      // if (!allowedMilkSizes.includes(normalizeSize)) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: `Invalid size for Milk. Allowed sizes are: ${allowedMilkSizes.join(
+      //       ", "
+      //     )}`,
+      //   });
+      // }
+    } else {
+      // ✅ General validation: must end with ltr, gm, or kg
+      const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
+      if (!sizePattern.test(normalizeSize)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
+        });
+      }
     }
 
     // ✅ Check for duplicate product (same productName + same size)
@@ -52,12 +66,7 @@ const createProduct = async (req, res) => {
       isDeleted: false,
     });
 
-    if (!sizePattern.test(normalizeSize)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid size. Use: ${sizePattern}`,
-      });
-    }
+
     if (duplicateProduct) {
       return res.status(400).json({
         success: false,
@@ -216,14 +225,26 @@ const updateProduct = async (req, res) => {
     if (description) updateData.description = description;
     if (size) {
       const normalizeSize = size.replace(/\s+/g, "").toLowerCase();
-      // ✅ Validate size format
-      const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
-      if (!sizePattern.test(normalizeSize)) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
-        });
+
+      if ((productName || updateData.productName)?.toLowerCase() === "milk") {
+        // ✅ Special validation for Milk
+        // const allowedMilkSizes = ["1/2ltr", "1.5ltr", "2.5ltr", "3.5ltr"];
+        // if (!allowedMilkSizes.includes(normalizeSize)) {
+        //   return res.status(400).json({
+        //     success: false,
+        //     message: `Invalid size for Milk. Allowed sizes are: ${allowedMilkSizes.join(", ")}`,
+        //   });
+        // }
+      } else {
+        // ✅ General validation
+        const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
+        if (!sizePattern.test(normalizeSize)) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
+          });
+        }
       }
 
       updateData.size = normalizeSize;
@@ -775,23 +796,23 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       // Apply product filters after unwinding products
       ...(productName || productSize
         ? [
-            {
-              $match: {
-                ...(productName && {
-                  productName: {
-                    $regex: productName,
-                    $options: "i",
-                  },
-                }),
-                ...(productSize && {
-                  productSize: {
-                    $regex: productSize,
-                    $options: "i",
-                  },
-                }),
-              },
+          {
+            $match: {
+              ...(productName && {
+                productName: {
+                  $regex: productName,
+                  $options: "i",
+                },
+              }),
+              ...(productSize && {
+                productSize: {
+                  $regex: productSize,
+                  $options: "i",
+                },
+              }),
             },
-          ]
+          },
+        ]
         : []),
       {
         $group: {
@@ -861,23 +882,23 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       // Apply product filters after unwinding products
       ...(productName || productSize
         ? [
-            {
-              $match: {
-                ...(productName && {
-                  productName: {
-                    $regex: productName,
-                    $options: "i",
-                  },
-                }),
-                ...(productSize && {
-                  productSize: {
-                    $regex: productSize,
-                    $options: "i",
-                  },
-                }),
-              },
+          {
+            $match: {
+              ...(productName && {
+                productName: {
+                  $regex: productName,
+                  $options: "i",
+                },
+              }),
+              ...(productSize && {
+                productSize: {
+                  $regex: productSize,
+                  $options: "i",
+                },
+              }),
             },
-          ]
+          },
+        ]
         : []),
       {
         $group: {

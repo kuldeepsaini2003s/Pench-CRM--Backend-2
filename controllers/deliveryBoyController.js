@@ -203,9 +203,22 @@ const getDeliveryBoyById = async (req, res) => {
       });
     }
 
-    const customer = await Customer.find({deliveryBoy: id}).select("name")
-    const customerNames = customer.map((c)=>c.name)
+    const customer = await Customer.find({deliveryBoy: id})
+    .populate("products.product", "productName") // only fetch productName
+    .select("name phoneNumber startDate products")
 
+    const assignedCustomers = customer.map((c) => {
+      const productNames = c.products.map((p) => p.product?.productName || "");
+      const productSizes = c.products.map((p) => p.productSize);
+
+      return {
+        name: c.name,
+        phoneNumber: c.phoneNumber,
+        startDate: c.startDate,
+        productName: productNames.join(", "), // comma separated
+        productSize: productSizes.join(", "), // comma separated
+      };
+    });
     let plainPassword = null;
     try {
       plainPassword = deliveryBoy.getPlainPassword();
@@ -231,7 +244,7 @@ const getDeliveryBoyById = async (req, res) => {
         createdAt: deliveryBoy.createdAt,
         updatedAt: deliveryBoy.updatedAt,
         credentialShareableLink: deliveryBoyCredentialShareableLink,
-        assignedCustomers: customerNames,
+        assignedCustomers,
       },
     });
   } catch (error) {
