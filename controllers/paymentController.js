@@ -763,11 +763,34 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
   }
 };
 
+// ✅ Get Only Pending (Unpaid) Payments Count
+const getPendingPaymentsCount = async (req, res) => {
+  try {
+    const pendingCount = await Payment.countDocuments({
+      paymentStatus: "Unpaid",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Pending payments count fetched successfully",
+      pendingPayments: pendingCount,
+    });
+  } catch (error) {
+    console.error("getPendingPaymentsCount Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch pending payments count",
+      error: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   createPaymentForCustomer,
   verifyPayment,
   makePaymentForBalance,
   getAllCashPaymentsForDeliveryBoy,
   getAllPaymentsByStatus,
-
+  getPendingPaymentsCount,
 };
