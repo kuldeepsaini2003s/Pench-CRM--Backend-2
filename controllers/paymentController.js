@@ -1,8 +1,6 @@
 const Customer = require("../models/customerModel");
 const CustomerOrders = require("../models/customerOrderModel"); // daily orders
 const Payment = require("../models/paymentModel");
-const Invoice = require("../models/customerInvoicesModel");
-const DeliveryBoy = require("../models/deliveryBoyModel");
 const Razorpay = require("razorpay");
 const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 const razorpay = new Razorpay({
@@ -557,17 +555,17 @@ const getAllPaymentsByStatus = async (req, res) => {
       },
       ...(productName || productSize
         ? [
-            {
-              $match: {
-                ...(productName && {
-                  productNames: { $regex: productName, $options: "i" },
-                }),
-                ...(productSize && {
-                  productSizes: { $regex: productSize, $options: "i" },
-                }),
-              },
+          {
+            $match: {
+              ...(productName && {
+                productNames: { $regex: productName, $options: "i" },
+              }),
+              ...(productSize && {
+                productSizes: { $regex: productSize, $options: "i" },
+              }),
             },
-          ]
+          },
+        ]
         : []),
       {
         $project: {
@@ -662,9 +660,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     let orderFilter = { status: "Delivered", paymentMethod: "COD" };
 
     if (search) {
-      orderFilter.$or = [
-        { orderNumber: { $regex: search, $options: "i" } },
-      ];
+      orderFilter.$or = [{ orderNumber: { $regex: search, $options: "i" } }];
     }
 
     // ---- Fetch paginated orders ----
@@ -677,7 +673,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       .lean();
 
     // ---- Fetch related payments ----
-    const customerIds = orders.map((o) => o.customer);
+    const customerIds = orders.map((o) => o.customer._id);
     const payments = await Payment.find({
       customer: { $in: customerIds },
     }).lean();
@@ -685,19 +681,26 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     // ---- Format data for UI ----
     const results = orders.map((order) => {
       const payment = payments.find(
-        (p) => p.customer.toString() === order.customer.toString()
+        (p) => p.customer.toString() === order.customer._id.toString()
       );
 
       let status =
         payment?.paymentStatus === "Unpaid" ? "Pending" : "Received";
 
+      // ✅ Always pick last date from paidDates (no fallback to deliveryDate)
+      let paidDate =
+      payment?.paidDates?.length > 0
+        ? payment.paidDates[payment.paidDates.length - 1]
+        : null;
+    
+
       return {
         customerName: order.customer?.name || "N/A",
         orderNumber: order.orderNumber,
-        amount: payment?.totalAmount || order.totalAmount,
+        amount: payment?.paidAmount,
         paymentStatus: status,
         deliveryBoy: order.deliveryBoy?.name || "N/A",
-        date: order.deliveryDate,
+        date: paidDate, 
       };
     });
 

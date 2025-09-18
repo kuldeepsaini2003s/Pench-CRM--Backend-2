@@ -67,7 +67,7 @@ const adminSchema = new mongoose.Schema(
 
 adminSchema.methods.generateToken = function () {
   return jwt.sign({ id: this._id }, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: "1h",
+    expiresIn: "7d",
   });
 };
 

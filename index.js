@@ -83,7 +83,7 @@ app.use("/api/notification", notificationRoutes);
 
 // Connect DB then start server
 db().then(async () => {
-  console.log("✅ Database connected");
+  // console.log("✅ Database connected");
 
   // Run orders initialization only once at server start
   await initializeOrders();
