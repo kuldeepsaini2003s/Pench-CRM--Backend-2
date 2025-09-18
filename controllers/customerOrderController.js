@@ -12,6 +12,14 @@ const razorpay = new Razorpay({
 
 const gstNumber = process.env.GST_NUMBER;
 
+// Helper function to get all available sizes for products with same name
+const getAvailableSizesForProduct = async (productName) => {
+  const products = await Product.find({ productName }, "size");
+  const allSizes = products.map((p) => p.size);
+  // Remove duplicates and return unique sizes
+  return [...new Set(allSizes)];
+};
+
 // Create automatic orders for a customer based on their subscription plan and delivery date
 const createAutomaticOrdersForCustomer = async (
   customerId,
@@ -282,16 +290,18 @@ const createAdditionalOrder = async (req, res) => {
           message: `Product '${productName}' not found. Please select from the available products.`,
           availableProducts: availableProducts.map((p) => ({
             productName: p.productName,
+            availableSizes: p.size,
           })),
         });
       }
 
-      // Validate product size - compare strings directly since size is a string field
-      if (productDoc.size && productDoc.size !== productSize) {
+      // Validate product size - check if the requested size is available for this product
+      const availableSizes = await getAvailableSizesForProduct(productName);
+      if (!availableSizes.includes(productSize)) {
         return res.status(400).json({
           success: false,
           message: `Product size '${productSize}' is not available for '${productName}'.`,
-          availableSize: productDoc.size,
+          availableSizes: availableSizes,
         });
       }
 
@@ -336,7 +346,8 @@ const createAdditionalOrder = async (req, res) => {
       if (duplicateProducts.length > 0) {
         return res.status(400).json({
           success: false,
-          message: "Product already ordered for this customer",
+          message:
+            "Product with same name and size already ordered for this customer",
           duplicateProducts: duplicateProducts,
         });
       }
@@ -397,8 +408,8 @@ const updateOrderStatus = async (req, res) => {
     const { status } = req.body;
 
     const order = await CustomerOrders.findById(orderId)
-    .populate("customer")
-    .populate("products._id");
+      .populate("customer")
+      .populate("products._id");
 
     if (!order) {
       return res.status(404).json({
@@ -406,8 +417,6 @@ const updateOrderStatus = async (req, res) => {
         message: "Order not found",
       });
     }
-
- 
 
     // ✅ Update status if provided
     if (status) {
@@ -427,7 +436,6 @@ const updateOrderStatus = async (req, res) => {
 
       order.status = status;
     }
-
 
     // // ✅ Handle bottle return size if provided
     // if (bottleReturnSize) {
@@ -450,9 +458,9 @@ const updateOrderStatus = async (req, res) => {
     await order.save();
 
     //✅ Comma Seprated value
-    const productNames = order.products.map((p)=>p.productName).join(", ");
-    const productSizes = order.products.map((p)=>p.productSize).join(", ");
-    const productQuantities = order.products.map((p)=>p.quantity).join(", ");
+    const productNames = order.products.map((p) => p.productName).join(", ");
+    const productSizes = order.products.map((p) => p.productSize).join(", ");
+    const productQuantities = order.products.map((p) => p.quantity).join(", ");
 
     return res.status(200).json({
       success: true,
@@ -523,7 +531,10 @@ const updateBottleReturns = async (req, res) => {
     order.bottleReturns = bottleReturns;
 
     // ✅ Decrease pendingBottleQuantity
-    const totalReturned = bottleReturns.reduce((sum, ret) => sum + ret.quantity, 0);
+    const totalReturned = bottleReturns.reduce(
+      (sum, ret) => sum + ret.quantity,
+      0
+    );
 
     order.pendingBottleQuantity =
       (order.pendingBottleQuantity || 0) - totalReturned;
@@ -553,14 +564,6 @@ const updateBottleReturns = async (req, res) => {
     });
   }
 };
-
-
-
-
-
-
-
-
 
 module.exports = {
   createAutomaticOrdersForCustomer,

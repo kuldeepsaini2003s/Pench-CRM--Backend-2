@@ -415,28 +415,36 @@ const getOrdersByDeliveryBoy = async (req, res) => {
     console.log("=== DEBUG INFO ===");
     console.log("Delivery Boy ID:", deliveryBoyId);
     console.log("Today formatted:", todayFormatted);
-    
+
     // Check all orders for this delivery boy
-    const allOrdersForDeliveryBoy = await CustomerOrders.find({ deliveryBoy: deliveryBoyId });
-    console.log("Total orders for delivery boy:", allOrdersForDeliveryBoy.length);
-    
+    const allOrdersForDeliveryBoy = await CustomerOrders.find({
+      deliveryBoy: deliveryBoyId,
+    });
+    console.log(
+      "Total orders for delivery boy:",
+      allOrdersForDeliveryBoy.length
+    );
+
     // Check orders for today
-    const todayOrders = await CustomerOrders.find({ 
-      deliveryBoy: deliveryBoyId, 
-      deliveryDate: todayFormatted 
+    const todayOrders = await CustomerOrders.find({
+      deliveryBoy: deliveryBoyId,
+      deliveryDate: todayFormatted,
     });
     console.log("Orders for today:", todayOrders.length);
-    console.log("Today orders details:", todayOrders.map(o => ({ 
-      id: o._id, 
-      status: o.status, 
-      deliveryDate: o.deliveryDate 
-    })));
-    
+    console.log(
+      "Today orders details:",
+      todayOrders.map((o) => ({
+        id: o._id,
+        status: o.status,
+        deliveryDate: o.deliveryDate,
+      }))
+    );
+
     // Check pending orders for today
-    const pendingTodayOrders = await CustomerOrders.find({ 
-      deliveryBoy: deliveryBoyId, 
+    const pendingTodayOrders = await CustomerOrders.find({
+      deliveryBoy: deliveryBoyId,
       deliveryDate: todayFormatted,
-      status: "Pending"
+      status: "Pending",
     });
     console.log("Pending orders for today:", pendingTodayOrders.length);
 
@@ -455,7 +463,7 @@ const getOrdersByDeliveryBoy = async (req, res) => {
         .skip((page - 1) * limit)
         .limit(limit),
     ]);
-console.log("orders", orders);
+    console.log("orders", orders);
     const transformedOrders = orders.map((order) => ({
       ...order.toObject(),
       products: order.products.map((product) => ({
@@ -468,7 +476,7 @@ console.log("orders", orders);
         totalPrice: product?.totalPrice,
       })),
     }));
-console.log("transformedOrders", transformedOrders);
+    console.log("transformedOrders", transformedOrders);
 
     const totalPages = Math.ceil(totalOrders / limit);
     const hasPrevious = page > 1;
@@ -663,9 +671,9 @@ const getOrderHistory = async (req, res) => {
     const todayDate = `${day}/${month}/${year}`;
 
     // Base filter
-    let filter = { 
-      deliveryBoy: deliveryBoyId, 
-      deliveryDate: todayDate   // 👈 sirf aaj ki date ke orders
+    let filter = {
+      deliveryBoy: deliveryBoyId,
+      deliveryDate: todayDate, // 👈 sirf aaj ki date ke orders
     };
 
     // Status filter
@@ -680,7 +688,7 @@ const getOrderHistory = async (req, res) => {
     const orders = await CustomerOrders.find(filter)
       .populate({
         path: "customer",
-        select: "name phoneNumber image address", 
+        select: "name phoneNumber image address",
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -729,6 +737,22 @@ const getOrderHistory = async (req, res) => {
       success: false,
       message: "Failed to get order history",
       error: error.message,
+    });
+  }
+};
+
+// Logout Delivery Boy
+const logoutDeliveryBoy = async (req, res) => {
+  try {
+    res.clearCookie("token");
+    return res.status(200).json({
+      success: true,
+      message: "Delivery Boy logged out successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to logout delivery boy",
     });
   }
 };
@@ -785,7 +809,9 @@ const getPendingBottles = async (req, res) => {
       if (milkProducts.length > 0) {
         const productNames = milkProducts.map((p) => p.productName).join(", ");
         const productSizes = milkProducts.map((p) => p.productSize).join(", ");
-        const productQuantities = milkProducts.map((p) => p.quantity).join(", ");
+        const productQuantities = milkProducts
+          .map((p) => p.quantity)
+          .join(", ");
 
         // ✅ Total bottles returned for this order (from array)
         const totalReturnedForOrder = (order.bottleReturns || []).reduce(
@@ -808,7 +834,8 @@ const getPendingBottles = async (req, res) => {
         // ✅ Update customer totals
         customersMap[cust._id].totalPendingBottleQuantity +=
           order.pendingBottleQuantity || 0;
-        customersMap[cust._id].totalBottleReturnedQuantity += totalReturnedForOrder;
+        customersMap[cust._id].totalBottleReturnedQuantity +=
+          totalReturnedForOrder;
       }
     });
 
@@ -830,10 +857,6 @@ const getPendingBottles = async (req, res) => {
   }
 };
 
-
-
-
-
 module.exports = {
   registerDeliveryBoy,
   loginDeliveryBoy,
@@ -847,4 +870,5 @@ module.exports = {
   getDeliveryBoyOwnBootleTrackingRecord,
   getOrderHistory,
   getPendingBottles,
+  logoutDeliveryBoy,
 };
