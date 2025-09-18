@@ -1,7 +1,6 @@
 const Payment = require("../models/paymentModel");
 const Product = require("../models/productModel");
 const Customer = require("../models/customerModel");
-const { normalizeDate } = require("../utils/dateUtils");
 const CustomerOrder = require("../models/customerOrderModel");
 const moment = require("moment");
 
@@ -412,14 +411,73 @@ const getNewOnboardCustomers = async (req, res) => {
   }
 };
 
-
-
+//✅ Get Earning Overview
 const getEarningOverview = async (req, res) => {
   try {
     const { period } = req.query;
-    const order = await CustomerOrder.find();
+
+    // ---- Allowed periods ----
+    const allowedPeriods = ["Daily", "Weekly", "Monthly", "All"];
+    if (period && !allowedPeriods.includes(period)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid period "${period}". Allowed values: ${allowedPeriods.join(", ")}.`,
+      });
+    }
+
+    // ---- Date Range ----
+    const today = moment().startOf("day");
+    let startDate, endDate;
+
+    switch (period) {
+      case "Daily":
+        startDate = moment(today).startOf("day");
+        endDate = moment(today).endOf("day");
+        break;
+      case "Weekly":
+        startDate = moment(today).startOf("week");
+        endDate = moment(today).endOf("week");
+        break;
+      case "Monthly":
+        startDate = moment(today).startOf("month");
+        endDate = moment(today).endOf("month");
+        break;
+      default:
+        startDate = null;
+        endDate = null;
+    }
+
+    // ---- Base filter ----
+    const filter = {
+      paymentStatus: { $in: ["Paid", "Partially Paid"] },
+    };
+
+    if (startDate && endDate) {
+      filter.createdAt = { $gte: startDate.toDate(), $lte: endDate.toDate() };
+    }
+
+    // ---- Aggregate payments ----
+    const payments = await Payment.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalEarnings: { $sum: "$paidAmount" },
+        },
+      },
+    ]);
+
+    const totalEarnings =
+      payments && payments.length > 0 ? payments[0].totalEarnings : 0;
+
+    return res.status(200).json({
+      success: true,
+      message: `${period || "All"} Earning overview fetched successfully`,
+      period: period || "All",
+      earnings: totalEarnings,
+    });
   } catch (error) {
-    console.log(error);
+    console.error("getEarningOverview Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch earnings overview",
@@ -427,6 +485,8 @@ const getEarningOverview = async (req, res) => {
     });
   }
 };
+
+
 
 //✅ Get Product Of The Day
 const getProductOfTheDay = async (req, res) => {
@@ -735,59 +795,16 @@ const getTotalDeliveredProductUnit = async (req, res) => {
   }
 };
 
-const getPendingPayments = async (req, res, next) => {
-  const { page = 1, limit = 10 } = req.query;
-  const skip = (page - 1) * limit;
 
-  const deliveries = await DeliveryHistory.find()
-    .populate("customer", "name phoneNumber")
-    .populate("products.product", "productName size")
-    .sort({ date: -1 })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .lean();
-
-  if (!deliveries || deliveries.length === 0) {
-    return next(new ErrorHandler("No delivery history found", 404));
-  }
-
-  const response = deliveries
-    .map((delivery, index) => {
-      return delivery.products.map((p) => {
-        const pendingAmount = (p.totalPrice || 0) - (delivery.amountPaid || 0);
-
-        return {
-          srNo: skip + index + 1,
-          customerName: delivery.customer?.name || "Unknown",
-          productName: p.product?.productName || "N/A",
-          productSize: p.product?.size || "N/A",
-          quantity: p.quantity,
-          pendingAmount,
-          date: delivery.date,
-        };
-      });
-    })
-    .flat();
-
-  res.status(200).json({
-    success: true,
-    count: response.length,
-    data: response,
-    pagination: {
-      currentPage: parseInt(page),
-      limit: parseInt(limit),
-    },
-  });
-};
 
 module.exports = {
   TotalSales,
   getLowStockProducts,
   getActiveSubscriptions,
-  getPendingPayments,
   getNewOnboardCustomers,
   getProductOfTheDay,
   getProductOfTheDay,
   getLowestProductSale,
   getTotalDeliveredProductUnit,
+  getEarningOverview,
 };
