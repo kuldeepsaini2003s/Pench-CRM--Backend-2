@@ -589,6 +589,14 @@ const getTotalDeliveredProductUnit = async (req, res) => {
   try {
     let { productName, productSize, period } = req.query;
 
+    const allowedPeriods = ["Daily", "Weekly", "Monthly", "All"];
+    if (period && !allowedPeriods.includes(period)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid period "${period}". Allowed values are: ${allowedPeriods.join(", ")}.`,
+      });
+    }
+
     // ---- Validate productName ----
     let productDoc = [];
     if (productName) {
@@ -640,7 +648,7 @@ const getTotalDeliveredProductUnit = async (req, res) => {
         startDate = firstDayOfWeek;
         endDate = lastDayOfWeek;
         break;
-      case "Monthly":
+      case "Donthly":
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         endDate = new Date(
           now.getFullYear(),
