@@ -225,28 +225,6 @@ const updateProduct = async (req, res) => {
     if (description) updateData.description = description;
     if (size) {
       const normalizeSize = size.replace(/\s+/g, "").toLowerCase();
-
-      if ((productName || updateData.productName)?.toLowerCase() === "milk") {
-        // ✅ Special validation for Milk
-        // const allowedMilkSizes = ["1/2ltr", "1.5ltr", "2.5ltr", "3.5ltr"];
-        // if (!allowedMilkSizes.includes(normalizeSize)) {
-        //   return res.status(400).json({
-        //     success: false,
-        //     message: `Invalid size for Milk. Allowed sizes are: ${allowedMilkSizes.join(", ")}`,
-        //   });
-        // }
-      } else {
-        // ✅ General validation
-        const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
-        if (!sizePattern.test(normalizeSize)) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
-          });
-        }
-      }
-
       updateData.size = normalizeSize;
 
       // ✅ Check for duplicate product (same productName + same size )
