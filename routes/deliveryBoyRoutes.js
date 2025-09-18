@@ -10,7 +10,8 @@ const {
   getOrdersByDeliveryBoy,
   shareConsumeToken,
   getDeliveryBoyOwnBootleTrackingRecord,
-  getOrderHistory
+  getOrderHistory,
+  getPendingBottles
 } = require("../controllers/deliveryBoyController");
 
 const {upload} = require("../config/cloudinary");
@@ -36,6 +37,7 @@ router.get("/getOrdersByDeliveryBoy",  verifyDeliveryBoyToken,  getOrdersByDeliv
 router.get("/shareToken", shareConsumeToken);
 router.get("/getDeliveryBoyBootleTracking", verifyDeliveryBoyToken, getDeliveryBoyOwnBootleTrackingRecord);
 router.get("/getOrderHistory", verifyDeliveryBoyToken, getOrderHistory);
+router.get("/getPendingBottles/:customerId", verifyDeliveryBoyToken, getPendingBottles);
 
 
 module.exports = router;
