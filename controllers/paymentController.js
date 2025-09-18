@@ -664,7 +664,6 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     if (search) {
       orderFilter.$or = [
         { orderNumber: { $regex: search, $options: "i" } },
-        { "customer.name": { $regex: search, $options: "i" } },
       ];
     }
 
@@ -677,18 +676,25 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       .limit(limit)
       .lean();
 
+    // ---- Fetch related payments ----
+    const customerIds = orders.map((o) => o.customer);
+    const payments = await Payment.find({
+      customer: { $in: customerIds },
+    }).lean();
+
     // ---- Format data for UI ----
     const results = orders.map((order) => {
+      const payment = payments.find(
+        (p) => p.customer.toString() === order.customer.toString()
+      );
+
       let status =
-        order.paymentStatus === "Paid" ||
-        order.paymentStatus === "Partially Paid"
-          ? "Received"
-          : "Pending";
+        payment?.paymentStatus === "Unpaid" ? "Pending" : "Received";
 
       return {
         customerName: order.customer?.name || "N/A",
         orderNumber: order.orderNumber,
-        amount: order.totalAmount,
+        amount: payment?.totalAmount || order.totalAmount,
         paymentStatus: status,
         deliveryBoy: order.deliveryBoy?.name || "N/A",
         date: order.deliveryDate,
@@ -696,55 +702,31 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     });
 
     // ---- Totals (for summary cards) ----
-    const [totalCollectedAgg, pendingCollectionsAgg, customersPaidList] =
-      await Promise.all([
-        // Total Collected
-        CustomerOrders.aggregate([
-          {
-            $match: {
-              ...orderFilter,
-              paymentStatus: { $in: ["Paid", "Partially Paid"] },
-            },
-          },
-          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-        ]),
+    let totalCollected = 0;
+    let pendingCollections = 0;
+    let customersPaidSet = new Set();
 
-        // Pending Collections
-        CustomerOrders.aggregate([
-          {
-            $match: {
-              ...orderFilter,
-              paymentStatus: { $in: ["Pending", "Unpaid"] },
-            },
-          },
-          { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-        ]),
-
-        // Unique Customers Paid
-        CustomerOrders.distinct("customer", {
-          ...orderFilter,
-          paymentStatus: { $in: ["Paid", "Partially Paid"] },
-        }),
-      ]);
-
-    // const summary = {
-    //   totalCollected: totalCollectedAgg[0]?.total || 0,
-    //   pendingCollections: pendingCollectionsAgg[0]?.total || 0,
-    //   customersPaid: customersPaidList.length,
-    // };
+    payments.forEach((p) => {
+      if (p.paymentStatus === "Paid" || p.paymentStatus === "Partially Paid") {
+        totalCollected += p.paidAmount;
+        customersPaidSet.add(p.customer.toString());
+      }
+      if (p.paymentStatus === "Unpaid") {
+        pendingCollections += p.balanceAmount || p.totalAmount;
+      }
+    });
 
     // ---- Count total records for pagination ----
     const totalRecords = await CustomerOrders.countDocuments(orderFilter);
-
     const totalPages = Math.ceil(totalRecords / limit);
 
     return res.status(200).json({
       success: true,
       message: "Cash Payments for Delivery Boy fetched successfully",
       summary: {
-        totalCollected: totalCollectedAgg[0]?.total || 0,
-        pendingCollections: pendingCollectionsAgg[0]?.total || 0,
-        customersPaid: customersPaidList.length,
+        totalCollected,
+        pendingCollections,
+        customersPaid: customersPaidSet.size,
       },
       totalRecords,
       totalPages,
@@ -762,6 +744,9 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     });
   }
 };
+
+
+
 
 // ✅ Get Only Pending (Unpaid) Payments Count
 const getPendingPaymentsCount = async (req, res) => {
