@@ -42,8 +42,8 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
     },
     period: {
-      startDate: { type: Date },
-      endDate: { type: Date },
+      startDate: { type: String },
+      endDate: { type: String },
     },
     products: [
       {
