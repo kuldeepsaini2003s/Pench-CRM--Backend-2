@@ -362,8 +362,14 @@ const getNewOnboardCustomers = async (req, res) => {
         customer.products.some(
           (p) =>
             p.product &&
-            (!productName || p.product.productName.toLowerCase().includes(productName.toLowerCase())) &&
-            (!size || p.product.size.toLowerCase().includes(size.toLowerCase()))
+            (!productName ||
+              p.product.productName
+                .toLowerCase()
+                .includes(productName.toLowerCase())) &&
+            (!size ||
+              (p.productSize || p.product?.size || "")
+                .toLowerCase()
+                .includes(size.toLowerCase()))
         )
       );
     }
@@ -380,8 +386,12 @@ const getNewOnboardCustomers = async (req, res) => {
         _id: customer._id,
         customerName: customer.name,
         // productId: allProducts.map((p) => p.product._id),
-        productNames: allProducts.map((p) => p.product?.productName || "N/A").join(", "),
-        sizes: allProducts.map((p) => p.productSize || p.product?.size || "N/A").join(", "),
+        productNames: allProducts
+          .map((p) => p.product?.productName || "N/A")
+          .join(", "),
+        sizes: allProducts
+          .map((p) => p.productSize || p.product?.size || "N/A")
+          .join(", "),
         quantities: allProducts.map((p) => p.quantity).join(", "),
         date: moment(customer.createdAt).format("DD/MM/YYYY"),
       };
@@ -421,7 +431,9 @@ const getEarningOverview = async (req, res) => {
     if (period && !allowedPeriods.includes(period)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid period "${period}". Allowed values: ${allowedPeriods.join(", ")}.`,
+        message: `Invalid period "${period}". Allowed values: ${allowedPeriods.join(
+          ", "
+        )}.`,
       });
     }
 
@@ -485,8 +497,6 @@ const getEarningOverview = async (req, res) => {
     });
   }
 };
-
-
 
 //✅ Get Product Of The Day
 const getProductOfTheDay = async (req, res) => {
@@ -653,7 +663,9 @@ const getTotalDeliveredProductUnit = async (req, res) => {
     if (period && !allowedPeriods.includes(period)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid period "${period}". Allowed values are: ${allowedPeriods.join(", ")}.`,
+        message: `Invalid period "${period}". Allowed values are: ${allowedPeriods.join(
+          ", "
+        )}.`,
       });
     }
 
@@ -796,8 +808,6 @@ const getTotalDeliveredProductUnit = async (req, res) => {
     });
   }
 };
-
-
 
 module.exports = {
   TotalSales,

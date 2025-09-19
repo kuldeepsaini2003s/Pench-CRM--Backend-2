@@ -9,55 +9,43 @@ const {
   formatDateToDDMMYYYY,
 } = require("../utils/parsedDateAndDay");
 const moment = require("moment");
-const { calculateFullPeriodAmount } = require("../helper/helperFunctions");
 
 const gstNumber = process.env.GST_NUMBER;
 
 //✅ Create Customer Invoice
 const createCustomerInvoice = async (req, res) => {
   try {
-    const {
-      customer,
-      period,
-      products,
-      grandTotal,
-      deliveryStats,
-      partialPayment,
-      paymentStatus,
-      paymentMethod,
-      paymentBreakdown,
-    } = req.body;
+    const { customerId, period } = req.body;
 
-    if (
-      !customer ||
-      !period ||
-      !products ||
-      !Array.isArray(products) ||
-      products.length === 0
-    ) {
+    if (!customerId || !period) {
       return res.status(400).json({
         success: false,
-        message: "Customer data, period, and products are required",
+        message: "Customer and period are required",
       });
     }
 
-    const customerId = customer._id;
-    const phoneNumber = customer.phoneNumber;
-    const address = customer.address;
-    const subscriptionPlan = customer.subscriptionPlan;
-    
-    const finalPaymentMethod = paymentMethod || "COD";
-    const finalPaymentStatus = paymentStatus || "Unpaid";
+    const customer = await Customer.findById(customerId);
 
-    // Validate payment status
-    const availablePaymentStatus = ["Paid", "Partially Paid", "Unpaid"];
-    if (!availablePaymentStatus.includes(finalPaymentStatus)) {
+    if (!customer) {
       return res.status(400).json({
         success: false,
-        message: "Invalid payment status",
-        availablePaymentStatus,
+        message: "Customer not found with the given id",
       });
     }
+
+    // Fetch orders for the specific date range
+    const orders = await CustomerOrders.find({
+      customer: customerId,
+      status: "Delivered",
+      paymentStatus: { $in: ["Paid", "Partially Paid"] },
+      deliveryDate: {
+        $gte: period?.startDate,
+        $lte: period?.endDate,
+      },
+    }).populate(
+      "products._id",
+      "productName productCode price size description"
+    );
 
     // Check if invoice already exists for this customer and period
     const existingInvoice = await Invoice.findOne({
@@ -71,71 +59,61 @@ const createCustomerInvoice = async (req, res) => {
       },
     });
 
+    // Handle existing invoice based on payment status
     if (existingInvoice) {
-      // Delete the existing invoice to create a new one
-      console.log(
-        `Deleting existing invoice: ${existingInvoice.invoiceNumber}`
-      );
-      await Invoice.findByIdAndDelete(existingInvoice._id);
-      console.log(`Existing invoice deleted successfully`);
+      if (
+        existingInvoice.payment.status === "Paid" ||
+        existingInvoice.payment.status === "Partially Paid"
+      ) {
+        return res.status(200).json({
+          success: false,
+          message: "Invoice already created for this customer and period",
+          existingInvoice: {
+            invoiceId: existingInvoice._id,
+            invoiceNumber: existingInvoice.invoiceNumber,
+            period: {
+              startDate: formatDateToDDMMYYYY(existingInvoice.period.startDate),
+              endDate: formatDateToDDMMYYYY(existingInvoice.period.endDate),
+            },
+            paymentStatus: existingInvoice.payment.status,
+            totalAmount: existingInvoice.totals.subtotal,
+            paidAmount: existingInvoice.totals.paidAmount,
+            balanceAmount: existingInvoice.totals.balanceAmount,
+          },
+        });
+      } else if (existingInvoice.payment.status === "Unpaid") {
+        // Delete unpaid invoice to create a new one
+        await Invoice.findByIdAndDelete(existingInvoice._id);
+        console.log(`Deleted unpaid invoice: ${existingInvoice.invoiceNumber}`);
+      }
     }
 
-    // Continue with new invoice creation (existing invoice has been deleted)
-
-    // Fetch orders to calculate actual payment totals
-    const orders = await CustomerOrders.find({
-      customer: customerId,
-      status: "Delivered",
-      deliveryDate: {
-        $gte: formatDateToDDMMYYYY(
-          parseUniversalDate(period.startDate) || new Date(period.startDate)
-        ),
-        $lte: formatDateToDDMMYYYY(
-          parseUniversalDate(period.endDate) || new Date(period.endDate)
-        ),
-      },
-    });
-
-    // Use payment breakdown from payload instead of calculating from orders
-    let finalPaidAmount = 0;
-    let finalBalanceAmount = 0;
-    let finalPartiallyPaidAmount = 0;
-    let finalPaidDate = null;
-
-    // Use payment breakdown from payload if available
-    if (paymentBreakdown) {
-      finalPaidAmount = paymentBreakdown.totalPaid || 0;
-      finalBalanceAmount = paymentBreakdown.balanceAmount || 0;
-      finalPartiallyPaidAmount = paymentBreakdown.totalPartiallyPaidAmount || 0;
-    } else {
-      // Fallback: Calculate payment totals from actual orders
-      const paymentTotals = calculatePaymentTotalsFromOrders(orders);
-      finalPaidAmount = paymentTotals.totalPaid;
-      finalBalanceAmount = paymentTotals.balanceAmount;
-      finalPartiallyPaidAmount = paymentTotals.totalPartiallyPaidAmount;
+    if (orders.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No orders found for this customer in the specified period",
+      });
     }
 
-    // Override with provided payment status if different from calculated
-    if (finalPaymentStatus === "Paid") {
-      finalPaidAmount = grandTotal;
-      finalBalanceAmount = 0;
-      finalPaidDate = new Date();
-    } else if (finalPaymentStatus === "Partially Paid" && partialPayment) {
-      finalPaidAmount = partialPayment.partialPaymentAmount || finalPaidAmount;
-      finalBalanceAmount = grandTotal - finalPaidAmount;
-      finalPartiallyPaidAmount =
-        partialPayment.partialPaymentAmount || finalPartiallyPaidAmount;
-    } else if (finalPaymentStatus === "Unpaid") {
-      finalPaidAmount = 0;
-      finalBalanceAmount = grandTotal;
-      finalPartiallyPaidAmount = 0;
-    }
+    // Process products from orders
+    const { products, totalAmount } = processProducts(orders);
 
-    const subtotal = products.reduce(
-      (sum, product) => sum + product.totalPrice,
-      0
+    // Calculate payment status based on orders
+    const paidOrders = orders.filter((order) => order.paymentStatus === "Paid");
+    const partiallyPaidOrders = orders.filter(
+      (order) => order.paymentStatus === "Partially Paid"
     );
-    const carryForwardAmount = grandTotal - subtotal;
+
+    let paymentStatus = "Paid";
+    if (partiallyPaidOrders.length > 0) {
+      paymentStatus = "Partially Paid";
+    }
+
+    // Calculate payment amounts
+    const paidAmount = totalAmount;
+    const balanceAmount = 0;
+    const partiallyPaidAmount =
+      partiallyPaidOrders.length > 0 ? totalAmount : 0;
 
     const invoiceNumber = generateInvoiceNumber();
 
@@ -143,18 +121,15 @@ const createCustomerInvoice = async (req, res) => {
       invoiceNumber,
       gstNumber,
       customer: customerId,
-      phoneNumber: parseInt(phoneNumber),
-      address,
-      subscriptionPlan,
-      Deliveries: deliveryStats?.deliveries || 0,
-      absentDays: deliveryStats?.absentDaysList
-        ? deliveryStats.absentDaysList.map((date) => new Date(date))
-        : [],
-      actualOrders: deliveryStats?.actualOrders || 0,
+      phoneNumber: parseInt(customer.phoneNumber),
+      address: customer.address,
+      subscriptionPlan: customer.subscriptionPlan,
+      Deliveries: orders.length,
+      absentDays: [],
+      actualOrders: orders.length,
       period: {
-        startDate:
-          parseUniversalDate(period.startDate) || new Date(period.startDate),
-        endDate: parseUniversalDate(period.endDate) || new Date(period.endDate),
+        startDate: period.startDate || new Date(period.startDate),
+        endDate: period.endDate || new Date(period.endDate),
       },
       products: products.map((product) => ({
         productId: product.productId,
@@ -165,19 +140,18 @@ const createCustomerInvoice = async (req, res) => {
         totalPrice: product.totalPrice,
       })),
       payment: {
-        status: finalPaymentStatus,
-        method: finalPaymentMethod,
+        status: paymentStatus,
+        method: customer.paymentMethod || "COD",
       },
       totals: {
-        subtotal,
-        paidAmount: finalPaidAmount,
-        balanceAmount: finalBalanceAmount,
-        carryForwardAmount,
-        partiallyPaidAmount: finalPartiallyPaidAmount,
-        paidDate: finalPaidDate,
+        subtotal: totalAmount,
+        paidAmount: paidAmount,
+        balanceAmount: balanceAmount,
+        carryForwardAmount: 0,
+        partiallyPaidAmount: partiallyPaidAmount,
       },
       state: "Draft",
-      includedOrders: [],
+      includedOrders: orders.map((order) => order._id),
     });
 
     const invoiceWithStats = {
@@ -187,10 +161,10 @@ const createCustomerInvoice = async (req, res) => {
         phoneNumber: customer.phoneNumber,
         address: customer.address,
       },
-      deliveryStats: deliveryStats || {
-        actualOrders: products.length,
+      deliveryStats: {
+        actualOrders: orders.length,
         absentDays: 0,
-        deliveries: products.length,
+        deliveries: orders.length,
       },
     };
 
@@ -219,20 +193,23 @@ const createCustomerInvoice = async (req, res) => {
     invoice.pdfUrl = result.secure_url;
     await invoice.save();
 
-    // Update payment status and method for all orders in the date range
-    await updateOrdersPaymentStatus(
-      customerId,
-      period,
-      finalPaymentStatus,
-      finalPaymentMethod,
-      partialPayment
-    );
-
     return res.status(201).json({
       success: true,
       message: "Invoice created successfully",
-      pdfUrl: result.secure_url,
-      status: finalPaymentStatus,
+      data: {
+        invoiceId: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        pdfUrl: result.secure_url,
+        paymentStatus: paymentStatus,
+        totalAmount: totalAmount,
+        paidAmount: paidAmount,
+        balanceAmount: balanceAmount,
+        period: {
+          startDate: formatDateToDDMMYYYY(period.startDate),
+          endDate: formatDateToDDMMYYYY(period.endDate),
+        },
+        ordersCount: orders.length,
+      },
     });
   } catch (error) {
     console.error("Error creating invoice:", error);
@@ -266,15 +243,15 @@ const getAllCustomerInvoices = async (req, res) => {
       const startDateObj = parseUniversalDate(startDate) || new Date(startDate);
       const endDateObj = parseUniversalDate(endDate) || new Date(endDate);
       matchStage.$and = [
-        { "period.startDate": { $lte: endDateObj } },
-        { "period.endDate": { $gte: startDateObj } },
+        { "period.startDate": { $lte: startDateObj } },
+        { "period.endDate": { $gte: endDateObj } },
       ];
     } else if (startDate) {
       const startDateObj = parseUniversalDate(startDate) || new Date(startDate);
-      matchStage["period.endDate"] = { $gte: startDateObj };
+      matchStage["period.endDate"] = { $gte: endDateObj };
     } else if (endDate) {
       const endDateObj = parseUniversalDate(endDate) || new Date(endDate);
-      matchStage["period.startDate"] = { $lte: endDateObj };
+      matchStage["period.startDate"] = { $lte: startDateObj };
     }
 
     if (search) {
@@ -450,7 +427,11 @@ const searchCustomers = async (req, res) => {
 const getCustomerData = async (req, res) => {
   try {
     const { customerId } = req.params;
-    const { startDate, endDate } = req.query;
+    const {
+      startDate: requestedStartDate,
+      endDate: requestedEndDate,
+      deleteExisting = false,
+    } = req.query;
 
     if (!customerId) {
       return res.status(400).json({
@@ -459,12 +440,10 @@ const getCustomerData = async (req, res) => {
       });
     }
 
-    const customer = await Customer.findById(customerId)
-      .populate(
-        "products.product",
-        "productName productCode price size description"
-      )
-      .populate("deliveryBoy", "name phoneNumber");
+    const customer = await Customer.findById(customerId).populate(
+      "deliveryBoy",
+      "name phoneNumber"
+    );
 
     if (!customer) {
       return res.status(404).json({
@@ -473,73 +452,167 @@ const getCustomerData = async (req, res) => {
       });
     }
 
-    const paymentStatus = "Paid";
+    // Check if specific date range is provided
+    let startDate, endDate;
+    let orders;
 
-    const {
-      finalStartDate,
-      finalEndDate,
-      isPartialPayment,
-      partialPaymentDays,
-    } = await determineDateRange(
-      customerId,
-      customer,
-      startDate,
-      endDate,
-      paymentStatus
-    );
+    if (requestedStartDate && requestedEndDate) {
+      // Use provided date range
+      startDate =
+        parseUniversalDate(requestedStartDate) || new Date(requestedStartDate);
+      endDate =
+        parseUniversalDate(requestedEndDate) || new Date(requestedEndDate);
 
-    const existingInvoice = await Invoice.findOne({
-      customer: customerId,
-      "period.startDate": { $lte: finalEndDate },
-      "period.endDate": { $gte: finalStartDate },
-    });
+      // Check if invoice already exists for this date range
+      const existingInvoice = await Invoice.findOne({
+        customer: customerId,
+        "period.startDate": { $lte: endDate },
+        "period.endDate": { $gte: startDate },
+        "payment.status": { $in: ["Paid", "Partially Paid"] },
+      });
 
-    if (existingInvoice) {
-      // Delete the existing invoice to create a new one
-      console.log(
-        `Deleting existing invoice: ${existingInvoice.invoiceNumber}`
+      if (existingInvoice) {
+        if (deleteExisting === "true") {
+          // Delete the existing invoice
+          await Invoice.findByIdAndDelete(existingInvoice._id);
+          console.log(
+            `Deleted existing invoice: ${existingInvoice.invoiceNumber}`
+          );
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: "Invoice already created for this date range",
+            existingInvoice: {
+              invoiceNumber: existingInvoice.invoiceNumber,
+              period: {
+                startDate: formatDateToDDMMYYYY(
+                  existingInvoice.period.startDate
+                ),
+                endDate: formatDateToDDMMYYYY(existingInvoice.period.endDate),
+              },
+              paymentStatus: existingInvoice.payment.status,
+            },
+          });
+        }
+      }
+
+      // Fetch orders for the specific date range
+      orders = await CustomerOrders.find({
+        customer: customerId,
+        status: "Delivered",
+        paymentStatus: { $in: ["Paid", "Partially Paid"] },
+        deliveryDate: {
+          $gte: startDate,
+          $lte: endDate,
+        },
+      }).populate(
+        "products._id",
+        "productName productCode price size description"
       );
-      await Invoice.findByIdAndDelete(existingInvoice._id);
-      console.log(`Existing invoice deleted successfully`);
+    } else {
+      // Check if customer has any existing invoices with Paid or Partially Paid status
+      const existingInvoices = await Invoice.find({
+        customer: customerId,
+        "payment.status": { $in: ["Paid", "Partially Paid"] },
+      }).sort({ "period.endDate": -1 });
+
+      if (existingInvoices.length > 0) {
+        // Use the last invoice's endDate as the new startDate
+        const lastInvoice = existingInvoices[0];
+        startDate = new Date(lastInvoice.period.endDate);
+        startDate.setDate(startDate.getDate() + 1); // Start from next day
+
+        // Fetch orders from this startDate onwards
+        orders = await CustomerOrders.find({
+          customer: customerId,
+          status: "Delivered",
+          paymentStatus: { $in: ["Paid", "Partially Paid"] },
+          deliveryDate: { $gte: startDate },
+        }).populate(
+          "products._id",
+          "productName productCode price size description"
+        );
+
+        if (orders.length > 0) {
+          // Sort orders by delivery date to get the last date
+          const sortedOrders = orders.sort((a, b) => {
+            const dateA =
+              parseUniversalDate(a.deliveryDate) || new Date(a.deliveryDate);
+            const dateB =
+              parseUniversalDate(b.deliveryDate) || new Date(b.deliveryDate);
+            return dateA - dateB;
+          });
+          endDate =
+            parseUniversalDate(
+              sortedOrders[sortedOrders.length - 1].deliveryDate
+            ) || new Date(sortedOrders[sortedOrders.length - 1].deliveryDate);
+        } else {
+          return res.status(404).json({
+            success: false,
+            message:
+              "No new orders found for this customer after the last invoice period",
+          });
+        }
+      } else {
+        // No existing invoices, fetch all orders with Paid or Partially Paid status
+        orders = await CustomerOrders.find({
+          customer: customerId,
+          status: "Delivered",
+          paymentStatus: { $in: ["Paid", "Partially Paid"] },
+        }).populate(
+          "products._id",
+          "productName productCode price size description"
+        );
+
+        if (orders.length === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "No orders found for this customer",
+          });
+        }
+
+        // Sort orders by delivery date to get first and last dates
+        const sortedOrders = orders.sort((a, b) => {
+          const dateA =
+            parseUniversalDate(a.deliveryDate) || new Date(a.deliveryDate);
+          const dateB =
+            parseUniversalDate(b.deliveryDate) || new Date(b.deliveryDate);
+          return dateA - dateB;
+        });
+
+        startDate =
+          parseUniversalDate(sortedOrders[0].deliveryDate) ||
+          new Date(sortedOrders[0].deliveryDate);
+        endDate =
+          parseUniversalDate(
+            sortedOrders[sortedOrders.length - 1].deliveryDate
+          ) || new Date(sortedOrders[sortedOrders.length - 1].deliveryDate);
+      }
     }
 
-    const orders = await fetchOrdersInRange(
-      customerId,
-      finalStartDate,
-      finalEndDate,
-      paymentStatus
-    );
-    const { products, totalAmount } = processProducts(orders, paymentStatus);
-    const { actualOrders, absentDays } = await calculateDeliveryStats(
-      orders,
-      finalStartDate,
-      finalEndDate,
-      paymentStatus,
-      customerId
+    if (!orders || orders.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No orders found for this customer in the specified period",
+      });
+    }
+
+    const { products, totalAmount } = processProducts(orders);
+
+    // Calculate payment status based on orders
+    const paidOrders = orders.filter((order) => order.paymentStatus === "Paid");
+    const partiallyPaidOrders = orders.filter(
+      (order) => order.paymentStatus === "Partially Paid"
     );
 
-    // Use the helper function to calculate payment totals from orders
-    const paymentTotals = calculatePaymentTotalsFromOrders(orders);
+    let paymentStatus = "Paid";
+    if (partiallyPaidOrders.length > 0) {
+      paymentStatus = "Partially Paid";
+    }
 
-    // Extract values for response
-    const {
-      totalPaidAmount,
-      totalPartiallyPaidAmount,
-      totalUnpaidAmount,
-      grandTotal,
-      totalPaid,
-      balanceAmount,
-      determinedPaymentStatus,
-    } = paymentTotals;
-
-    const { carryForwardAmount } = await calculateFinancials(
-      customerId,
-      totalAmount,
-      isPartialPayment,
-      partialPaymentDays,
-      finalStartDate,
-      finalEndDate
-    );
+    // Calculate totals
+    const paidAmount = totalAmount;
+    const balanceAmount = 0;
 
     return res.json({
       success: true,
@@ -553,32 +626,13 @@ const getCustomerData = async (req, res) => {
         deliveryBoy: customer.deliveryBoy?.name,
       },
       period: {
-        startDate: formatDateToDDMMYYYY(finalStartDate),
-        endDate: formatDateToDDMMYYYY(finalEndDate),
+        startDate: formatDateToDDMMYYYY(startDate),
+        endDate: formatDateToDDMMYYYY(endDate),
       },
       products,
-      grandTotal,
-      paymentStatus: determinedPaymentStatus,
-      paymentBreakdown: {
-        totalPaidAmount: totalPaidAmount,
-        totalPartiallyPaidAmount: totalPartiallyPaidAmount,
-        totalUnpaidAmount: totalUnpaidAmount,
-        totalPaid: totalPaid,
-        balanceAmount: balanceAmount,
-        carryForwardAmount: carryForwardAmount,
-      },
-      deliveryStats: {
-        actualOrders,
-        absentDays: absentDays.length,
-        deliveries: actualOrders,
-      },
-      partialPayment: isPartialPayment
-        ? {
-            partialPaymentAmount: totalAmount,
-            partialPaymentDays,
-            balanceAmount,
-          }
-        : false,
+      totalPaid: paidAmount,
+      balanceAmount: balanceAmount,
+      paymentStatus: paymentStatus,
     });
   } catch (error) {
     console.error("Error getting customer data:", error);
@@ -624,174 +678,10 @@ const getInvoiceById = async (req, res) => {
   }
 };
 
-// Helper function to determine date range
-const determineDateRange = async (
-  customerId,
-  customer,
-  startDate,
-  endDate,
-  paymentStatus
-) => {
-  let start, end;
-
-  // First, try to get orders with Paid or Partially Paid status
-  const paidOrders = await CustomerOrders.find({
-    customer: customerId,
-    status: "Delivered",
-    paymentStatus: { $in: ["Paid", "Partially Paid"] },
-  }).sort({ deliveryDate: 1 });
-
-  if (paidOrders.length > 0) {
-    // If paid orders exist, use their date range
-    if (startDate && endDate) {
-      start = parseUniversalDate(startDate) || new Date(startDate);
-      end = parseUniversalDate(endDate) || new Date(endDate);
-    } else if (startDate) {
-      start = parseUniversalDate(startDate) || new Date(startDate);
-      end = await getLastOrderDate(customerId, start);
-    } else if (endDate) {
-      start = await getFirstOrderDate(customerId);
-      end = parseUniversalDate(endDate) || new Date(endDate);
-    } else {
-      start = await getFirstOrderDate(customerId);
-      end = await getLastOrderDate(customerId, start);
-    }
-  } else {
-    // If no paid orders found, use customer start date and today's date
-    if (startDate && endDate) {
-      start = parseUniversalDate(startDate) || new Date(startDate);
-      end = parseUniversalDate(endDate) || new Date(endDate);
-    } else if (startDate) {
-      start = parseUniversalDate(startDate) || new Date(startDate);
-      end = new Date(); // Today's date
-    } else if (endDate) {
-      start =
-        parseUniversalDate(customer.startDate) || new Date(customer.startDate);
-      end = parseUniversalDate(endDate) || new Date(endDate);
-    } else {
-      start =
-        parseUniversalDate(customer.startDate) || new Date(customer.startDate);
-      end = new Date(); // Today's date
-    }
-  }
-
-  // Validate and fix dates
-  if (!start || isNaN(start.getTime())) start = new Date();
-  if (!end || isNaN(end.getTime())) end = new Date();
-  if (start > end) [start, end] = [end, start];
-
-  // Handle partial payment
-  let finalStartDate = start;
-  let finalEndDate = end;
-  let isPartialPayment = false;
-  let partialPaymentDays = 0;
-
-  if (paymentStatus === "Partially Paid") {
-    const totalDays =
-      Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
-    partialPaymentDays = Math.floor(totalDays / 2);
-    finalEndDate = new Date(
-      start.getTime() + (partialPaymentDays - 1) * (1000 * 3600 * 24)
-    );
-    isPartialPayment = true;
-  }
-
-  return { finalStartDate, finalEndDate, isPartialPayment, partialPaymentDays };
-};
-
-// Helper function to get start date from last invoice
-const getStartDateFromLastInvoice = (customer, existingInvoices) => {
-  if (existingInvoices.length > 0) {
-    const lastInvoice = existingInvoices[0];
-    const isUnpaidOrPartial = ["Unpaid", "Partially Paid"].includes(
-      lastInvoice.payment?.status
-    );
-    const targetDate = isUnpaidOrPartial
-      ? lastInvoice.period?.startDate
-      : lastInvoice.period?.endDate;
-    return parseUniversalDate(targetDate) || new Date(targetDate);
-  }
-  return parseUniversalDate(customer.startDate) || new Date(customer.startDate);
-};
-
-// Helper function to get first order date
-const getFirstOrderDate = async (customerId) => {
-  const firstOrder = await CustomerOrders.findOne({
-    customer: customerId,
-    status: "Delivered",
-    paymentStatus: { $in: ["Paid", "Partially Paid"] },
-  }).sort({ deliveryDate: 1 });
-
-  if (firstOrder) {
-    return (
-      parseUniversalDate(firstOrder.deliveryDate) ||
-      new Date(firstOrder.deliveryDate)
-    );
-  }
-
-  return null;
-};
-
-// Helper function to get last order date
-const getLastOrderDate = async (customerId, startDate) => {
-  const allDeliveredOrders = await CustomerOrders.find({
-    customer: customerId,
-    status: "Delivered",
-    paymentStatus: { $in: ["Paid", "Partially Paid"] },
-  });
-
-  let lastOrder = null;
-  let latestDate = null;
-
-  for (const order of allDeliveredOrders) {
-    const orderDate = parseUniversalDate(order.deliveryDate);
-    if (orderDate && (!latestDate || orderDate > latestDate)) {
-      latestDate = orderDate;
-      lastOrder = order;
-    }
-  }
-
-  if (lastOrder) {
-    return (
-      parseUniversalDate(lastOrder.deliveryDate) ||
-      new Date(lastOrder.deliveryDate)
-    );
-  }
-
-  return startDate || new Date();
-};
-
-// Helper function to fetch orders in range
-const fetchOrdersInRange = async (
-  customerId,
-  startDate,
-  endDate,
-  paymentStatus
-) => {
-  const allOrders = await CustomerOrders.find({
-    customer: customerId,
-    status: "Delivered",
-    paymentStatus: { $in: ["Paid", "Partially Paid"] },
-  }).populate("products._id", "productName productCode price size description");
-
-  const startDateObj =
-    parseUniversalDate(formatDateToDDMMYYYY(startDate)) || startDate;
-  const endDateObj =
-    parseUniversalDate(formatDateToDDMMYYYY(endDate)) || endDate;
-
-  const orders = allOrders.filter((order) => {
-    const orderDate = parseUniversalDate(order.deliveryDate);
-    return orderDate && orderDate >= startDateObj && orderDate <= endDateObj;
-  });
-
-  return orders;
-};
-
 // Helper function to process products
-const processProducts = (orders, paymentStatus) => {
+const processProducts = (orders) => {
   const productMap = new Map();
 
-  // All orders are already filtered to be delivered, so no need to check status
   orders.forEach((order) => {
     order.products.forEach((product) => {
       const key = `${product._id._id}_${product.productSize}`;
@@ -816,228 +706,13 @@ const processProducts = (orders, paymentStatus) => {
   });
 
   const products = Array.from(productMap.values());
+
   const totalAmount = products.reduce(
     (sum, product) => sum + product.totalPrice,
     0
   );
 
   return { products, totalAmount };
-};
-
-// Helper function to calculate delivery stats
-const calculateDeliveryStats = async (
-  orders,
-  startDate,
-  endDate,
-  paymentStatus,
-  customerId
-) => {
-  // All orders are already filtered to be delivered
-  const actualOrders = orders.length;
-
-  const startDateStr = formatDateToDDMMYYYY(startDate);
-  const endDateStr = formatDateToDDMMYYYY(endDate);
-  const startDateObj =
-    parseUniversalDate(startDateStr) || new Date(startDateStr);
-  const endDateObj = parseUniversalDate(endDateStr) || new Date(endDateStr);
-
-  const allDates = [];
-  const currentDate = new Date(startDateObj);
-  while (currentDate <= endDateObj) {
-    allDates.push(formatDateToDDMMYYYY(new Date(currentDate)));
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-
-  // All orders are already filtered to be delivered
-  const orderDates = orders.map((order) => order.deliveryDate);
-
-  // Get customer's absent days list
-  const customer = await Customer.findById(customerId);
-  const customerAbsentDays = customer.absentDays.map((absentDate) =>
-    formatDateToDDMMYYYY(absentDate)
-  );
-
-  // Only count dates that have no order AND are in customer's absent list
-  const absentDays = allDates
-    .filter(
-      (date) => !orderDates.includes(date) && customerAbsentDays.includes(date)
-    )
-    .map((date) => new Date(parseUniversalDate(date) || new Date(date)));
-
-  return { actualOrders, absentDays };
-};
-
-// Helper function to calculate financials
-const calculateFinancials = async (
-  customerId,
-  totalAmount,
-  isPartialPayment,
-  partialPaymentDays,
-  startDate,
-  endDate
-) => {
-  const previousUnpaidInvoices = await Invoice.find({
-    customer: customerId,
-    "payment.status": { $in: ["Unpaid", "Partially Paid"] },
-  }).sort({ createdAt: 1 });
-
-  const carryForwardAmount = previousUnpaidInvoices.reduce((total, invoice) => {
-    const invoiceTotal = invoice.totals?.subtotal || 0;
-    const paidAmount = invoice.totals?.paidAmount || 0;
-    return total + (invoiceTotal - paidAmount);
-  }, 0);
-
-  let balanceAmount = 0;
-  if (isPartialPayment) {
-    const fullPeriodAmount = await calculateFullPeriodAmount(
-      customerId,
-      startDate,
-      endDate
-    );
-    balanceAmount = fullPeriodAmount - totalAmount;
-  }
-
-  const grandTotal = totalAmount + carryForwardAmount;
-
-  return { grandTotal, carryForwardAmount, balanceAmount };
-};
-
-// Helper function to update payment status and method for orders in date range
-const updateOrdersPaymentStatus = async (
-  customerId,
-  period,
-  paymentStatus,
-  paymentMethod,
-  partialPayment
-) => {
-  try {
-    const startDate =
-      parseUniversalDate(period.startDate) || new Date(period.startDate);
-    const endDate =
-      parseUniversalDate(period.endDate) || new Date(period.endDate);
-
-    // Find all orders for the customer in the date range
-    // Filter based on delivery status and payment status
-    let orderFilter = {
-      customer: customerId,
-      deliveryDate: {
-        $gte: formatDateToDDMMYYYY(startDate),
-        $lte: formatDateToDDMMYYYY(endDate),
-      },
-      status: "Delivered", // Only include delivered orders
-    };
-
-    // If payment status is "Paid", only include orders that are not already paid
-    // If payment status is "Partially Paid", include orders that are unpaid or partially paid
-    // If payment status is "Unpaid", don't update any orders
-    if (paymentStatus === "Paid") {
-      orderFilter.paymentStatus = {
-        $in: ["Pending", "Unpaid", "Partially Paid"],
-      };
-    } else if (paymentStatus === "Partially Paid") {
-      orderFilter.paymentStatus = {
-        $in: ["Pending", "Unpaid", "Partially Paid"],
-      };
-    } else {
-      // For unpaid status, don't update any orders
-      console.log("No orders to update for unpaid status");
-      return;
-    }
-
-    const orders = await CustomerOrders.find(orderFilter);
-
-    if (orders.length === 0) {
-      console.log("No delivered orders found in the specified date range");
-      return;
-    }
-
-    // Determine which orders to update based on payment type
-    let ordersToUpdate = [];
-
-    if (paymentStatus === "Paid") {
-      // Update all filtered orders if fully paid
-      ordersToUpdate = orders;
-    } else if (paymentStatus === "Partially Paid" && partialPayment) {
-      // For partial payment, update orders up to the partial payment amount
-      let remainingAmount = partialPayment.partialPaymentAmount;
-      ordersToUpdate = [];
-
-      // Sort orders by delivery date to process chronologically
-      const sortedOrders = orders.sort(
-        (a, b) =>
-          new Date(a.deliveryDate.split("/").reverse().join("-")) -
-          new Date(b.deliveryDate.split("/").reverse().join("-"))
-      );
-
-      for (const order of sortedOrders) {
-        const orderTotal = order.products.reduce(
-          (sum, product) => sum + (product.totalPrice || 0),
-          0
-        );
-
-        if (remainingAmount >= orderTotal) {
-          ordersToUpdate.push(order);
-          remainingAmount -= orderTotal;
-        } else {
-          // If remaining amount is less than order total,
-          // we can still mark it as partially paid
-          ordersToUpdate.push(order);
-          break;
-        }
-      }
-    }
-
-    // Update the selected orders
-    const updatePromises = ordersToUpdate.map(async (order) => {
-      const updateData = {
-        paymentStatus: paymentStatus,
-        paymentMethod: paymentMethod,
-      };
-
-      // If it's a partial payment and this is the last order that might not be fully covered
-      if (paymentStatus === "Partially Paid" && partialPayment) {
-        const orderTotal = order.products.reduce(
-          (sum, product) => sum + (product.totalPrice || 0),
-          0
-        );
-
-        // Check if this order should be marked as partially paid
-        const remainingAmount =
-          partialPayment.partialPaymentAmount -
-          ordersToUpdate
-            .slice(0, ordersToUpdate.indexOf(order))
-            .reduce(
-              (sum, prevOrder) =>
-                sum +
-                prevOrder.products.reduce(
-                  (orderSum, product) => orderSum + (product.totalPrice || 0),
-                  0
-                ),
-              0
-            );
-
-        if (remainingAmount < orderTotal) {
-          updateData.paymentStatus = "Partially Paid";
-        }
-      }
-
-      return CustomerOrders.findByIdAndUpdate(order._id, updateData, {
-        new: true,
-      });
-    });
-
-    const updatedOrders = await Promise.all(updatePromises);
-
-    console.log(`Updated payment status for ${updatedOrders.length} orders`);
-    console.log(
-      `Payment Status: ${paymentStatus}, Payment Method: ${paymentMethod}`
-    );
-
-    return updatedOrders;
-  } catch (error) {
-    console.error("Error updating orders payment status:", error);
-    throw error;
-  }
 };
 
 //✅ Generate Monthly Invoices for All Customers
@@ -1120,13 +795,8 @@ const generateCustomerMonthlyInvoice = async (customer, month, year) => {
 
   if (existingInvoice) {
     // If existing invoice is unpaid, delete it
-    if (
-      ["Unpaid", "Partially Paid"].includes(existingInvoice.payment?.status)
-    ) {
-      await Invoice.findByIdAndDelete(existingInvoice._id);
-      console.log(
-        `Deleted unpaid invoice ${existingInvoice.invoiceNumber} for customer ${customer.name}`
-      );
+    if (existingInvoice.payment?.status === "Unpaid") {
+      await Invoice.findByIdAndDelete(existingInvoice._id);      
     } else {
       return {
         customerId,
@@ -1319,68 +989,6 @@ const calculateMonthlyDateRange = (month, year, subscriptionPlan, customer) => {
   }
 
   return { startDate, endDate };
-};
-
-// Helper function to calculate payment totals from orders
-// Logic: First fetch paid/partially paid orders, calculate their amounts
-// Then calculate remaining unpaid amount, and create grand total
-const calculatePaymentTotalsFromOrders = (orders) => {
-  let totalPaidAmount = 0;
-  let totalPartiallyPaidAmount = 0;
-  let totalUnpaidAmount = 0;
-  let determinedPaymentStatus = "Unpaid";
-
-  if (orders.length > 0) {
-    // Step 1: Filter orders by payment status
-    const paidOrders = orders.filter((order) => order.paymentStatus === "Paid");
-    const partiallyPaidOrders = orders.filter(
-      (order) => order.paymentStatus === "Partially Paid"
-    );
-    const unpaidOrders = orders.filter(
-      (order) => order.paymentStatus === "Unpaid"
-    );
-
-    // Step 2: Calculate total amount from Paid orders (full amount)
-    totalPaidAmount = paidOrders.reduce(
-      (sum, order) => sum + (order.totalAmount || 0),
-      0
-    );
-
-    // Step 3: Calculate total amount from Partially Paid orders (full amount)
-    totalPartiallyPaidAmount = partiallyPaidOrders.reduce(
-      (sum, order) => sum + (order.totalAmount || 0),
-      0
-    );
-
-    // Step 4: Calculate total amount from Unpaid orders (full amount)
-    totalUnpaidAmount = unpaidOrders.reduce(
-      (sum, order) => sum + (order.totalAmount || 0),
-      0
-    );
-
-    // Determine overall payment status
-    if (paidOrders.length === orders.length) {
-      determinedPaymentStatus = "Paid";
-    } else if (paidOrders.length > 0 || partiallyPaidOrders.length > 0) {
-      determinedPaymentStatus = "Partially Paid";
-    }
-  }
-
-  // Calculate final totals
-  const totalPaid = totalPaidAmount + totalPartiallyPaidAmount; // Paid + Partially Paid orders
-  const totalUnpaid = totalUnpaidAmount; // Unpaid orders only
-  const grandTotal = totalPaid + totalUnpaid; // All orders total
-  const balanceAmount = totalUnpaid; // Balance = Unpaid orders amount
-
-  return {
-    totalPaidAmount, // Amount from fully paid orders
-    totalPartiallyPaidAmount, // Amount from partially paid orders (full amount)
-    totalUnpaidAmount, // Amount from unpaid orders
-    grandTotal, // Total of all orders
-    totalPaid, // Total paid = Paid + Partially Paid orders
-    balanceAmount, // Balance = Unpaid orders amount
-    determinedPaymentStatus,
-  };
 };
 
 module.exports = {
