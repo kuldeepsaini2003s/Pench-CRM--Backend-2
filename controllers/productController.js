@@ -35,28 +35,15 @@ const createProduct = async (req, res) => {
     // ✅ Normalize size
     let normalizeSize = size.replace(/\s+/g, "").toLowerCase();
 
+    // ✅ General validation: must end with ltr, gm, or kg
+    const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
 
-    // ✅ Special validation for Milk
-    if (productName.toLowerCase() === "milk") {
-      // const allowedMilkSizes = ["1/2ltr", "1.5ltr", "2.5ltr", "3.5ltr"];
-      // if (!allowedMilkSizes.includes(normalizeSize)) {
-      //   return res.status(400).json({
-      //     success: false,
-      //     message: `Invalid size for Milk. Allowed sizes are: ${allowedMilkSizes.join(
-      //       ", "
-      //     )}`,
-      //   });
-      // }
-    } else {
-      // ✅ General validation: must end with ltr, gm, or kg
-      const sizePattern = /^\d+(\/\d+)?(ltr|gm|kg)$/;
-      if (!sizePattern.test(normalizeSize)) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid size format. Allowed formats: e.g. '1ltr', '1/2ltr', '500gm', '1kg', '1/2kg'",
-        });
-      }
+    if (!sizePattern.test(normalizeSize)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid size format",
+      });
     }
 
     // ✅ Check for duplicate product (same productName + same size)
@@ -65,7 +52,6 @@ const createProduct = async (req, res) => {
       size: normalizeSize,
       isDeleted: false,
     });
-
 
     if (duplicateProduct) {
       return res.status(400).json({
@@ -733,7 +719,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       limit = 10,
       productName,
       productSize,
-      search="",
+      search = "",
       sortOrder = "desc",
     } = req.query;
     page = parseInt(page);
@@ -746,7 +732,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       status: "Pending",
     };
 
-    if(search){
+    if (search) {
       matchConditions.$or = [
         { "customer.name": { $regex: search, $options: "i" } },
         { "deliveryBoy.name": { $regex: search, $options: "i" } },
@@ -755,7 +741,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
 
     const pipeline = [
       { $match: matchConditions },
-    
+
       // Lookup customer
       {
         $lookup: {
@@ -766,7 +752,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
         },
       },
       { $unwind: "$customer" },
-    
+
       // Lookup deliveryBoy
       {
         $lookup: {
@@ -777,25 +763,31 @@ const getTotalProductDeliverTommorow = async (req, res) => {
         },
       },
       { $unwind: "$deliveryBoy" },
-    
+
       { $unwind: "$products" },
-    
+
       // Apply product filters after unwinding products
       ...(productName || productSize
         ? [
             {
               $match: {
                 ...(productName && {
-                  "products.productName": { $regex: productName, $options: "i" },
+                  "products.productName": {
+                    $regex: productName,
+                    $options: "i",
+                  },
                 }),
                 ...(productSize && {
-                  "products.productSize": { $regex: productSize, $options: "i" },
+                  "products.productSize": {
+                    $regex: productSize,
+                    $options: "i",
+                  },
                 }),
               },
             },
           ]
         : []),
-    
+
       {
         $group: {
           _id: "$customer._id",
@@ -859,11 +851,10 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       { $skip: (page - 1) * limit },
       { $limit: limit },
     ];
-    
 
     const countPipeline = [
       { $match: { deliveryDate: tomorrow, status: "Pending" } },
-    
+
       // Lookup customer
       {
         $lookup: {
@@ -874,7 +865,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
         },
       },
       { $unwind: "$customer" },
-    
+
       // Lookup deliveryBoy
       {
         $lookup: {
@@ -885,9 +876,9 @@ const getTotalProductDeliverTommorow = async (req, res) => {
         },
       },
       { $unwind: "$deliveryBoy" },
-    
+
       { $unwind: "$products" },
-    
+
       // ✅ Apply search filter AFTER lookups
       ...(search
         ? [
@@ -901,23 +892,29 @@ const getTotalProductDeliverTommorow = async (req, res) => {
             },
           ]
         : []),
-    
+
       // ✅ Apply product filters AFTER unwind
       ...(productName || productSize
         ? [
             {
               $match: {
                 ...(productName && {
-                  "products.productName": { $regex: productName, $options: "i" },
+                  "products.productName": {
+                    $regex: productName,
+                    $options: "i",
+                  },
                 }),
                 ...(productSize && {
-                  "products.productSize": { $regex: productSize, $options: "i" },
+                  "products.productSize": {
+                    $regex: productSize,
+                    $options: "i",
+                  },
                 }),
               },
             },
           ]
         : []),
-    
+
       {
         $group: {
           _id: "$customer._id", // count unique customers
@@ -925,7 +922,6 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       },
       { $count: "total" },
     ];
-    
 
     const [result, countResult] = await Promise.all([
       CustomerOrder.aggregate(pipeline),

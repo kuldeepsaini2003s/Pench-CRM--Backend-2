@@ -630,7 +630,6 @@ const getCustomerData = async (req, res) => {
         endDate: formatDateToDDMMYYYY(endDate),
       },
       products,
-      grandTotal: totalAmount,
       totalPaid: paidAmount,
       balanceAmount: balanceAmount,
       paymentStatus: paymentStatus,
@@ -796,13 +795,8 @@ const generateCustomerMonthlyInvoice = async (customer, month, year) => {
 
   if (existingInvoice) {
     // If existing invoice is unpaid, delete it
-    if (
-      ["Unpaid", "Partially Paid"].includes(existingInvoice.payment?.status)
-    ) {
-      await Invoice.findByIdAndDelete(existingInvoice._id);
-      console.log(
-        `Deleted unpaid invoice ${existingInvoice.invoiceNumber} for customer ${customer.name}`
-      );
+    if (existingInvoice.payment?.status === "Unpaid") {
+      await Invoice.findByIdAndDelete(existingInvoice._id);      
     } else {
       return {
         customerId,
