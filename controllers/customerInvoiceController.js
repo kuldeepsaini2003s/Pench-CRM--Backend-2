@@ -51,11 +51,10 @@ const createCustomerInvoice = async (req, res) => {
     const existingInvoice = await Invoice.findOne({
       customer: customerId,
       "period.startDate": {
-        $lte: parseUniversalDate(period.endDate) || new Date(period.endDate),
+        $lte: period.endDate || new Date(period.endDate),
       },
       "period.endDate": {
-        $gte:
-          parseUniversalDate(period.startDate) || new Date(period.startDate),
+        $gte: period.startDate || new Date(period.startDate),
       },
     });
 
@@ -655,7 +654,11 @@ const getInvoiceById = async (req, res) => {
       });
     }
 
-    const invoice = await Invoice.findById(invoiceId);
+    const invoice = await Invoice.findById(invoiceId).populate(
+      "customer",
+      "name phoneNumber address subscriptionPlan"
+    );
+
     if (!invoice) {
       return res.status(404).json({
         success: false,
@@ -663,10 +666,18 @@ const getInvoiceById = async (req, res) => {
       });
     }
 
+    const invoiceObj = invoice.toObject();
+    const { customer, ...invoiceWithoutCustomer } = invoiceObj;
+
+    const invoiceWithStats = {
+      customerName: customer.name,
+      ...invoiceWithoutCustomer,
+    };
+
     return res.status(200).json({
       success: true,
       message: "Invoice By Id retrieved successfully",
-      invoice,
+      invoice: invoiceWithStats,
     });
   } catch (error) {
     console.error("Error getting invoice by id:", error);
@@ -796,7 +807,7 @@ const generateCustomerMonthlyInvoice = async (customer, month, year) => {
   if (existingInvoice) {
     // If existing invoice is unpaid, delete it
     if (existingInvoice.payment?.status === "Unpaid") {
-      await Invoice.findByIdAndDelete(existingInvoice._id);      
+      await Invoice.findByIdAndDelete(existingInvoice._id);
     } else {
       return {
         customerId,
