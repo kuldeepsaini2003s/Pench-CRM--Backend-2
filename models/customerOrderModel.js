@@ -95,7 +95,7 @@ const customerOrdersSchema = new mongoose.Schema(
 
     bottleReturns: [
       {
-        size: { type: String, enum: ["1ltr", "1/2ltr"], required: true },
+        size: { type: String, required: true },
         quantity: { type: Number, required: true, min: 1 },
       }
     ],

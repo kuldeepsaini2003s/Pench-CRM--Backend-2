@@ -790,7 +790,10 @@ const getPendingBottles = async (req, res) => {
     const orders = await CustomerOrders.find({
       deliveryBoy: deliveryBoyId,
       status: "Delivered",
-      pendingBottleQuantity: { $gt: 0 },
+      $or: [
+        { pendingBottleQuantity: { $gt: 0 } }, // still pending
+        { "bottleReturns.0": { $exists: true } } // OR at least 1 return entry exists
+      ],
     })
       .populate("customer", "_id name phoneNumber address")
       .populate("products._id", "productImage");

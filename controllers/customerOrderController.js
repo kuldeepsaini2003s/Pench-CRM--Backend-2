@@ -487,12 +487,22 @@ const updateOrderStatus = async (req, res) => {
 
 //✅ Update Bottle Returns
 
+// Helper: normalize size like "1ltr", "2.5ltr", "1/2ltr"
+const normalizeSize = (sizeStr) => {
+  if (!sizeStr) return "1ltr";
+  const s = sizeStr.toString().toLowerCase().replace(/\s/g, "");
+  if (s.includes("1/2")) return "1/2ltr";
+  return s;
+};
+
 const updateBottleReturns = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { bottleReturns } = req.body; // 👈 expect array of { size, quantity }
+    const { bottleReturns } = req.body;
 
-    const order = await CustomerOrders.findById(orderId).populate("customer");
+    const order = await CustomerOrders.findById(orderId)
+      .populate("customer")
+      .populate("deliveryBoy");
 
     if (!order) {
       return res.status(404).json({
@@ -501,7 +511,6 @@ const updateBottleReturns = async (req, res) => {
       });
     }
 
-    // ✅ Validate bottleReturns array
     if (!Array.isArray(bottleReturns) || bottleReturns.length === 0) {
       return res.status(400).json({
         success: false,
@@ -509,39 +518,51 @@ const updateBottleReturns = async (req, res) => {
       });
     }
 
-    // ✅ Validate each entry
-    const allowedSizes = ["1ltr", "1/2ltr"];
+    // ✅ Allowed sizes only from order products
+    const allowedSizes = order.products.map((p) =>
+      normalizeSize(p.productSize)
+    );
+
+    const filteredReturns = [];
     for (const ret of bottleReturns) {
-      if (!allowedSizes.includes(ret.size)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid bottle size: ${ret.size}`,
-          allowedSizes,
-        });
-      }
-      if (typeof ret.quantity !== "number" || ret.quantity <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid quantity for size ${ret.size}`,
+      const normSize = normalizeSize(ret.size);
+      if (
+        allowedSizes.includes(normSize) &&
+        typeof ret.quantity === "number" &&
+        ret.quantity > 0
+      ) {
+        filteredReturns.push({
+          size: normSize,
+          quantity: ret.quantity,
         });
       }
     }
 
-    // ✅ Update bottleReturns in DB
-    order.bottleReturns = bottleReturns;
+    if (filteredReturns.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No valid bottle sizes found in this order. Only sizes from order products are allowed.",
+        allowedSizes,
+      });
+    }
 
-    // ✅ Decrease pendingBottleQuantity
-    const totalReturned = bottleReturns.reduce(
+    // ✅ Save only valid returns
+    order.bottleReturns = filteredReturns;
+
+    // ✅ Recalculate pendingBottleQuantity dynamically
+    const totalReturned = filteredReturns.reduce(
       (sum, ret) => sum + ret.quantity,
       0
     );
 
-    order.pendingBottleQuantity =
-      (order.pendingBottleQuantity || 0) - totalReturned;
+    // ⚡ Important: calculate pending from original issued bottles
+    const totalIssued = order.products.reduce(
+      (sum, p) => sum + (p.quantity || 0),
+      0
+    );
 
-    if (order.pendingBottleQuantity < 0) {
-      order.pendingBottleQuantity = 0; // Prevent negative
-    }
+    order.pendingBottleQuantity = Math.max(totalIssued - totalReturned, 0);
 
     await order.save();
 
@@ -552,6 +573,7 @@ const updateBottleReturns = async (req, res) => {
       orderNumber: order?.orderNumber,
       customerId: order?.customer?._id,
       customerName: order?.customer?.name,
+      deliveryBoyName: order?.deliveryBoy?.name,
       bottleReturns: order?.bottleReturns,
       pendingBottleQuantity: order?.pendingBottleQuantity,
     });
@@ -564,6 +586,8 @@ const updateBottleReturns = async (req, res) => {
     });
   }
 };
+
+
 
 module.exports = {
   createAutomaticOrdersForCustomer,
