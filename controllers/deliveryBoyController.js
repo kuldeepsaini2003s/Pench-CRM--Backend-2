@@ -603,7 +603,7 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
     // Get all relevant orders
     const orders = await CustomerOrders.find({
       deliveryBoy: deliveryBoyId,
-      status: { $in: ["Pending"] },
+      status: { $in: ["Pending", "Delivered"] },
     });
 
     let totalIssued = 0,
@@ -627,10 +627,14 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
       }
 
       // returned bottles (count only actual entries)
-      if (order.bottleReturnSize && order.bottleReturnSize.length > 0) {
-        order.bottleReturnSize.forEach((size) => {
-          if (size === "1ltr") oneLtrReturned += 1;
-          if (size === "1/2ltr") halfLtrReturned += 1;
+      if (order.bottleReturns && order.bottleReturns.length > 0) {
+        order.bottleReturns.forEach((ret) => {
+          if (ret.size === "1ltr") {
+            oneLtrReturned += ret.quantity;
+          }
+          if (ret.size === "1/2ltr") {
+            halfLtrReturned += ret.quantity;
+          }
         });
       }
     }
@@ -846,7 +850,7 @@ const getPendingBottles = async (req, res) => {
           productName: productNames,
           productSize: productSizes,
           quantity: productQuantities,
-          productImage: order.products[0]._id?.productImage || null,
+          productImage: milkProducts[0]._id?.productImage || "",
           bottlePendingQuantity: order.pendingBottleQuantity || 0,
           bottleReturns: order.bottleReturns || [], // 👈 return full array
           bottlesReturned: totalReturnedForOrder,
