@@ -109,20 +109,6 @@ const initializeOrders = async () => {
     const today = moment().format("DD/MM/YYYY");
     const tomorrow = moment().add(1, "day").format("DD/MM/YYYY");
 
-    // Check if orders already exist for today and tomorrow
-    const alreadyCreatedToday = await CustomerOrders.findOne({
-      deliveryDate: today,
-    });
-
-    const alreadyCreatedTomorrow = await CustomerOrders.findOne({
-      deliveryDate: tomorrow,
-    });
-
-    if (alreadyCreatedToday && alreadyCreatedTomorrow) {
-      console.log(`Orders for both ${today} and ${tomorrow} already exist`);
-      return;
-    }
-
     const activeCustomers = await Customer.find({
       subscriptionStatus: "active",
       isDeleted: false,
@@ -136,28 +122,20 @@ const initializeOrders = async () => {
     }
 
     let ordersCreatedToday = 0;
-    let ordersCreatedTomorrow = 0;
+    let ordersCreatedTomorrow = 0;    
 
     for (const customer of activeCustomers) {
-      if (!customer.deliveryBoy || customer.deliveryBoy.isDeleted) {
-        console.log(`Customer ${customer.name} has no active delivery boy`);
-        continue;
-      }
+      const existingOrderToday = await CustomerOrders.findOne({
+        customer: customer._id,
+        deliveryDate: today,
+      });
 
-      const isWithinSubscriptionPeriod =
-        moment(customer.startDate, "DD/MM/YYYY").isSameOrBefore(
-          moment(today, "DD/MM/YYYY")
-        ) &&
-        moment(customer.endDate, "DD/MM/YYYY").isSameOrAfter(
-          moment(today, "DD/MM/YYYY")
-        );
+      const existingOrderTomorrow = await CustomerOrders.findOne({
+        customer: customer._id,
+        deliveryDate: tomorrow,
+      });
 
-      if (!isWithinSubscriptionPeriod) {
-        continue;
-      }
-
-      // Create orders for today if not already created
-      if (!alreadyCreatedToday) {
+      if (!existingOrderToday) {
         const shouldCreateToday = await shouldCreateOrderForCustomer(
           customer,
           today
@@ -170,15 +148,11 @@ const initializeOrders = async () => {
           );
           if (result.success && result.orders.length > 0) {
             ordersCreatedToday++;
-            console.log(
-              `Order created for customer ${customer.name} (Delivery Boy: ${customer.deliveryBoy.name}) for ${today}`
-            );
           }
         }
       }
-
-      // Create orders for tomorrow if not already created
-      if (!alreadyCreatedTomorrow) {
+      
+      if (!existingOrderTomorrow) {
         const shouldCreateTomorrow = await shouldCreateOrderForCustomer(
           customer,
           tomorrow
@@ -190,18 +164,11 @@ const initializeOrders = async () => {
             tomorrow
           );
           if (result.success && result.orders.length > 0) {
-            ordersCreatedTomorrow++;
-            console.log(
-              `Order created for customer ${customer.name} (Delivery Boy: ${customer.deliveryBoy.name}) for ${tomorrow}`
-            );
+            ordersCreatedTomorrow++;            
           }
         }
       }
     }
-
-    console.log(
-      `Orders initialization completed! Created ${ordersCreatedToday} orders for today and ${ordersCreatedTomorrow} orders for tomorrow.`
-    );
   } catch (error) {
     console.error("Error in initializing orders:", error.message);
   }
@@ -215,16 +182,22 @@ const shouldCreateOrderForCustomer = async (customer, date) => {
     return false;
   }
 
+  const currentDate = moment(date, "DD/MM/YYYY");
+  const startDate = moment(customer.startDate, "DD/MM/YYYY");
+  const endDate = moment(customer.endDate, "DD/MM/YYYY");
+
+  if (!currentDate.isBetween(startDate, endDate, "day", "[]")) {
+    return false;
+  }
+
   // Check subscription plan specific logic
   switch (customer.subscriptionPlan) {
     case "Monthly":
       return true;
 
     case "Alternate Days":
-      const startDate = moment(customer.startDate, "DD/MM/YYYY");
-      const currentDate = moment(date, "DD/MM/YYYY");
-      const daysDifference = currentDate.diff(startDate, "days");
-      return daysDifference % 2 === 0;
+      const daysFromStart = currentDate.diff(startDate, "days");
+      return daysFromStart % 2 === 0;
 
     case "Custom Date":
       return customer.customDeliveryDates?.includes(date) || false;
@@ -586,8 +559,6 @@ const updateBottleReturns = async (req, res) => {
     });
   }
 };
-
-
 
 module.exports = {
   createAutomaticOrdersForCustomer,

@@ -13,13 +13,10 @@ cron.schedule("0 12 28-31 * *", async () => {
   ).getDate();
 
   if (today.getDate() === lastDay) {
-    console.log("Running monthly invoice job at 12:00 PM...");
 
     try {
       const currentMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
       const currentYear = today.getFullYear();
-
-      console.log(`Generating invoices for ${currentMonth}/${currentYear}`);
 
       // Create a mock request object for the function
       const mockReq = {
@@ -59,15 +56,10 @@ cron.schedule("30 12 28-31 * *", async () => {
   ).getDate();
 
   if (today.getDate() === lastDay) {
-    console.log("Running monthly invoice job (alternative) at 12:30 PM...");
 
     try {
       const currentMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
       const currentYear = today.getFullYear();
-
-      console.log(
-        `Generating invoices for ${currentMonth}/${currentYear} (alternative)`
-      );
 
       const mockReq = {
         body: {
@@ -94,7 +86,3 @@ cron.schedule("30 12 28-31 * *", async () => {
     }
   }
 });
-
-console.log("Monthly invoice automation jobs scheduled:");
-console.log("1. Last day of month at 12:00 PM");
-console.log("2. Last day of month at 12:30 PM (alternative)");
