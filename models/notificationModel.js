@@ -21,34 +21,28 @@ const notificationSchema = new mongoose.Schema(
       ],
       required: true,
     },
-
     title: {
       type: String,
       required: true,
       maxlength: 100,
     },
-
     message: {
       type: String,
       required: true,
       maxlength: 500,
     },
-
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
     },
-
     isRead: {
       type: Boolean,
       default: false,
     },
-
     readAt: {
       type: String,
       default: "",
     },
-
     deliveryDate: {
       type: String,
       default: "",
@@ -59,17 +53,19 @@ const notificationSchema = new mongoose.Schema(
   }
 );
 
+// 🔎 Indexes for faster queries
 notificationSchema.index({ deliveryBoy: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ type: 1, createdAt: -1 });
 notificationSchema.index({ customer: 1, createdAt: -1 });
 
-// Method to mark as read
+// ✅ Instance method: mark notification as read
 notificationSchema.methods.markAsRead = function () {
   this.isRead = true;
   this.readAt = formatDateToDDMMYYYY(new Date());
   return this.save();
 };
 
+// ✅ Static method: create absent notification
 notificationSchema.statics.createCustomerAbsentNotification = async function (
   deliveryBoyId,
   customerId,
@@ -88,7 +84,7 @@ notificationSchema.statics.createCustomerAbsentNotification = async function (
   return await notification.save();
 };
 
-// Static method to get unread count for delivery boy
+// ✅ Static method: get unread count
 notificationSchema.statics.getUnreadCount = async function (deliveryBoyId) {
   return await this.countDocuments({
     deliveryBoy: deliveryBoyId,
@@ -96,27 +92,17 @@ notificationSchema.statics.getUnreadCount = async function (deliveryBoyId) {
   });
 };
 
-// Static method to get notifications for delivery boy
+// ✅ Static method: get all notifications (no pagination)
 notificationSchema.statics.getNotificationsForDeliveryBoy = async function (
-  deliveryBoyId,
-  { page = 1, limit = 20 }
+  deliveryBoyId
 ) {
   const query = { deliveryBoy: deliveryBoyId };
-
-  const notifications = await this.find({})
+  const notifications = await this.find(query)
     .populate("customer", "name phoneNumber")
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(limit);
+    .sort({ createdAt: -1 });
 
-  const total = await this.countDocuments(query);
-
-  return {
-    notifications,
-    total,
-    page,
-    totalPages: Math.ceil(total / limit),
-  };
+    const total = await this.countDocuments(query);
+  return { total, notifications }; 
 };
 
 module.exports = mongoose.model("Notification", notificationSchema);

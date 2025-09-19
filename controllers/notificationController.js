@@ -5,8 +5,6 @@ const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 // Get notifications for a delivery boy
 const getAllNotifications = async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-
     const deliveryBoy = await DeliveryBoy.findById(req.deliveryBoy._id);
 
     if (!deliveryBoy) {
@@ -17,17 +15,16 @@ const getAllNotifications = async (req, res) => {
     }
 
     const result = await Notification.getNotificationsForDeliveryBoy(
-      deliveryBoy._id,
-      {
-        page: parseInt(page),
-        limit: parseInt(limit),
-      }
+      deliveryBoy._id
     );
 
     return res.status(200).json({
       success: true,
       message: "Notifications fetched successfully",
-      data: result,
+      total: result.total,
+      data: {
+        notifications: result.notifications
+      }
     });
   } catch (error) {
     console.error("Error fetching notifications:", error);
@@ -38,6 +35,9 @@ const getAllNotifications = async (req, res) => {
     });
   }
 };
+
+
+
 
 // Mark notification as read
 const markNotificationAsRead = async (req, res) => {
@@ -89,7 +89,7 @@ const getUnreadCount = async (req, res) => {
       });
     }
 
-    const unreadCount = await Notification.getUnreadCount(deliveryBoy?._id);
+    const unreadCount = await Notification.getUnreadCount(deliveryBoy?._id, );
 
     return res.status(200).json({
       success: true,
