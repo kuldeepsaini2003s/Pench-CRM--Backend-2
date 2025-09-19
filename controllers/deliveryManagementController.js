@@ -100,6 +100,8 @@ const getAllProductsDelivery = async (req, res) => {
       products: order.products.map((p) => ({
         productName: p.productName,
         size: p.productSize,
+        quantity: p.quantity,
+        // price: p.price,
       })),
     }));
 
