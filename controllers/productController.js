@@ -733,6 +733,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       limit = 10,
       productName,
       productSize,
+      search="",
       sortOrder = "desc",
     } = req.query;
     page = parseInt(page);
@@ -745,22 +746,17 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       status: "Pending",
     };
 
-    if (productName) {
-      matchConditions["products.productName"] = {
-        $regex: productName,
-        $options: "i",
-      };
-    }
-
-    if (productSize) {
-      matchConditions["products.productSize"] = {
-        $regex: productSize,
-        $options: "i",
-      };
+    if(search){
+      matchConditions.$or = [
+        { "customer.name": { $regex: search, $options: "i" } },
+        { "deliveryBoy.name": { $regex: search, $options: "i" } },
+      ];
     }
 
     const pipeline = [
       { $match: matchConditions },
+    
+      // Lookup customer
       {
         $lookup: {
           from: "customers",
@@ -770,32 +766,41 @@ const getTotalProductDeliverTommorow = async (req, res) => {
         },
       },
       { $unwind: "$customer" },
+    
+      // Lookup deliveryBoy
+      {
+        $lookup: {
+          from: "deliveryboys", // collection name in MongoDB
+          localField: "deliveryBoy",
+          foreignField: "_id",
+          as: "deliveryBoy",
+        },
+      },
+      { $unwind: "$deliveryBoy" },
+    
       { $unwind: "$products" },
+    
       // Apply product filters after unwinding products
       ...(productName || productSize
         ? [
-          {
-            $match: {
-              ...(productName && {
-                productName: {
-                  $regex: productName,
-                  $options: "i",
-                },
-              }),
-              ...(productSize && {
-                productSize: {
-                  $regex: productSize,
-                  $options: "i",
-                },
-              }),
+            {
+              $match: {
+                ...(productName && {
+                  "products.productName": { $regex: productName, $options: "i" },
+                }),
+                ...(productSize && {
+                  "products.productSize": { $regex: productSize, $options: "i" },
+                }),
+              },
             },
-          },
-        ]
+          ]
         : []),
+    
       {
         $group: {
           _id: "$customer._id",
           customerName: { $first: "$customer.name" },
+          deliveryBoyName: { $first: "$deliveryBoy.name" }, // ✅ Added delivery boy name
           deliveryDate: { $first: "$deliveryDate" },
           productNames: { $push: "$products.productName" },
           productSizes: { $push: "$products.productSize" },
@@ -807,6 +812,7 @@ const getTotalProductDeliverTommorow = async (req, res) => {
           _id: 0,
           customerId: "$_id",
           customerName: 1,
+          deliveryBoyName: 1, // Include delivery boy name in response
           deliveryDate: 1,
           productName: {
             $reduce: {
@@ -853,38 +859,73 @@ const getTotalProductDeliverTommorow = async (req, res) => {
       { $skip: (page - 1) * limit },
       { $limit: limit },
     ];
+    
 
     const countPipeline = [
-      { $match: matchConditions },
+      { $match: { deliveryDate: tomorrow, status: "Pending" } },
+    
+      // Lookup customer
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customer",
+          foreignField: "_id",
+          as: "customer",
+        },
+      },
+      { $unwind: "$customer" },
+    
+      // Lookup deliveryBoy
+      {
+        $lookup: {
+          from: "deliveryboys",
+          localField: "deliveryBoy",
+          foreignField: "_id",
+          as: "deliveryBoy",
+        },
+      },
+      { $unwind: "$deliveryBoy" },
+    
       { $unwind: "$products" },
-      // Apply product filters after unwinding products
+    
+      // ✅ Apply search filter AFTER lookups
+      ...(search
+        ? [
+            {
+              $match: {
+                $or: [
+                  { "customer.name": { $regex: search, $options: "i" } },
+                  { "deliveryBoy.name": { $regex: search, $options: "i" } },
+                ],
+              },
+            },
+          ]
+        : []),
+    
+      // ✅ Apply product filters AFTER unwind
       ...(productName || productSize
         ? [
-          {
-            $match: {
-              ...(productName && {
-                productName: {
-                  $regex: productName,
-                  $options: "i",
-                },
-              }),
-              ...(productSize && {
-                productSize: {
-                  $regex: productSize,
-                  $options: "i",
-                },
-              }),
+            {
+              $match: {
+                ...(productName && {
+                  "products.productName": { $regex: productName, $options: "i" },
+                }),
+                ...(productSize && {
+                  "products.productSize": { $regex: productSize, $options: "i" },
+                }),
+              },
             },
-          },
-        ]
+          ]
         : []),
+    
       {
         $group: {
-          _id: "$customer",
+          _id: "$customer._id", // count unique customers
         },
       },
       { $count: "total" },
     ];
+    
 
     const [result, countResult] = await Promise.all([
       CustomerOrder.aggregate(pipeline),
