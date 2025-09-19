@@ -712,7 +712,7 @@ const getTopSellingProductSold = async (req, res) => {
 };
 
 //✅ Get Total Product Deliver Tommorow
-const getTotalProductDeliverTommorow = async (req, res) => {
+const getTotalProductDeliveryTommorow = async (req, res) => {
   try {
     let {
       page = 1,
@@ -965,5 +965,5 @@ module.exports = {
   addStock,
   removeStock,
   getTopSellingProductSold,
-  getTotalProductDeliverTommorow,
+  getTotalProductDeliveryTommorow,
 };

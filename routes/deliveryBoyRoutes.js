@@ -13,6 +13,7 @@ const {
   getDeliveryBoyOwnBootleTrackingRecord,
   getOrderHistory,
   getPendingBottles,
+  getAllMilkBottleSizes,
 } = require("../controllers/deliveryBoyController");
 
 const { upload } = require("../config/cloudinary");
@@ -52,4 +53,5 @@ router.get(
 router.get("/getOrderHistory", verifyDeliveryBoyToken, getOrderHistory);
 router.get("/getPendingBottles", verifyDeliveryBoyToken, getPendingBottles);
 router.post("/logout", verifyDeliveryBoyToken, logoutDeliveryBoy);
+router.get("/getAllMilkBottleSizes", getAllMilkBottleSizes);
 module.exports = router;

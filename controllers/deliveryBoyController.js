@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const CustomerOrders = require("../models/customerOrderModel");
 const { formatDateToDDMMYYYY } = require("../utils/parsedDateAndDay");
 const Customer = require("../models/customerModel");
+const Product = require("../models/productModel");
 const FRONTEND_BASE =
   process.env.FRONTEND_BASE_URL || "https://pench-delivery-boy-app.netlify.app";
 const tokenExpiry = parseInt(process.env.TOKEN_TTL_MIN) || 15; // token expiry in minutes
@@ -857,6 +858,7 @@ const getPendingBottles = async (req, res) => {
         });
 
         // ✅ Update customer totals
+        // ✅ Update customer totals (sum across all orders)
         customersMap[cust._id].totalPendingBottleQuantity +=
           order.pendingBottleQuantity || 0;
         customersMap[cust._id].totalBottleReturnedQuantity +=
@@ -882,6 +884,26 @@ const getPendingBottles = async (req, res) => {
   }
 };
 
+// ✅ Get All Bottle sizes
+const getAllMilkBottleSizes = async(req, res) =>{
+  try {
+    const sizes = await Product.find({"productName":"Milk"}, {size:1});
+    return res.status(200).json({
+      success: true,
+      message: "All milk bottle sizes fetched successfully",
+      sizes,
+    });
+  } catch (error) {
+    console.error("❌ Error in getAllMilkBottleSizes:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get all milk bottle sizes",
+      error: error.message,
+    });
+  }
+}
+
+
 module.exports = {
   registerDeliveryBoy,
   loginDeliveryBoy,
@@ -896,4 +918,5 @@ module.exports = {
   getOrderHistory,
   getPendingBottles,
   logoutDeliveryBoy,
+  getAllMilkBottleSizes,
 };
