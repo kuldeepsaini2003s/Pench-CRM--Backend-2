@@ -7,6 +7,7 @@ const {
   getAllPaymentsByStatus,
   getAllCashPaymentsForDeliveryBoy,
   getPendingPaymentsCount,
+  getCustomerBalanceAmount,
 } = require("../controllers/paymentController");
 const{verifyDeliveryBoyToken} = require("../middlewares/deliveryBoy.middleware");
 
@@ -16,5 +17,6 @@ router.post("/makePaymentForBalance/:customerId", makePaymentForBalance);
 router.get("/getAllPayments", getAllPaymentsByStatus);
 router.get("/getAllCashPaymentsForDeliveryBoy", verifyDeliveryBoyToken, getAllCashPaymentsForDeliveryBoy);
 router.get("/getPendingPaymentsCount", getPendingPaymentsCount);
+router.get("/getCustomerBalanceAmount/:customerId", getCustomerBalanceAmount)
 
 module.exports = router;

@@ -9,6 +9,7 @@ const {
   formatDateToDDMMYYYY,
 } = require("../utils/parsedDateAndDay");
 const moment = require("moment");
+const { verifyPaymentForInvoice } = require("./paymentController");
 
 const gstNumber = process.env.GST_NUMBER;
 
@@ -94,6 +95,36 @@ const createCustomerInvoice = async (req, res) => {
       });
     }
 
+    // ✅ Verify payment before creating invoice
+    const paymentVerification = await verifyPaymentForInvoice(
+      customerId,
+      period.startDate,
+      period.endDate
+    );
+
+    if (!paymentVerification.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment verification failed",
+        details: paymentVerification.message,
+      });
+    }
+
+    // Check if payment amounts match order amounts
+    if (!paymentVerification.verification.isAmountMatching) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment verification failed: Amount mismatch",
+        verification: {
+          totalPaidAmount: paymentVerification.verification.totalPaidAmount,
+          totalOrderAmount: paymentVerification.verification.totalOrderAmount,
+          difference: paymentVerification.verification.difference,
+          paymentsFound: paymentVerification.verification.paymentsFound,
+          ordersFound: paymentVerification.verification.ordersFound,
+        },
+        payments: paymentVerification.payments,
+      });
+    }
     // Process products from orders
     const { products, totalAmount } = processProducts(orders);
 
@@ -110,9 +141,7 @@ const createCustomerInvoice = async (req, res) => {
 
     // Calculate payment amounts
     const paidAmount = totalAmount;
-    const balanceAmount = 0;
-    const partiallyPaidAmount =
-      partiallyPaidOrders.length > 0 ? totalAmount : 0;
+    const balanceAmount = 0;    
 
     const invoiceNumber = generateInvoiceNumber();
 
@@ -145,9 +174,7 @@ const createCustomerInvoice = async (req, res) => {
       totals: {
         subtotal: totalAmount,
         paidAmount: paidAmount,
-        balanceAmount: balanceAmount,
-        carryForwardAmount: 0,
-        partiallyPaidAmount: partiallyPaidAmount,
+        balanceAmount: balanceAmount,        
       },
       state: "Draft",
       includedOrders: orders.map((order) => order._id),
@@ -596,6 +623,43 @@ const getCustomerData = async (req, res) => {
       });
     }
 
+    // ✅ Verify payment before returning customer data for invoice creation
+    const paymentVerification = await verifyPaymentForInvoice(
+      customerId,
+      startDate,
+      endDate
+    );
+
+    if (!paymentVerification.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment verification failed",
+        details: paymentVerification.message,
+      });
+    }
+
+    // Check if payment amounts match order amounts
+    if (!paymentVerification.verification.isAmountMatching) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment verification failed: Amount mismatch",
+        verification: {
+          totalPaidAmount: paymentVerification.verification.totalPaidAmount,
+          totalOrderAmount: paymentVerification.verification.totalOrderAmount,
+          difference: paymentVerification.verification.difference,
+          paymentsFound: paymentVerification.verification.paymentsFound,
+          ordersFound: paymentVerification.verification.ordersFound,
+        },
+        payments: paymentVerification.payments,
+      });
+    }
+
+    console.log("✅ Payment verification passed for customer data:", {
+      totalPaidAmount: paymentVerification.verification.totalPaidAmount,
+      totalOrderAmount: paymentVerification.verification.totalOrderAmount,
+      paymentsFound: paymentVerification.verification.paymentsFound,
+    });
+
     const { products, totalAmount } = processProducts(orders);
 
     // Calculate payment status based on orders
@@ -892,9 +956,7 @@ const generateCustomerMonthlyInvoice = async (customer, month, year) => {
     totals: {
       subtotal: totalAmount,
       paidAmount: 0,
-      balanceAmount: grandTotal,
-      carryForwardAmount,
-      partiallyPaidAmount: 0,
+      balanceAmount: 0,
       paidDate: null,
     },
     state: "Draft",
