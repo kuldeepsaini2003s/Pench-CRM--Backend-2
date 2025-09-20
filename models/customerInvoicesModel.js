@@ -70,9 +70,7 @@ const invoiceSchema = new mongoose.Schema(
     totals: {
       subtotal: { type: Number, default: 0 },
       paidAmount: { type: Number, default: 0 },
-      balanceAmount: { type: Number, default: 0 },
-      carryForwardAmount: { type: Number, default: 0 },
-      partiallyPaidAmount: { type: Number, default: 0 },
+      balanceAmount: { type: Number, default: 0 },            
       paidDate: { type: Date },
     },
     state: {

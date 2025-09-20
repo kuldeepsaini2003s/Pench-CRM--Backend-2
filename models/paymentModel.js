@@ -16,11 +16,15 @@ const paymentSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    paidDates: [
-      {
-        type: String,
-      },
-    ],
+    paidDate: {
+      type: String,
+    },
+    orderStartDate: {
+      type: String,
+    },
+    orderEndDate: {
+      type: String,
+    },
     paymentMethod: {
       type: String,
       enum: ["COD", "Online"],
