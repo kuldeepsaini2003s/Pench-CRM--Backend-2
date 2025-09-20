@@ -45,26 +45,40 @@ const createPaymentForCustomer = async (req, res) => {
     const allOrders = await CustomerOrders.find({
       customer: customerId,
       status: "Delivered",
+      paymentStatus: "Unpaid",
     }).sort({ createdAt: 1 });
+
     const totalAmount = allOrders.reduce(
       (sum, order) => sum + (order.totalAmount || 0),
       0
     );
 
-    if (paidAmount > totalAmount) {
+    const latestPayment = await Payment.findOne({
+      customer: customerId,
+    }).sort({ createdAt: -1 });
+
+    let finalBalanceAmount = totalAmount;
+
+    if (latestPayment && latestPayment.carryForwardBalance > 0) {
+      finalBalanceAmount = totalAmount - latestPayment.carryForwardBalance;
+    }
+
+    if (paidAmount > finalBalanceAmount) {
       return res.status(400).json({
         success: false,
-        message: `Paid amount cannot exceed total amount (${totalAmount})`,
+        message: `Paid amount cannot exceed total amount (${finalBalanceAmount})`,
       });
     }
 
     let paymentDocData = {
       customer: customerId,
-      totalAmount,
+      finalBalanceAmount,
       paidAmount: 0,
-      balanceAmount: totalAmount,
+      balanceAmount: finalBalanceAmount,
       carryForwardBalance: 0,
-      paidDates: [formatDateToDDMMYYYY(new Date())],
+      paidDate: formatDateToDDMMYYYY(new Date()),
+      orderStartDate: null,
+      orderEndDate: null,
       paymentMethod,
       paymentStatus: "Unpaid",
     };
@@ -100,44 +114,70 @@ const createPaymentForCustomer = async (req, res) => {
 
     // ✅ COD / confirmed payment: allocate paidAmount to orders
     if (paymentMethod === "COD") {
+      const isFullyPaid = paidAmount >= finalBalanceAmount;
+      const isPartiallyPaid = paidAmount > 0 && paidAmount < finalBalanceAmount;
+
       let remainingAmount = paidAmount;
+      let paidOrders = [];
 
       for (const order of allOrders) {
         if (remainingAmount <= 0) break;
 
+        let orderPaymentStatus = "Unpaid";
+        let orderPaidAmount = 0;
+
         if (remainingAmount >= order.totalAmount) {
-          // Full payment for this order
-          await CustomerOrders.findByIdAndUpdate(order._id, {
-            $set: {
-              paymentStatus: "Paid",
-              paymentMethod,
-              paidAmount: order.totalAmount,
-            },
-          });
-          remainingAmount -= order.totalAmount;
-          paymentDocData.paidAmount += order.totalAmount;
+          if (isFullyPaid) {
+            orderPaymentStatus = "Paid";
+            orderPaidAmount = order.totalAmount;
+            remainingAmount -= order.totalAmount;
+          } else if (isPartiallyPaid) {
+            orderPaymentStatus = "Partially Paid";
+            orderPaidAmount = order.totalAmount;
+            remainingAmount -= order.totalAmount;
+          }
         } else {
-          // Partial payment for this order
-          await CustomerOrders.findByIdAndUpdate(order._id, {
-            $set: {
-              paymentStatus: "Partially Paid",
-              paymentMethod,
-              paidAmount: remainingAmount,
-            },
-          });
-          paymentDocData.paidAmount += remainingAmount;
-          paymentDocData.carryForwardBalance = remainingAmount; // ✅ remainder tracked
-          remainingAmount = 0;
+          if (remainingAmount > 0) {
+            paymentDocData.carryForwardBalance += remainingAmount;
+            remainingAmount = 0;
+            paymentDocData = balanceAmount;
+          }
         }
+
+        await CustomerOrders.findByIdAndUpdate(order._id, {
+          $set: {
+            paymentStatus: orderPaymentStatus,
+            paymentMethod,
+            paidAmount: orderPaidAmount,
+          },
+        });
+
+        paymentDocData.paidAmount += orderPaidAmount;
+
+        if (isPartiallyPaid && orderPaidAmount < order.totalAmount) {
+          paymentDocData.carryForwardBalance +=
+            order.totalAmount - orderPaidAmount;
+        }
+        paidOrders.push(order);
       }
 
-      paymentDocData.balanceAmount = totalAmount - paymentDocData.paidAmount;
-      paymentDocData.paymentStatus =
-        paymentDocData.balanceAmount === 0
-          ? "Paid"
-          : paymentDocData.paidAmount > 0
-          ? "Partially Paid"
-          : "Unpaid";
+      if (paidOrders.length > 0) {
+        paymentDocData.orderStartDate = paidOrders[0].deliveryDate;
+        paymentDocData.orderEndDate =
+          paidOrders[paidOrders.length - 1].deliveryDate;
+      }
+
+      paymentDocData.balanceAmount =
+        finalBalanceAmount - paymentDocData.paidAmount;
+
+      // Set payment status based on overall payment amount (isFullyPaid/isPartiallyPaid)
+      if (isFullyPaid) {
+        paymentDocData.paymentStatus = "Paid";
+      } else if (isPartiallyPaid) {
+        paymentDocData.paymentStatus = "Partially Paid";
+      } else {
+        paymentDocData.paymentStatus = "Unpaid";
+      }
     }
 
     // ✅ Save Payment doc
@@ -148,12 +188,16 @@ const createPaymentForCustomer = async (req, res) => {
     const paymentObj = paymentDoc.toObject();
     delete paymentObj.razorpayLinkUrl;
 
-    // ✅ Update Customer
-    customer.amountPaidTillDate += paymentDoc.paidAmount;
-    customer.amountDue = totalAmount - customer.amountPaidTillDate;
-    customer.paymentStatus =
-      customer.amountPaidTillDate < totalAmount ? "Partially Paid" : "Paid";
-    await customer.save();
+    // ✅ Update Customer (only for COD payments)
+    if (paymentMethod === "COD") {
+      customer.amountPaidTillDate += paymentDoc.paidAmount;
+      customer.amountDue = finalBalanceAmount - customer.amountPaidTillDate;
+      customer.paymentStatus =
+        customer.amountPaidTillDate < finalBalanceAmount
+          ? "Partially Paid"
+          : "Paid";
+      await customer.save();
+    }
 
     res.status(200).json({
       success: true,
@@ -218,50 +262,91 @@ const verifyPayment = async (req, res) => {
     const allOrders = await CustomerOrders.find({
       customer: customerId,
       status: "Delivered",
+      paymentStatus: "Unpaid",
     }).sort({ createdAt: 1 });
+
+    // Calculate total unpaid amount
+    const totalAmount = allOrders.reduce(
+      (sum, order) => sum + (order.totalAmount || 0),
+      0
+    );
+
+    const latestPayment = await Payment.findOne({
+      customer: customerId,
+    }).sort({ createdAt: -1 });
+
+    let finalBalanceAmount = totalAmount;
+
+    if (latestPayment && latestPayment.carryForwardBalance > 0) {
+      finalBalanceAmount = totalAmount - latestPayment.carryForwardBalance;
+    }
+
+    const isFullyPaid = paidAmount >= finalBalanceAmount;
+    const isPartiallyPaid = paidAmount > 0 && paidAmount < finalBalanceAmount;
 
     let remainingAmount = paidAmount;
     let totalPaidNow = 0;
+    let paidOrders = [];
 
     for (const order of allOrders) {
       if (remainingAmount <= 0) break;
 
+      let orderPaymentStatus = "Unpaid";
+      let orderPaidAmount = 0;
+
       if (remainingAmount >= order.totalAmount) {
-        // Full payment for this order
-        await CustomerOrders.findByIdAndUpdate(order._id, {
-          $set: {
-            paymentStatus: "Paid",
-            paymentMethod: "Online",
-            paidAmount: order.totalAmount,
-          },
-        });
-        remainingAmount -= order.totalAmount;
-        totalPaidNow += order.totalAmount;
+        if (isFullyPaid) {
+          orderPaymentStatus = "Paid";
+          orderPaidAmount = order.totalAmount;
+          remainingAmount -= order.totalAmount;
+        } else if (isPartiallyPaid) {
+          orderPaymentStatus = "Partially Paid";
+          orderPaidAmount = order.totalAmount;
+          remainingAmount -= order.totalAmount;
+        }
       } else {
-        // Partial payment for this order
-        await CustomerOrders.findByIdAndUpdate(order._id, {
-          $set: {
-            paymentStatus: "Partially Paid",
-            paymentMethod: "Online",
-            paidAmount: remainingAmount,
-          },
-        });
-        totalPaidNow += remainingAmount;
-        remainingAmount = 0;
+        if (remainingAmount > 0) {
+          paymentDoc.carryForwardBalance += remainingAmount;
+          remainingAmount = 0;
+        }
       }
+
+      await CustomerOrders.findByIdAndUpdate(order._id, {
+        $set: {
+          paymentStatus: orderPaymentStatus,
+          paymentMethod: "Online",
+          paidAmount: orderPaidAmount,
+        },
+      });
+
+      totalPaidNow += orderPaidAmount;
+      paidOrders.push(order);
     }
 
-    // ✅ Update Payment document
-    paymentDoc.paidAmount += totalPaidNow;
-    paymentDoc.balanceAmount = paymentDoc.totalAmount - paymentDoc.paidAmount;
+    // ✅ Update Payment document (with validation to prevent over-payment)
+    const newPaidAmount = Math.min(
+      paymentDoc.paidAmount + totalPaidNow,
+      paymentDoc.totalAmount
+    );
+    paymentDoc.paidAmount = newPaidAmount;
+    paymentDoc.balanceAmount = paymentDoc.totalAmount - newPaidAmount;
     paymentDoc.razorpayPaymentId = razorpay_payment_id;
     paymentDoc.razorpayLinkStatus = razorpay_payment_link_status;
 
-    if (paymentDoc.paidAmount < paymentDoc.totalAmount) {
-      paymentDoc.paymentStatus = "Partially Paid";
-    } else {
+    // Update order date range based on actually paid orders
+    if (paidOrders.length > 0) {
+      paymentDoc.orderStartDate = paidOrders[0].deliveryDate;
+      paymentDoc.orderEndDate = paidOrders[paidOrders.length - 1].deliveryDate;
+    }
+
+    // Set payment status based on overall payment amount (isFullyPaid/isPartiallyPaid)
+    if (isFullyPaid) {
       paymentDoc.paymentStatus = "Paid";
       paymentDoc.balanceAmount = 0;
+    } else if (isPartiallyPaid) {
+      paymentDoc.paymentStatus = "Partially Paid";
+    } else {
+      paymentDoc.paymentStatus = "Unpaid";
     }
     await paymentDoc.save();
 
@@ -406,7 +491,7 @@ const makePaymentForBalance = async (req, res) => {
     paymentDoc.razorpayLinkId = paymentLink.id;
     paymentDoc.razorpayLinkStatus = paymentLink.status || "created";
     paymentDoc.razorpayLinkUrl = paymentLink.short_url;
-    paymentDoc.paidDates.push(new Date()); // 🆕 Track when new link generated
+    paymentDoc.paidDate = formatDateToDDMMYYYY(new Date()); // 🆕 Track when new link generated
     await paymentDoc.save();
 
     // ✅ Convert to object & hide razorpayLinkUrl inside payment
@@ -555,17 +640,17 @@ const getAllPaymentsByStatus = async (req, res) => {
       },
       ...(productName || productSize
         ? [
-          {
-            $match: {
-              ...(productName && {
-                productNames: { $regex: productName, $options: "i" },
-              }),
-              ...(productSize && {
-                productSizes: { $regex: productSize, $options: "i" },
-              }),
+            {
+              $match: {
+                ...(productName && {
+                  productNames: { $regex: productName, $options: "i" },
+                }),
+                ...(productSize && {
+                  productSizes: { $regex: productSize, $options: "i" },
+                }),
+              },
             },
-          },
-        ]
+          ]
         : []),
       {
         $project: {
@@ -684,15 +769,10 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
         (p) => p.customer.toString() === order.customer._id.toString()
       );
 
-      let status =
-        payment?.paymentStatus === "Unpaid" ? "Pending" : "Received";
+      let status = payment?.paymentStatus === "Unpaid" ? "Pending" : "Received";
 
-      // ✅ Always pick last date from paidDates (no fallback to deliveryDate)
-      let paidDate =
-      payment?.paidDates?.length > 0
-        ? payment.paidDates[payment.paidDates.length - 1]
-        : null;
-    
+      // ✅ Get paid date from payment record
+      let paidDate = payment?.paidDate || null;
 
       return {
         customerName: order.customer?.name || "N/A",
@@ -700,7 +780,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
         amount: payment?.paidAmount,
         paymentStatus: status,
         deliveryBoy: order.deliveryBoy?.name || "N/A",
-        date: paidDate, 
+        date: paidDate,
       };
     });
 
@@ -715,7 +795,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
         customersPaidSet.add(p.customer.toString());
       }
       if (p.paymentStatus === "Unpaid") {
-        pendingCollections += p.balanceAmount || p.totalAmount;
+        pendingCollections += p.totalAmount;
       }
     });
 
@@ -747,6 +827,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     });
   }
 };
+
 // ✅ Get Only Pending (Unpaid) Payments Count
 const getPendingPaymentsCount = async (req, res) => {
   try {
@@ -769,6 +850,127 @@ const getPendingPaymentsCount = async (req, res) => {
   }
 };
 
+// ✅ Verify Payment for Invoice Creation (Helper function)
+const verifyPaymentForInvoice = async (customerId, startDate, endDate) => {
+  try {
+    // Find payments that match the date range and customer
+    const payments = await Payment.find({
+      customer: customerId,
+      orderStartDate: { $lte: endDate },
+      orderEndDate: { $gte: startDate },
+      paymentStatus: { $in: ["Paid", "Partially Paid"] },
+    });
+
+    if (payments.length === 0) {
+      return {
+        success: false,
+        message: "No matching payments found for the specified period",
+        verification: null,
+      };
+    }
+
+    // Calculate total paid amount for the period
+    const totalPaidAmount = payments.reduce(
+      (sum, payment) => sum + payment.paidAmount,
+      0
+    );
+
+    // Get orders for the same period to verify
+    const orders = await CustomerOrders.find({
+      customer: customerId,
+      deliveryDate: { $gte: startDate, $lte: endDate },
+      status: "Delivered",
+    });
+
+    const totalOrderAmount = orders.reduce(
+      (sum, order) => sum + (order.totalAmount || 0),
+      0
+    );
+
+    // Check if payment amount matches order amount
+    const isAmountMatching =
+      Math.abs(totalPaidAmount - totalOrderAmount) < 0.01;
+
+    return {
+      success: true,
+      verification: {
+        isAmountMatching,
+        totalPaidAmount,
+        totalOrderAmount,
+        difference: Math.abs(totalPaidAmount - totalOrderAmount),
+        paymentsFound: payments.length,
+        ordersFound: orders.length,
+        period: { startDate, endDate },
+      },
+      payments: payments.map((p) => ({
+        id: p._id,
+        paidAmount: p.paidAmount,
+        totalAmount: p.totalAmount,
+        paymentStatus: p.paymentStatus,
+        orderStartDate: p.orderStartDate,
+        orderEndDate: p.orderEndDate,
+        paidDate: p.paidDate,
+      })),
+    };
+  } catch (error) {
+    console.error("verifyPaymentForInvoice Error:", error);
+    return {
+      success: false,
+      message: "Error verifying payment for invoice",
+      error: error.message,
+    };
+  }
+};
+
+const getCustomerBalanceAmount = async (req, res) => {
+  try {
+    const { customerId } = req?.params;
+
+    const customer = await Customer.findById(customerId);
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const allOrders = await CustomerOrders.find({
+      customer: customerId,
+      status: "Delivered",
+      paymentStatus: "Unpaid",
+    }).sort({ createdAt: 1 });
+
+    const totalAmount = allOrders.reduce(
+      (sum, order) => sum + (order.totalAmount || 0),
+      0
+    );
+
+    const latestPayment = await Payment.findOne({
+      customer: customerId,
+    }).sort({ createdAt: -1 });
+
+    let finalBalanceAmount = totalAmount;
+
+    if (latestPayment && latestPayment.carryForwardBalance > 0) {
+      finalBalanceAmount = totalAmount - latestPayment.carryForwardBalance;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer remaining balance fetch successfully",
+      balanceAmount: finalBalanceAmount,
+      totalsOfUnpaidOrders: totalAmount,
+      carryForwardBalance: latestPayment?.carryForwardBalance || 0,
+    });
+  } catch (error) {
+    console.log("Error while getting customer remaining balance");
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+    });
+  }
+};
 
 module.exports = {
   createPaymentForCustomer,
@@ -777,4 +979,6 @@ module.exports = {
   getAllCashPaymentsForDeliveryBoy,
   getAllPaymentsByStatus,
   getPendingPaymentsCount,
+  verifyPaymentForInvoice,
+  getCustomerBalanceAmount,
 };

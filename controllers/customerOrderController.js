@@ -122,7 +122,7 @@ const initializeOrders = async () => {
     }
 
     let ordersCreatedToday = 0;
-    let ordersCreatedTomorrow = 0;    
+    let ordersCreatedTomorrow = 0;
 
     for (const customer of activeCustomers) {
       const existingOrderToday = await CustomerOrders.findOne({
@@ -151,7 +151,7 @@ const initializeOrders = async () => {
           }
         }
       }
-      
+
       if (!existingOrderTomorrow) {
         const shouldCreateTomorrow = await shouldCreateOrderForCustomer(
           customer,
@@ -164,7 +164,7 @@ const initializeOrders = async () => {
             tomorrow
           );
           if (result.success && result.orders.length > 0) {
-            ordersCreatedTomorrow++;            
+            ordersCreatedTomorrow++;
           }
         }
       }
@@ -254,6 +254,20 @@ const createAdditionalOrder = async (req, res) => {
         });
       }
 
+      // Validate that totalPrice matches quantity * price
+      const expectedTotalPrice = parseFloat(quantity) * parseFloat(price);
+      const providedTotalPrice = parseFloat(totalPrice);
+
+      if (Math.abs(expectedTotalPrice - providedTotalPrice) > 0.01) {
+        return res.status(400).json({
+          success: false,
+          message: `Total price mismatch for ${productName}. Expected: ${expectedTotalPrice}, Provided: ${providedTotalPrice}`,
+          productName,
+          expectedTotalPrice,
+          providedTotalPrice,
+        });
+      }
+
       const productDoc = await Product.findOne({ productName: productName });
 
       if (!productDoc) {
@@ -328,7 +342,7 @@ const createAdditionalOrder = async (req, res) => {
       existingOrder.products.push(...newProducts);
 
       existingOrder.totalAmount = existingOrder.products.reduce(
-        (total, product) => total + product.totalPrice,
+        (total, product) => total + parseFloat(product.totalPrice || 0),
         0
       );
 
@@ -344,7 +358,7 @@ const createAdditionalOrder = async (req, res) => {
         }),
         deliveryBoy: deliveryBoy._id,
         totalAmount: products.reduce(
-          (total, product) => total + product.totalPrice,
+          (total, product) => total + parseFloat(product.totalPrice || 0),
           0
         ),
         status: "Pending",
