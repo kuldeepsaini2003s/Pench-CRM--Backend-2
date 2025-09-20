@@ -621,7 +621,7 @@ const getLowestProductSale = async (req, res) => {
     ];
 
     const result = await CustomerOrder.aggregate(pipeline);
-
+console.log("result", result)
     if (!result || result.length === 0) {
       return res.status(404).json({
         success: false,

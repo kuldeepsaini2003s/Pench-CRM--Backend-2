@@ -582,6 +582,115 @@ const shareConsumeToken = async (req, res) => {
 };
 
 // ✅ Get DeliveryBoy Own Bootle Tracking Record
+// const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
+//   try {
+//     const deliveryBoyId = req.deliveryBoy?._id;
+
+//     if (!deliveryBoyId) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized",
+//       });
+//     }
+
+//     const deliveryBoy = await DeliveryBoy.findById(deliveryBoyId);
+//     if (!deliveryBoy) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Delivery boy not found",
+//       });
+//     }
+
+//     // Get all relevant orders
+//     const orders = await CustomerOrders.find({
+//       deliveryBoy: deliveryBoyId,
+//       status: { $in: ["Pending"] },
+//     });
+
+//     let totalIssued = 0,
+//       totalReturned = 0;
+//     let oneLtrIssued = 0,
+//       oneLtrReturned = 0;
+//     let halfLtrIssued = 0,
+//       halfLtrReturned = 0;
+
+//       for (const order of orders) {
+//         for (const p of order.products) {
+//           if (p.productName === "Milk") {
+//             const size = p.productSize;
+      
+//             if (size === "1ltr") {
+//               // direct bottles
+//               oneLtrIssued += p.quantity;
+//               totalIssued += p.quantity;
+//             } else if (size === "1/2ltr") {
+//               // 2 half liters = 1 bottle
+//               const halfBottles = p.quantity / 2;
+//               oneLtrIssued += halfBottles;
+//               totalIssued += halfBottles;
+//             } else {
+//               // handle 1.5ltr, 2.5ltr, 3.5ltr ...
+//               const liters = parseFloat(size.replace("ltr", "")) * p.quantity;
+//               const oneLtrBottles = Math.floor(liters);
+//               const halfLtrBottles = Math.round((liters % 1) / 0.5);
+      
+//               oneLtrIssued += oneLtrBottles;
+//               halfLtrIssued += halfLtrBottles;
+//               totalIssued += oneLtrBottles + halfLtrBottles;
+//             }
+//           }
+//         }
+      
+//         // returned bottles same
+//         if (order.bottleReturns && order.bottleReturns.length > 0) {
+//           order.bottleReturns.forEach((ret) => {
+//             if (ret.size === "1ltr") {
+//               oneLtrReturned += ret.quantity;
+//             }
+//             if (ret.size === "1/2ltr") {
+//               halfLtrReturned += ret.quantity;
+//             }
+//           });
+//         }
+//       }
+      
+
+//     // ✅ calculate totals correctly here
+//     totalReturned = oneLtrReturned + halfLtrReturned;
+
+//     const response = {
+//       _id: deliveryBoy._id,
+//       deliveryBoy: deliveryBoy.name,
+//       total: {
+//         issued: totalIssued,
+//         returned: totalReturned,
+//       },
+//       yetToReturn: totalIssued - totalReturned,
+//       "1ltr": {
+//         issued: oneLtrIssued,
+//         returned: oneLtrReturned,
+//         yetToReturn: oneLtrIssued - oneLtrReturned,
+//       },
+//       "1/2ltr": {
+//         issued: halfLtrIssued,
+//         returned: halfLtrReturned,
+//         yetToReturn: halfLtrIssued - halfLtrReturned,
+//       },
+//     };
+
+//     return res.json({
+//       success: true,
+//       message: "Delivery boy own bottle tracking record fetched successfully",
+//       trackingRecord: response,
+//     });
+//   } catch (error) {
+//     console.error("getDeliveryBoyOwnBootleTrackingRecord error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to get delivery boy own bottle tracking record",
+//     });
+//   }
+// };
 
 const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
   try {
@@ -615,46 +724,49 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
     let halfLtrIssued = 0,
       halfLtrReturned = 0;
 
-      for (const order of orders) {
-        for (const p of order.products) {
-          if (p.productName === "Milk") {
-            const size = p.productSize;
-      
-            if (size === "1ltr") {
-              // direct bottles
-              oneLtrIssued += p.quantity;
-              totalIssued += p.quantity;
-            } else if (size === "1/2ltr") {
-              // 2 half liters = 1 bottle
-              const halfBottles = p.quantity / 2;
-              oneLtrIssued += halfBottles;
-              totalIssued += halfBottles;
-            } else {
-              // handle 1.5ltr, 2.5ltr, 3.5ltr ...
-              const liters = parseFloat(size.replace("ltr", "")) * p.quantity;
-              const oneLtrBottles = Math.floor(liters);
-              const halfLtrBottles = Math.round((liters % 1) / 0.5);
-      
+    for (const order of orders) {
+      for (const p of order.products) {
+        if (p.productName === "Milk") {
+          const size = p.productSize;
+
+          if (size === "1ltr") {
+            // direct bottles
+            oneLtrIssued += p.quantity;
+            totalIssued += p.quantity;
+
+          } else if (size === "1/2ltr") {
+            // direct half-litre bottles
+            halfLtrIssued += p.quantity;
+            totalIssued += p.quantity;
+
+          } else {
+            // handle 1.5ltr, 2.5ltr, 3.5ltr ...
+            const litersPerUnit = parseFloat(size.replace("ltr", ""));
+
+            for (let i = 0; i < p.quantity; i++) {
+              const oneLtrBottles = Math.floor(litersPerUnit); // pura litres
+              const halfLtrBottles = (litersPerUnit % 1 !== 0) ? 1 : 0; // agar .5 bacha toh ek half bottle
+
               oneLtrIssued += oneLtrBottles;
               halfLtrIssued += halfLtrBottles;
               totalIssued += oneLtrBottles + halfLtrBottles;
             }
           }
         }
-      
-        // returned bottles same
-        if (order.bottleReturns && order.bottleReturns.length > 0) {
-          order.bottleReturns.forEach((ret) => {
-            if (ret.size === "1ltr") {
-              oneLtrReturned += ret.quantity;
-            }
-            if (ret.size === "1/2ltr") {
-              halfLtrReturned += ret.quantity;
-            }
-          });
-        }
       }
-      
+
+      // returned bottles same
+      if (order.bottleReturns && order.bottleReturns.length > 0) {
+        order.bottleReturns.forEach((ret) => {
+          if (ret.size === "1ltr") {
+            oneLtrReturned += ret.quantity;
+          }
+          if (ret.size === "1/2ltr") {
+            halfLtrReturned += ret.quantity;
+          }
+        });
+      }
+    }
 
     // ✅ calculate totals correctly here
     totalReturned = oneLtrReturned + halfLtrReturned;
@@ -811,7 +923,7 @@ const getPendingBottles = async (req, res) => {
     // ✅ Get all delivered orders with pending bottles
     const orders = await CustomerOrders.find({
       deliveryBoy: deliveryBoyId,
-      status: "Delivered",
+      status: "Pending",
       $or: [
         { pendingBottleQuantity: { $gt: 0 } }, // still pending
         { "bottleReturns.0": { $exists: true } } // OR at least 1 return entry exists

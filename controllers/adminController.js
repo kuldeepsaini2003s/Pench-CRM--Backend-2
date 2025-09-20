@@ -11,7 +11,25 @@ const createAdmin = async (req, res) => {
 
     const existingAdmin = await Admin.findOne({ email });
     if (existingAdmin) {
-      return res.status(400).json({ message: "Email already exists" });
+      return res.status(400).json({ success: false, message: "Email already exists" });
+    }
+
+    let normalizedRole = role.trim().toUpperCase();
+
+    // Handle variations like SUPERADMIN, SUPER_ADMIN etc.
+    if (normalizedRole === "SUPERADMIN" || normalizedRole === "SUPER_ADMIN") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role format. Please write role as 'Super Admin'",
+      });
+    }
+
+    if (normalizedRole !== "SUPER ADMIN") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Only 'Super Admin' role is allowed. Please provide role as 'Super Admin'",
+      });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -23,7 +41,7 @@ const createAdmin = async (req, res) => {
       gstNumber,
       password: hashedPassword,
       address,
-      role,
+      role:normalizedRole
     });
 
     return res.status(201).json({
@@ -149,7 +167,21 @@ const updateAdminProfile = async (req, res) => {
       updatedData.address = address
     }
     if (role) {
-      updatedData.role = role
+      let normalizedRole = role.trim().toUpperCase();
+      if (normalizedRole === "SUPERADMIN" || normalizedRole === "SUPER_ADMIN") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid role format. Please write role as 'Super Admin'",
+        });
+      }
+
+      // ✅ Only allow proper "Super Admin" format
+      if (normalizedRole === "SUPER ADMIN") {
+        updatedData.role = normalizedRole;
+      } else {
+        // ✅ Other roles allowed (Admin, User, Manager, etc.)
+        updatedData.role = normalizedRole;
+      }
     }
     if (status) {
       updatedData.status = status
