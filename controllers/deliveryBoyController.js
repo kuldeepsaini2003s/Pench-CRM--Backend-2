@@ -723,6 +723,7 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
       oneLtrReturned = 0;
     let halfLtrIssued = 0,
       halfLtrReturned = 0;
+      let deliveredQuantity = 0;
 
     for (const order of orders) {
       for (const p of order.products) {
@@ -993,6 +994,8 @@ const getPendingBottles = async (req, res) => {
     });
 
     const customers = Object.values(customersMap);
+
+    
 
     return res.status(200).json({
       success: true,

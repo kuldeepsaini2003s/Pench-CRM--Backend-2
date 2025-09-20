@@ -747,10 +747,6 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     });
   }
 };
-
-
-
-
 // ✅ Get Only Pending (Unpaid) Payments Count
 const getPendingPaymentsCount = async (req, res) => {
   try {
