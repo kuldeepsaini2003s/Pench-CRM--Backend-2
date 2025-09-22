@@ -142,7 +142,7 @@ const createPaymentForCustomer = async (req, res) => {
             orderPaymentStatus = "Partially Paid";
             orderPaidAmount = remainingAmount;   // jitna actually diya
             paymentDocData.carryForwardBalance += (order.totalAmount - orderPaidAmount);
-        
+
             remainingAmount = 0;
           }
         }
@@ -753,7 +753,7 @@ const getCustomerBalanceAmount = async (req, res) => {
 const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
   try {
     const deliveryBoy = req?.deliveryBoy?._id;
-    if(!deliveryBoy){
+    if (!deliveryBoy) {
       return res.status(401).json({
         success: false,
         message: "Unauthorized",
@@ -764,11 +764,11 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
     limit = parseInt(limit);
 
     // Base filter: only delivered COD orders
-    let orderFilter = { 
-      status: "Delivered", 
-      paymentMethod: "COD", 
+    let orderFilter = {
+      status: "Delivered",
+      paymentMethod: "COD",
       deliveryBoy: deliveryBoy,
-      paymentStatus: { $in: ["Unpaid", "Partially Paid", "Paid"] } 
+      paymentStatus: { $in: ["Unpaid", "Partially Paid", "Paid"] }
     };
     console.log("deliveryBoy", deliveryBoy)
 
@@ -803,11 +803,11 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       }
 
       let resultObj = {
-        customerId:order.customer?._id,
+        customerId: order.customer?._id,
         customerName: order.customer?.name || "N/A",
-        orderId:order?._id,
+        orderId: order?._id,
         orderNumber: order.orderNumber,
-        amount: payment?.paidAmount || 0,
+        // paidAmount: payment?.paidAmount || 0,
         paymentStatus: status,
         deliveryBoy: order.deliveryBoy?.name || "N/A",
         deliveryDate: order.deliveryDate,
@@ -816,7 +816,12 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       // ✅ Only add date if payment was made
       if (payment?.paymentStatus === "Paid" || payment?.paymentStatus === "Partially Paid") {
         // resultObj.paymentDate = payment?.paidDate;
-        resultObj.date = payment?.paidDate;
+        resultObj.paidAmount = payment?.paidAmount || 0;
+        resultObj.paidDate = payment?.paidDate;
+      }
+      // ✅ Not paid yet
+      if (order.paymentStatus === "Unpaid" || !payment) {
+        resultObj.pendingAmount = order.totalAmount || 0;
       }
 
       return resultObj;
@@ -836,6 +841,12 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
         pendingCollections += p.totalAmount;
       }
     });
+
+    orders.forEach((order) => {
+      if (order.paymentStatus === "Unpaid") {
+        pendingCollections += order.totalAmount;
+      }
+    })
 
     // ---- Count total records for pagination ----
     const totalRecords = await CustomerOrders.countDocuments(orderFilter);
