@@ -84,7 +84,6 @@ const createCustomerInvoice = async (req, res) => {
       } else if (existingInvoice.payment.status === "Unpaid") {
         // Delete unpaid invoice to create a new one
         await Invoice.findByIdAndDelete(existingInvoice._id);
-        console.log(`Deleted unpaid invoice: ${existingInvoice.invoiceNumber}`);
       }
     }
 
@@ -119,10 +118,9 @@ const createCustomerInvoice = async (req, res) => {
           totalPaidAmount: paymentVerification.verification.totalPaidAmount,
           totalOrderAmount: paymentVerification.verification.totalOrderAmount,
           difference: paymentVerification.verification.difference,
-          paymentsFound: paymentVerification.verification.paymentsFound,
           ordersFound: paymentVerification.verification.ordersFound,
         },
-        payments: paymentVerification.payments,
+        payment: paymentVerification.payment,
       });
     }
     // Process products from orders
@@ -130,18 +128,20 @@ const createCustomerInvoice = async (req, res) => {
 
     // Calculate payment status based on orders
     const paidOrders = orders.filter((order) => order.paymentStatus === "Paid");
+
     const partiallyPaidOrders = orders.filter(
       (order) => order.paymentStatus === "Partially Paid"
     );
 
     let paymentStatus = "Paid";
+
     if (partiallyPaidOrders.length > 0) {
       paymentStatus = "Partially Paid";
     }
 
     // Calculate payment amounts
     const paidAmount = totalAmount;
-    const balanceAmount = 0;    
+    const balanceAmount = 0;
 
     const invoiceNumber = generateInvoiceNumber();
 
@@ -168,13 +168,13 @@ const createCustomerInvoice = async (req, res) => {
         totalPrice: product.totalPrice,
       })),
       payment: {
-        status: paymentStatus,
-        method: customer.paymentMethod || "COD",
+        status: paymentVerification?.payment?.paymentStatus,
+        method: paymentVerification?.payment?.paymentMethod || "COD",
       },
       totals: {
         subtotal: totalAmount,
         paidAmount: paidAmount,
-        balanceAmount: balanceAmount,        
+        balanceAmount: balanceAmount,
       },
       state: "Draft",
       includedOrders: orders.map((order) => order._id),
@@ -226,7 +226,8 @@ const createCustomerInvoice = async (req, res) => {
         invoiceId: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
         pdfUrl: result.secure_url,
-        paymentStatus: paymentStatus,
+        paymentStatus: paymentVerification?.payment?.paymentStatus,
+        paymentMethod: paymentVerification?.payment?.paymentMethod,
         totalAmount: totalAmount,
         paidAmount: paidAmount,
         balanceAmount: balanceAmount,
@@ -274,10 +275,10 @@ const getAllCustomerInvoices = async (req, res) => {
       ];
     } else if (startDate) {
       const startDateObj = parseUniversalDate(startDate) || new Date(startDate);
-      matchStage["period.endDate"] = { $gte: endDateObj };
+      matchStage["period.endDate"] = { $gte: startDateObj };
     } else if (endDate) {
       const endDateObj = parseUniversalDate(endDate) || new Date(endDate);
-      matchStage["period.startDate"] = { $lte: startDateObj };
+      matchStage["period.startDate"] = { $lte: endDateObj };
     }
 
     if (search) {
@@ -453,11 +454,8 @@ const searchCustomers = async (req, res) => {
 const getCustomerData = async (req, res) => {
   try {
     const { customerId } = req.params;
-    const {
-      startDate: requestedStartDate,
-      endDate: requestedEndDate,
-      deleteExisting = false,
-    } = req.query;
+    const { startDate: requestedStartDate, endDate: requestedEndDate } =
+      req.query;
 
     if (!customerId) {
       return res.status(400).json({
@@ -485,9 +483,10 @@ const getCustomerData = async (req, res) => {
     if (requestedStartDate && requestedEndDate) {
       // Use provided date range
       startDate =
-        parseUniversalDate(requestedStartDate) || new Date(requestedStartDate);
+        formatDateToDDMMYYYY(requestedStartDate) ||
+        new Date(requestedStartDate);
       endDate =
-        parseUniversalDate(requestedEndDate) || new Date(requestedEndDate);
+        formatDateToDDMMYYYY(requestedEndDate) || new Date(requestedEndDate);
 
       // Check if invoice already exists for this date range
       const existingInvoice = await Invoice.findOne({
@@ -501,9 +500,6 @@ const getCustomerData = async (req, res) => {
         if (deleteExisting === "true") {
           // Delete the existing invoice
           await Invoice.findByIdAndDelete(existingInvoice._id);
-          console.log(
-            `Deleted existing invoice: ${existingInvoice.invoiceNumber}`
-          );
         } else {
           return res.status(400).json({
             success: false,
@@ -521,7 +517,6 @@ const getCustomerData = async (req, res) => {
           });
         }
       }
-
       // Fetch orders for the specific date range
       orders = await CustomerOrders.find({
         customer: customerId,
@@ -543,10 +538,11 @@ const getCustomerData = async (req, res) => {
       }).sort({ "period.endDate": -1 });
 
       if (existingInvoices.length > 0) {
-        // Use the last invoice's endDate as the new startDate
         const lastInvoice = existingInvoices[0];
-        startDate = new Date(lastInvoice.period.endDate);
-        startDate.setDate(startDate.getDate() + 1); // Start from next day
+        startDate =
+          formatDateToDDMMYYYY(lastInvoice.period.endDate) ||
+          new Date(lastInvoice.period.endDate);
+        startDate.setDate(startDate.getDate() + 1);
 
         // Fetch orders from this startDate onwards
         orders = await CustomerOrders.find({
@@ -562,14 +558,12 @@ const getCustomerData = async (req, res) => {
         if (orders.length > 0) {
           // Sort orders by delivery date to get the last date
           const sortedOrders = orders.sort((a, b) => {
-            const dateA =
-              parseUniversalDate(a.deliveryDate) || new Date(a.deliveryDate);
-            const dateB =
-              parseUniversalDate(b.deliveryDate) || new Date(b.deliveryDate);
+            const dateA = new Date(a.deliveryDate);
+            const dateB = new Date(b.deliveryDate);
             return dateA - dateB;
           });
           endDate =
-            parseUniversalDate(
+            formatDateToDDMMYYYY(
               sortedOrders[sortedOrders.length - 1].deliveryDate
             ) || new Date(sortedOrders[sortedOrders.length - 1].deliveryDate);
         } else {
@@ -599,18 +593,16 @@ const getCustomerData = async (req, res) => {
 
         // Sort orders by delivery date to get first and last dates
         const sortedOrders = orders.sort((a, b) => {
-          const dateA =
-            parseUniversalDate(a.deliveryDate) || new Date(a.deliveryDate);
-          const dateB =
-            parseUniversalDate(b.deliveryDate) || new Date(b.deliveryDate);
+          const dateA = new Date(a.deliveryDate);
+          const dateB = new Date(b.deliveryDate);
           return dateA - dateB;
         });
 
         startDate =
-          parseUniversalDate(sortedOrders[0].deliveryDate) ||
+          formatDateToDDMMYYYY(sortedOrders[0].deliveryDate) ||
           new Date(sortedOrders[0].deliveryDate);
         endDate =
-          parseUniversalDate(
+          formatDateToDDMMYYYY(
             sortedOrders[sortedOrders.length - 1].deliveryDate
           ) || new Date(sortedOrders[sortedOrders.length - 1].deliveryDate);
       }
@@ -630,16 +622,11 @@ const getCustomerData = async (req, res) => {
       endDate
     );
 
-    if (!paymentVerification.success) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment verification failed",
-        details: paymentVerification.message,
-      });
-    }
-
     // Check if payment amounts match order amounts
-    if (!paymentVerification.verification.isAmountMatching) {
+    if (
+      paymentVerification.success &&
+      !paymentVerification.verification.isAmountMatching
+    ) {
       return res.status(400).json({
         success: false,
         message: "Payment verification failed: Amount mismatch",
@@ -650,15 +637,9 @@ const getCustomerData = async (req, res) => {
           paymentsFound: paymentVerification.verification.paymentsFound,
           ordersFound: paymentVerification.verification.ordersFound,
         },
-        payments: paymentVerification.payments,
+        payment: paymentVerification.payment,
       });
     }
-
-    console.log("✅ Payment verification passed for customer data:", {
-      totalPaidAmount: paymentVerification.verification.totalPaidAmount,
-      totalOrderAmount: paymentVerification.verification.totalOrderAmount,
-      paymentsFound: paymentVerification.verification.paymentsFound,
-    });
 
     const { products, totalAmount } = processProducts(orders);
 
