@@ -738,6 +738,134 @@ const getCustomerBalanceAmount = async (req, res) => {
 };
 
 //✅ Get All Cash Payments For DeliveryBoy
+// const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
+//   try {
+//     const deliveryBoy = req?.deliveryBoy?._id;
+//     if (!deliveryBoy) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized",
+//       });
+//     }
+//     let { page = 1, limit = 10, search = "" } = req.query;
+//     page = parseInt(page);
+//     limit = parseInt(limit);
+
+//     // Base filter: only delivered COD orders
+//     let orderFilter = {
+//       status: "Delivered",
+//       paymentMethod: "COD",
+//       deliveryBoy: deliveryBoy,
+//       paymentStatus: { $in: ["Unpaid", "Partially Paid", "Paid"] }
+//     };
+//     console.log("deliveryBoy", deliveryBoy)
+
+//     if (search) {
+//       orderFilter.$or = [{ orderNumber: { $regex: search, $options: "i" } }];
+//     }
+
+//     // ---- Fetch paginated orders ----
+//     const orders = await CustomerOrders.find(orderFilter)
+//       .populate("customer", "name")
+//       .populate("deliveryBoy", "name")
+//       .sort({ deliveryDate: -1 })
+//       .skip((page - 1) * limit)
+//       .limit(limit)
+//       .lean();
+
+//     // ---- Fetch related payments ----
+//     const customerIds = orders.map((o) => o.customer._id);
+//     const payments = await Payment.find({
+//       customer: { $in: customerIds },
+//     }).lean();
+
+//     // ---- Format data for UI ----
+//     const results = orders.map((order) => {
+//       const payment = payments.find(
+//         (p) => p.customer.toString() === order.customer._id.toString()
+//       );
+
+//       let status = "Pending"; // default
+//       if (payment?.paymentStatus === "Paid" || payment?.paymentStatus === "Partially Paid") {
+//         status = "Received";
+//       }
+
+//       let resultObj = {
+//         customerId: order.customer?._id,
+//         customerName: order.customer?.name || "N/A",
+//         orderId: order?._id,
+//         orderNumber: order.orderNumber,
+//         // paidAmount: payment?.paidAmount || 0,
+//         paymentStatus: status,
+//         deliveryBoy: order.deliveryBoy?.name || "N/A",
+//         deliveryDate: order.deliveryDate,
+//       };
+
+//       // ✅ Only add date if payment was made
+//       if (payment?.paymentStatus === "Paid" || payment?.paymentStatus === "Partially Paid") {
+//         // resultObj.paymentDate = payment?.paidDate;
+//         resultObj.paidAmount = payment?.paidAmount || 0;
+//         resultObj.paidDate = payment?.paidDate;
+//       }
+//       // ✅ Not paid yet
+//       if (order.paymentStatus === "Unpaid" || !payment) {
+//         resultObj.pendingAmount = order.totalAmount || 0;
+//       }
+
+//       return resultObj;
+//     });
+
+//     // ---- Totals (for summary cards) ----
+//     let totalCollected = 0;
+//     let pendingCollections = 0;
+//     let customersPaidSet = new Set();
+
+//     payments.forEach((p) => {
+//       if (p.paymentStatus === "Paid" || p.paymentStatus === "Partially Paid") {
+//         totalCollected += p.paidAmount;
+//         customersPaidSet.add(p.customer.toString());
+//       }
+//       if (p.paymentStatus === "Unpaid") {
+//         pendingCollections += p.totalAmount;
+//       }
+//     });
+
+//     orders.forEach((order) => {
+//       if (order.paymentStatus === "Unpaid") {
+//         pendingCollections += order.totalAmount;
+//       }
+//     })
+
+//     // ---- Count total records for pagination ----
+//     const totalRecords = await CustomerOrders.countDocuments(orderFilter);
+//     const totalPages = Math.ceil(totalRecords / limit);
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Cash Payments for Delivery Boy fetched successfully",
+//       summary: {
+//         totalCollected,
+//         pendingCollections,
+//         customersPaid: customersPaidSet.size,
+//       },
+//       totalRecords,
+//       totalPages,
+//       currentPage: page,
+//       previous: page > 1,
+//       next: page < totalPages,
+//       data: results,
+//     });
+//   } catch (error) {
+//     console.error("getAllCashPaymentsForDeliveryBoy Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch cash payments",
+//       error: error.message,
+//     });
+//   }
+// };
+
+//✅ New Code For  Get All Cash Payments For DeliveryBoy
 const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
   try {
     const deliveryBoy = req?.deliveryBoy?._id;    
@@ -747,9 +875,6 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
         message: "Unauthorized",
       });
     }
-    let { page = 1, limit = 10, search = "" } = req.query;
-    page = parseInt(page);
-    limit = parseInt(limit);
 
     // Base filter: only delivered COD orders    
     let orderFilter = {
@@ -759,17 +884,11 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       paymentStatus: { $in: ["Unpaid", "Partially Paid", "Paid"] }
     };
 
-    if (search) {
-      orderFilter.$or = [{ orderNumber: { $regex: search, $options: "i" } }];
-    }
-
-    // ---- Fetch paginated orders ----
+    // ---- Fetch all orders (no pagination, no search) ----
     const orders = await CustomerOrders.find(orderFilter)
       .populate("customer", "name")
       .populate("deliveryBoy", "name")
       .sort({ deliveryDate: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
       .lean();
 
     // ---- Fetch related payments ----
@@ -799,22 +918,20 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
         orderId: order?._id,
         orderId: order?._id,
         orderNumber: order.orderNumber,
-        // paidAmount: payment?.paidAmount || 0,
         paymentStatus: status,
         deliveryBoy: order.deliveryBoy?.name || "N/A",
         deliveryDate: order.deliveryDate,
       };
 
-      // ✅ Only add date if payment was made
       if (
         payment?.paymentStatus === "Paid" ||
         payment?.paymentStatus === "Partially Paid"
-      ) {
-        // resultObj.paymentDate = payment?.paidDate;
+      ) {        
         resultObj.paidAmount = payment?.paidAmount || 0;
         resultObj.paidDate = payment?.paidDate;
       }
-      // ✅ Not paid yet
+
+      // ✅ Pending
       if (order.paymentStatus === "Unpaid" || !payment) {
         resultObj.pendingAmount = order.totalAmount || 0;
       }
@@ -841,11 +958,10 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       if (order.paymentStatus === "Unpaid") {
         pendingCollections += order.totalAmount;
       }
-    })
+    });
 
-    // ---- Count total records for pagination ----
-    const totalRecords = await CustomerOrders.countDocuments(orderFilter);
-    const totalPages = Math.ceil(totalRecords / limit);
+    // ---- Count total records ----
+    const totalRecords = orders.length;
 
     return res.status(200).json({
       success: true,
@@ -856,10 +972,6 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
         customersPaid: customersPaidSet.size,
       },
       totalRecords,
-      totalPages,
-      currentPage: page,
-      previous: page > 1,
-      next: page < totalPages,
       data: results,
     });
   } catch (error) {
@@ -870,6 +982,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       error: error.message,
     });
   }}
+
 
 module.exports = {
   createPaymentForCustomer,
