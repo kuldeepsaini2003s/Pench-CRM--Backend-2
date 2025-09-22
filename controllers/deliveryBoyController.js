@@ -7,7 +7,6 @@ const Product = require("../models/productModel");
 const FRONTEND_BASE =
   process.env.FRONTEND_BASE_URL || "https://pench-delivery-boy-app.netlify.app";
 
-
 // ✅ Register Delivery Boy
 const registerDeliveryBoy = async (req, res) => {
   try {
@@ -206,7 +205,7 @@ const getDeliveryBoyById = async (req, res) => {
 
     const customer = await Customer.find({ deliveryBoy: id })
       .populate("products.product", "productName") // only fetch productName
-      .select("name phoneNumber startDate products")
+      .select("name phoneNumber startDate products");
 
     const assignedCustomers = customer.map((c) => {
       const productNames = c.products.map((p) => p.product?.productName || "");
@@ -414,7 +413,7 @@ const getOrdersByDeliveryBoy = async (req, res) => {
   try {
     const deliveryBoyId = req?.deliveryBoy?._id;
 
-    let { page = 1, limit = 10 } = req.query;
+    let { page = 1, limit = 10, search = "" } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
 
@@ -430,63 +429,100 @@ const getOrdersByDeliveryBoy = async (req, res) => {
     const today = new Date();
     const todayFormatted = formatDateToDDMMYYYY(today);
 
-    // Debug: Check what orders exist for this delivery boy
-    console.log("=== DEBUG INFO ===");
-    console.log("Delivery Boy ID:", deliveryBoyId);
-    console.log("Today formatted:", todayFormatted);
-
-    // Check all orders for this delivery boy
-    const allOrdersForDeliveryBoy = await CustomerOrders.find({
-      deliveryBoy: deliveryBoyId,
-    });
-    console.log(
-      "Total orders for delivery boy:",
-      allOrdersForDeliveryBoy.length
-    );
-
-    // Check orders for today
-    const todayOrders = await CustomerOrders.find({
-      deliveryBoy: deliveryBoyId,
-      deliveryDate: todayFormatted,
-    });
-    console.log("Orders for today:", todayOrders.length);
-    console.log(
-      "Today orders details:",
-      todayOrders.map((o) => ({
-        id: o._id,
-        status: o.status,
-        deliveryDate: o.deliveryDate,
-      }))
-    );
-
-    // Check pending orders for today
-    const pendingTodayOrders = await CustomerOrders.find({
-      deliveryBoy: deliveryBoyId,
-      deliveryDate: todayFormatted,
-      status: "Pending",
-    });
-    console.log("Pending orders for today:", pendingTodayOrders.length);
-
     const filter = {
       deliveryBoy: deliveryBoyId,
       deliveryDate: todayFormatted,
       status: "Pending",
     };
 
-    const [totalOrders, orders] = await Promise.all([
-      CustomerOrders.countDocuments(filter),
-      CustomerOrders.find(filter)
-        .populate("customer", "name phoneNumber address image")
-        .populate("products._id", "productImage")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+    const pipeline = [
+      {
+        $match: {
+          deliveryBoy: deliveryBoyId,
+          deliveryDate: todayFormatted,
+          status: "Pending",
+        },
+      },
+      {
+        $lookup: {
+          from: "customers",
+          localField: "customer",
+          foreignField: "_id",
+          as: "customer",
+        },
+      },
+      {
+        $unwind: "$customer",
+      },
+    ];
+
+    if (search) {
+      if (!isNaN(search)) {
+        pipeline.push({
+          $match: {
+            $or: [
+              { orderNumber: { $regex: search, $options: "i" } },
+              { "customer.phoneNumber": Number(search) },
+            ],
+          },
+        });
+      } else {
+        pipeline.push({
+          $match: {
+            $or: [
+              { orderNumber: { $regex: search, $options: "i" } },
+              { "customer.name": { $regex: search, $options: "i" } },
+            ],
+          },
+        });
+      }
+    }
+    
+    pipeline.push({
+      $project: {
+        orderNumber: 1,
+        deliveryBoy: 1,
+        deliveryDate: 1,
+        paymentMethod: 1,
+        paymentStatus: 1,
+        products: 1,
+        totalAmount: 1,
+        status: 1,
+        bottlesReturned: 1,
+        pendingBottleQuantity: 1,
+        bottleReturns: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        __v: 1,
+        "customer._id": 1,
+        "customer.name": 1,
+        "customer.phoneNumber": 1,
+        "customer.image": 1,
+        "customer.address": 1,
+      },
+    });
+
+    pipeline.push(
+      { $sort: { createdAt: -1 } },
+      { $skip: (page - 1) * limit },
+      { $limit: limit }
+    );
+
+    // Get total count for pagination
+    const countPipeline = pipeline.slice(0, -3);
+    countPipeline.push({ $count: "total" });
+
+    const [countResult, orders] = await Promise.all([
+      CustomerOrders.aggregate(countPipeline),
+      CustomerOrders.aggregate(pipeline),
     ]);
-    console.log("orders", orders);
+
+    const totalOrders = countResult[0]?.total || 0;
+
     const transformedOrders = orders.map((order) => ({
-      ...order.toObject(),
+      ...order,
       products: order.products.map((product) => ({
-        _id: product?._id?._id,
+        _id: product?._id,
         productImage: product?.productImage,
         productName: product?.productName,
         price: product?.price,
@@ -495,7 +531,6 @@ const getOrdersByDeliveryBoy = async (req, res) => {
         totalPrice: product?.totalPrice,
       })),
     }));
-    console.log("transformedOrders", transformedOrders);
 
     const totalPages = Math.ceil(totalOrders / limit);
     const hasPrevious = page > 1;
@@ -658,7 +693,6 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
     // yetToReturn logic
     let yetToReturn = totalReturned;
 
-
     const response = {
       _id: deliveryBoy._id,
       deliveryBoy: deliveryBoy.name,
@@ -690,7 +724,6 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
     });
   }
 };
-
 
 //✅ Order history
 const getOrderHistory = async (req, res) => {
@@ -812,7 +845,7 @@ const getPendingBottles = async (req, res) => {
       status: "Delivered",
       $or: [
         { pendingBottleQuantity: { $gt: 0 } }, // still pending
-        { "bottleReturns.0": { $exists: true } } // OR at least 1 return entry exists
+        { "bottleReturns.0": { $exists: true } }, // OR at least 1 return entry exists
       ],
     })
       .populate("customer", "_id name phoneNumber address")
@@ -883,8 +916,6 @@ const getPendingBottles = async (req, res) => {
 
     const customers = Object.values(customersMap);
 
-    
-
     return res.status(200).json({
       success: true,
       message: "Pending bottles data fetched successfully",
@@ -904,7 +935,7 @@ const getPendingBottles = async (req, res) => {
 // ✅ Get All Bottle sizes
 const getAllMilkBottleSizes = async (req, res) => {
   try {
-    const sizes = await Product.find({ "productName": "Milk" }, { size: 1 });
+    const sizes = await Product.find({ productName: "Milk" }, { size: 1 });
     return res.status(200).json({
       success: true,
       message: "All milk bottle sizes fetched successfully",
@@ -918,11 +949,7 @@ const getAllMilkBottleSizes = async (req, res) => {
       error: error.message,
     });
   }
-}
-
-
-
-
+};
 
 module.exports = {
   registerDeliveryBoy,

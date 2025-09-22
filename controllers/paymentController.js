@@ -137,13 +137,13 @@ const createPaymentForCustomer = async (req, res) => {
             remainingAmount -= order.totalAmount;
           }
 
-        await CustomerOrders.findByIdAndUpdate(order._id, {
-          $set: {
-            paymentStatus: orderPaymentStatus,
-            paymentMethod,
-            paidAmount: orderPaidAmount,
-          },
-        });
+          await CustomerOrders.findByIdAndUpdate(order._id, {
+            $set: {
+              paymentStatus: orderPaymentStatus,
+              paymentMethod,
+              paidAmount: orderPaidAmount,
+            },
+          });
 
           paymentDocData.paidAmount += orderPaidAmount;
           paidOrders.push(order);
@@ -438,23 +438,11 @@ const getAllPaymentsByStatus = async (req, res) => {
 
     // Handle date filtering
     if (from && to) {
-      // Both from and to provided - generate date range
-      const fromDate = new Date(from);
-      const toDate = new Date(to);
-      const dateRange = generateDateRange(fromDate, toDate);
-      filter.paidDates = { $in: dateRange };
+      filter.paidDate = { $gte: from, $lte: to };
     } else if (from) {
-      // Only from provided - generate dates from fromDate to today
-      const fromDate = new Date(from);
-      const today = new Date();
-      const dateRange = generateDateRange(fromDate, today);
-      filter.paidDates = { $in: dateRange };
+      filter.paidDate = { $gte: from };
     } else if (to) {
-      // Only to provided - generate dates from beginning to toDate
-      const beginning = new Date("2020-01-01"); // Start from a reasonable date
-      const toDate = new Date(to);
-      const dateRange = generateDateRange(beginning, toDate);
-      filter.paidDates = { $in: dateRange };
+      filter.paidDate = { $lte: to };
     }
 
     // ---- Aggregation Pipeline ----
@@ -868,7 +856,7 @@ const getCustomerBalanceAmount = async (req, res) => {
 //✅ New Code For  Get All Cash Payments For DeliveryBoy
 const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
   try {
-    const deliveryBoy = req?.deliveryBoy?._id;    
+    const deliveryBoy = req?.deliveryBoy?._id;
     if (!deliveryBoy) {
       return res.status(401).json({
         success: false,
@@ -876,12 +864,12 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       });
     }
 
-    // Base filter: only delivered COD orders    
+    // Base filter: only delivered COD orders
     let orderFilter = {
       status: "Delivered",
       paymentMethod: "COD",
       deliveryBoy: deliveryBoy,
-      paymentStatus: { $in: ["Unpaid", "Partially Paid", "Paid"] }
+      paymentStatus: { $in: ["Unpaid", "Partially Paid", "Paid"] },
     };
 
     // ---- Fetch all orders (no pagination, no search) ----
@@ -926,7 +914,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       if (
         payment?.paymentStatus === "Paid" ||
         payment?.paymentStatus === "Partially Paid"
-      ) {        
+      ) {
         resultObj.paidAmount = payment?.paidAmount || 0;
         resultObj.paidDate = payment?.paidDate;
       }
@@ -981,8 +969,8 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       message: "Failed to fetch cash payments",
       error: error.message,
     });
-  }}
-
+  }
+};
 
 module.exports = {
   createPaymentForCustomer,
