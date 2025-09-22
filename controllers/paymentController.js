@@ -14,8 +14,8 @@ const createPaymentForCustomer = async (req, res) => {
     const { customerId } = req.params;
     const { wantToPay, paymentMethod, paidAmount } = req.body;
 
-    // 🔍 Find customer
     const customer = await Customer.findById(customerId);
+
     if (!customer) {
       return res
         .status(404)
@@ -72,7 +72,7 @@ const createPaymentForCustomer = async (req, res) => {
 
     let paymentDocData = {
       customer: customerId,
-      finalBalanceAmount,
+      totalAmount: finalBalanceAmount,
       paidAmount: 0,
       balanceAmount: finalBalanceAmount,
       carryForwardBalance: 0,
@@ -136,16 +136,7 @@ const createPaymentForCustomer = async (req, res) => {
             orderPaidAmount = order.totalAmount;
             remainingAmount -= order.totalAmount;
           }
-        } else {
-          if (remainingAmount > 0) {
-            // customer paid less than order total
-            orderPaymentStatus = "Partially Paid";
-            orderPaidAmount = remainingAmount;   // jitna actually diya
-            paymentDocData.carryForwardBalance += (order.totalAmount - orderPaidAmount);
 
-            remainingAmount = 0;
-          }
-        }
         await CustomerOrders.findByIdAndUpdate(order._id, {
           $set: {
             paymentStatus: orderPaymentStatus,
@@ -154,13 +145,15 @@ const createPaymentForCustomer = async (req, res) => {
           },
         });
 
-        paymentDocData.paidAmount += orderPaidAmount;
-
-        // if (isPartiallyPaid && orderPaidAmount < order.totalAmount) {
-        //   paymentDocData.carryForwardBalance +=
-        //     order.totalAmount - orderPaidAmount;
-        // }
-        // paidOrders.push(order);
+          paymentDocData.paidAmount += orderPaidAmount;
+          paidOrders.push(order);
+        } else {
+          if (remainingAmount > 0) {
+            paymentDocData.carryForwardBalance += remainingAmount;
+            remainingAmount = 0;
+          }
+          break;
+        }
       }
 
       if (paidOrders.length > 0) {
@@ -201,17 +194,17 @@ const createPaymentForCustomer = async (req, res) => {
       await customer.save();
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Payment recorded successfully",
       payment: paymentObj,
       ...(paymentMethod === "Online" && {
         paymentUrl: paymentDoc.razorpayLinkUrl,
-      }), // ✅ clickable link
+      }),
     });
   } catch (error) {
     console.error("createPaymentForCustomer Error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error creating payment",
       error: error.message,
@@ -306,23 +299,24 @@ const verifyPayment = async (req, res) => {
           orderPaidAmount = order.totalAmount;
           remainingAmount -= order.totalAmount;
         }
+
+        await CustomerOrders.findByIdAndUpdate(order._id, {
+          $set: {
+            paymentStatus: orderPaymentStatus,
+            paymentMethod: "Online",
+            paidAmount: orderPaidAmount,
+          },
+        });
+
+        totalPaidNow += orderPaidAmount;
+        paidOrders.push(order);
       } else {
         if (remainingAmount > 0) {
           paymentDoc.carryForwardBalance += remainingAmount;
           remainingAmount = 0;
         }
+        break;
       }
-
-      await CustomerOrders.findByIdAndUpdate(order._id, {
-        $set: {
-          paymentStatus: orderPaymentStatus,
-          paymentMethod: "Online",
-          paidAmount: orderPaidAmount,
-        },
-      });
-
-      totalPaidNow += orderPaidAmount;
-      paidOrders.push(order);
     }
 
     // ✅ Update Payment document (with validation to prevent over-payment)
@@ -382,8 +376,6 @@ const verifyPayment = async (req, res) => {
     });
   }
 };
-
-
 
 // Helper function to generate date range
 const generateDateRange = (startDate, endDate) => {
@@ -509,17 +501,17 @@ const getAllPaymentsByStatus = async (req, res) => {
       },
       ...(productName || productSize
         ? [
-          {
-            $match: {
-              ...(productName && {
-                productNames: { $regex: productName, $options: "i" },
-              }),
-              ...(productSize && {
-                productSizes: { $regex: productSize, $options: "i" },
-              }),
+            {
+              $match: {
+                ...(productName && {
+                  productNames: { $regex: productName, $options: "i" },
+                }),
+                ...(productSize && {
+                  productSizes: { $regex: productSize, $options: "i" },
+                }),
+              },
             },
-          },
-        ]
+          ]
         : []),
       {
         $project: {
@@ -603,7 +595,6 @@ const getAllPaymentsByStatus = async (req, res) => {
   }
 };
 
-
 // ✅ Get Only Pending (Unpaid) Payments Count
 const getPendingPaymentsCount = async (req, res) => {
   try {
@@ -629,27 +620,24 @@ const getPendingPaymentsCount = async (req, res) => {
 // ✅ Verify Payment for Invoice Creation (Helper function)
 const verifyPaymentForInvoice = async (customerId, startDate, endDate) => {
   try {
-    // Find payments that match the date range and customer
-    const payments = await Payment.find({
+    // Find a specific payment that matches the date range and customer
+    const payment = await Payment.findOne({
       customer: customerId,
       orderStartDate: { $lte: endDate },
       orderEndDate: { $gte: startDate },
       paymentStatus: { $in: ["Paid", "Partially Paid"] },
     });
 
-    if (payments.length === 0) {
+    if (!payment) {
       return {
         success: false,
-        message: "No matching payments found for the specified period",
+        message: "No matching payment found for the specified period",
         verification: null,
       };
     }
 
-    // Calculate total paid amount for the period
-    const totalPaidAmount = payments.reduce(
-      (sum, payment) => sum + payment.paidAmount,
-      0
-    );
+    // Get the paid amount from the single payment
+    const totalPaidAmount = payment.paidAmount;
 
     // Get orders for the same period to verify
     const orders = await CustomerOrders.find({
@@ -674,19 +662,19 @@ const verifyPaymentForInvoice = async (customerId, startDate, endDate) => {
         totalPaidAmount,
         totalOrderAmount,
         difference: Math.abs(totalPaidAmount - totalOrderAmount),
-        paymentsFound: payments.length,
         ordersFound: orders.length,
         period: { startDate, endDate },
       },
-      payments: payments.map((p) => ({
-        id: p._id,
-        paidAmount: p.paidAmount,
-        totalAmount: p.totalAmount,
-        paymentStatus: p.paymentStatus,
-        orderStartDate: p.orderStartDate,
-        orderEndDate: p.orderEndDate,
-        paidDate: p.paidDate,
-      })),
+      payment: {
+        id: payment._id,
+        paidAmount: payment.paidAmount,
+        totalAmount: payment.totalAmount,
+        paymentStatus: payment.paymentStatus,
+        paymentMethod: payment.paymentMethod,
+        orderStartDate: payment.orderStartDate,
+        orderEndDate: payment.orderEndDate,
+        paidDate: payment.paidDate,
+      },
     };
   } catch (error) {
     console.error("verifyPaymentForInvoice Error:", error);
@@ -880,7 +868,7 @@ const getCustomerBalanceAmount = async (req, res) => {
 //✅ New Code For  Get All Cash Payments For DeliveryBoy
 const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
   try {
-    const deliveryBoy = req?.deliveryBoy?._id;
+    const deliveryBoy = req?.deliveryBoy?._id;    
     if (!deliveryBoy) {
       return res.status(401).json({
         success: false,
@@ -888,7 +876,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       });
     }
 
-    // Base filter: only delivered COD orders
+    // Base filter: only delivered COD orders    
     let orderFilter = {
       status: "Delivered",
       paymentMethod: "COD",
@@ -916,13 +904,18 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       );
 
       let status = "Pending"; // default
-      if (payment?.paymentStatus === "Paid" || payment?.paymentStatus === "Partially Paid") {
+      if (
+        payment?.paymentStatus === "Paid" ||
+        payment?.paymentStatus === "Partially Paid"
+      ) {
         status = "Received";
       }
 
       let resultObj = {
         customerId: order.customer?._id,
+        customerId: order.customer?._id,
         customerName: order.customer?.name || "N/A",
+        orderId: order?._id,
         orderId: order?._id,
         orderNumber: order.orderNumber,
         paymentStatus: status,
@@ -930,8 +923,10 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
         deliveryDate: order.deliveryDate,
       };
 
-      // ✅ Paid
-      if (payment?.paymentStatus === "Paid" || payment?.paymentStatus === "Partially Paid") {
+      if (
+        payment?.paymentStatus === "Paid" ||
+        payment?.paymentStatus === "Partially Paid"
+      ) {        
         resultObj.paidAmount = payment?.paidAmount || 0;
         resultObj.paidDate = payment?.paidDate;
       }
@@ -986,9 +981,7 @@ const getAllCashPaymentsForDeliveryBoy = async (req, res) => {
       message: "Failed to fetch cash payments",
       error: error.message,
     });
-  }
-};
-
+  }}
 
 
 module.exports = {
