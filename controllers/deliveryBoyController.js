@@ -6,7 +6,7 @@ const Customer = require("../models/customerModel");
 const Product = require("../models/productModel");
 const FRONTEND_BASE =
   process.env.FRONTEND_BASE_URL || "https://pench-delivery-boy-app.netlify.app";
-const tokenExpiry = parseInt(process.env.TOKEN_TTL_MIN) || 15; // token expiry in minutes
+
 
 // ✅ Register Delivery Boy
 const registerDeliveryBoy = async (req, res) => {
@@ -582,116 +582,6 @@ const shareConsumeToken = async (req, res) => {
 };
 
 // ✅ Get DeliveryBoy Own Bootle Tracking Record
-// const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
-//   try {
-//     const deliveryBoyId = req.deliveryBoy?._id;
-
-//     if (!deliveryBoyId) {
-//       return res.status(401).json({
-//         success: false,
-//         message: "Unauthorized",
-//       });
-//     }
-
-//     const deliveryBoy = await DeliveryBoy.findById(deliveryBoyId);
-//     if (!deliveryBoy) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Delivery boy not found",
-//       });
-//     }
-
-//     // Get all relevant orders
-//     const orders = await CustomerOrders.find({
-//       deliveryBoy: deliveryBoyId,
-//       status: { $in: ["Pending"] },
-//     });
-
-//     let totalIssued = 0,
-//       totalReturned = 0;
-//     let oneLtrIssued = 0,
-//       oneLtrReturned = 0;
-//     let halfLtrIssued = 0,
-//       halfLtrReturned = 0;
-
-//       for (const order of orders) {
-//         for (const p of order.products) {
-//           if (p.productName === "Milk") {
-//             const size = p.productSize;
-
-//             if (size === "1ltr") {
-//               // direct bottles
-//               oneLtrIssued += p.quantity;
-//               totalIssued += p.quantity;
-//             } else if (size === "1/2ltr") {
-//               // 2 half liters = 1 bottle
-//               const halfBottles = p.quantity / 2;
-//               oneLtrIssued += halfBottles;
-//               totalIssued += halfBottles;
-//             } else {
-//               // handle 1.5ltr, 2.5ltr, 3.5ltr ...
-//               const liters = parseFloat(size.replace("ltr", "")) * p.quantity;
-//               const oneLtrBottles = Math.floor(liters);
-//               const halfLtrBottles = Math.round((liters % 1) / 0.5);
-
-//               oneLtrIssued += oneLtrBottles;
-//               halfLtrIssued += halfLtrBottles;
-//               totalIssued += oneLtrBottles + halfLtrBottles;
-//             }
-//           }
-//         }
-
-//         // returned bottles same
-//         if (order.bottleReturns && order.bottleReturns.length > 0) {
-//           order.bottleReturns.forEach((ret) => {
-//             if (ret.size === "1ltr") {
-//               oneLtrReturned += ret.quantity;
-//             }
-//             if (ret.size === "1/2ltr") {
-//               halfLtrReturned += ret.quantity;
-//             }
-//           });
-//         }
-//       }
-
-
-//     // ✅ calculate totals correctly here
-//     totalReturned = oneLtrReturned + halfLtrReturned;
-
-//     const response = {
-//       _id: deliveryBoy._id,
-//       deliveryBoy: deliveryBoy.name,
-//       total: {
-//         issued: totalIssued,
-//         returned: totalReturned,
-//       },
-//       yetToReturn: totalIssued - totalReturned,
-//       "1ltr": {
-//         issued: oneLtrIssued,
-//         returned: oneLtrReturned,
-//         yetToReturn: oneLtrIssued - oneLtrReturned,
-//       },
-//       "1/2ltr": {
-//         issued: halfLtrIssued,
-//         returned: halfLtrReturned,
-//         yetToReturn: halfLtrIssued - halfLtrReturned,
-//       },
-//     };
-
-//     return res.json({
-//       success: true,
-//       message: "Delivery boy own bottle tracking record fetched successfully",
-//       trackingRecord: response,
-//     });
-//   } catch (error) {
-//     console.error("getDeliveryBoyOwnBootleTrackingRecord error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to get delivery boy own bottle tracking record",
-//     });
-//   }
-// };
-
 const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
   try {
     const deliveryBoyId = req.deliveryBoy?._id;
@@ -711,10 +601,10 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
       });
     }
 
-    // Get all relevant orders
+    // Get all relevant orders (Pending + Delivered for bottle returns)
     const orders = await CustomerOrders.find({
       deliveryBoy: deliveryBoyId,
-      status: { $in: ["Pending"] },
+      status: { $in: ["Pending", "Delivered"] },
     });
 
     let totalIssued = 0,
@@ -723,7 +613,6 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
       oneLtrReturned = 0;
     let halfLtrIssued = 0,
       halfLtrReturned = 0;
-      let deliveredQuantity = 0;
 
     for (const order of orders) {
       for (const p of order.products) {
@@ -737,8 +626,7 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
             halfLtrIssued += p.quantity;
             totalIssued += p.quantity;
           } else {
-            // Handle 1.5ltr, 2.5ltr, 3.5ltr, etc.
-            // Handle custom liter sizes like 1.5ltr, 2.5ltr, 3.5ltr
+            // Handle custom sizes like 1.5ltr, 2.5ltr, etc.
             const litersPerUnit = parseFloat(size.replace("ltr", ""));
             const totalLiters = litersPerUnit * p.quantity;
 
@@ -748,12 +636,11 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
             oneLtrIssued += oneLtrBottles;
             halfLtrIssued += halfLtrBottles;
             totalIssued += oneLtrBottles + halfLtrBottles;
-
           }
         }
       }
 
-      // Returned bottles
+      // Returned bottles (only check if exist)
       if (order.bottleReturns && order.bottleReturns.length > 0) {
         order.bottleReturns.forEach((ret) => {
           if (ret.size === "1ltr") {
@@ -768,6 +655,10 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
 
     totalReturned = oneLtrReturned + halfLtrReturned;
 
+    // yetToReturn logic
+    let yetToReturn = totalReturned;
+
+
     const response = {
       _id: deliveryBoy._id,
       deliveryBoy: deliveryBoy.name,
@@ -775,16 +666,14 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
         issued: totalIssued,
         returned: totalReturned,
       },
-      yetToReturn: totalIssued - totalReturned,
+      yetToReturn,
       "1ltr": {
         issued: oneLtrIssued,
         returned: oneLtrReturned,
-        yetToReturn: oneLtrIssued - oneLtrReturned,
       },
       "1/2ltr": {
         issued: halfLtrIssued,
         returned: halfLtrReturned,
-        yetToReturn: halfLtrIssued - halfLtrReturned,
       },
     };
 
@@ -801,7 +690,6 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
     });
   }
 };
-
 
 
 //✅ Order history
@@ -1031,6 +919,9 @@ const getAllMilkBottleSizes = async (req, res) => {
     });
   }
 }
+
+
+
 
 
 module.exports = {
