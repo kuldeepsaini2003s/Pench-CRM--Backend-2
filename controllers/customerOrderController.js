@@ -602,7 +602,7 @@ const updateBottleReturns = async (req, res) => {
     todayOrder.bottleReturns = standardBottleReturns;
 
     await Promise.all([todayOrder.save(), yesterdayOrder.save()]);
-    
+
     const cleanedBottleReturns = todayOrder.bottleReturns.map((ret) => ({
       size: ret.size,
       quantity: ret.quantity,
@@ -611,14 +611,12 @@ const updateBottleReturns = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: `Bottle return details added to today's order (${today})`,
-      todayOrder: {
-        _id: todayOrder._id,
-        orderNumber: todayOrder.orderNumber,
-        deliveryDate: today,
-        customerName: yesterdayOrder.customer?.name,
-        deliveryBoyName: yesterdayOrder.deliveryBoy?.name,
-        bottleReturns: cleanedBottleReturns,
-      },
+      _id: todayOrder._id,
+      orderNumber: todayOrder.orderNumber,
+      deliveryDate: today,
+      deliveryBoyName: yesterdayOrder.deliveryBoy?.name,
+      customerName: yesterdayOrder.customer?.name,
+      bottleReturns: cleanedBottleReturns,
     });
   } catch (error) {
     console.error("updateBottleReturns Error:", error);
