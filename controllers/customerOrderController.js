@@ -508,20 +508,21 @@ const updateBottleReturns = async (req, res) => {
     }
 
     const today = moment().format("DD/MM/YYYY");
-    const yesterday = moment().subtract(1, "day").format("DD/MM/YYYY");
-
-    const yesterdayOrder = await CustomerOrders.findOne({
+    
+    const previousOrder = await CustomerOrders.findOne({
       customer: customerId,
       deliveryBoy: deliveryBoy._id,
-      deliveryDate: yesterday,
+      deliveryDate: { $ne: today },
+      status : "Delivered"
     })
       .populate("customer")
-      .populate("deliveryBoy");
+      .populate("deliveryBoy")
+      .sort({ deliveryDate: -1, createdAt: -1 });
 
-    if (!yesterdayOrder) {
+    if (!previousOrder) {
       return res.status(404).json({
         success: false,
-        message: `No delivered order found for yesterday (${yesterday})`,
+        message: `No previous order found for this customer and delivery boy`,
       });
     }
 
@@ -547,7 +548,7 @@ const updateBottleReturns = async (req, res) => {
       });
     }
 
-    const allowedSizes = yesterdayOrder.products.map((p) =>
+    const allowedSizes = previousOrder.products.map((p) =>
       normalizeSize(p.productSize)
     );
 
@@ -595,13 +596,13 @@ const updateBottleReturns = async (req, res) => {
         success: false,
         message: "No valid bottle returns to process",
         allowedSizes,
-        yesterdayDeliveryDate: yesterday,
+        previousOrderDeliveryDate: previousOrder.deliveryDate,
       });
     }
 
     todayOrder.bottleReturns = standardBottleReturns;
 
-    await Promise.all([todayOrder.save(), yesterdayOrder.save()]);
+    await todayOrder.save();
 
     const cleanedBottleReturns = todayOrder.bottleReturns.map((ret) => ({
       size: ret.size,
@@ -614,8 +615,8 @@ const updateBottleReturns = async (req, res) => {
       _id: todayOrder._id,
       orderNumber: todayOrder.orderNumber,
       deliveryDate: today,
-      deliveryBoyName: yesterdayOrder.deliveryBoy?.name,
-      customerName: yesterdayOrder.customer?.name,
+      deliveryBoyName: previousOrder.deliveryBoy?.name,
+      customerName: previousOrder.customer?.name,
       bottleReturns: cleanedBottleReturns,
     });
   } catch (error) {
