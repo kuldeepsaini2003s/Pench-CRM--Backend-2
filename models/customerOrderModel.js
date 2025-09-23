@@ -88,11 +88,6 @@ const customerOrdersSchema = new mongoose.Schema(
       default: "Pending",
     },
 
-    bottlesReturned: {
-      type: Number,
-      default: 0,
-    },
-
     bottleReturns: [
       {
         size: { type: String, required: true },
