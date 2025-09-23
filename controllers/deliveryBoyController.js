@@ -617,26 +617,30 @@ const shareConsumeToken = async (req, res) => {
 };
 
 // ✅ Get DeliveryBoy Own Bootle Tracking Record
+// 🔹 Helper: Convert size + quantity into 1ltr and 1/2ltr bottles
+function convertToBottles(size, quantity) {
+  const litersPerUnit = parseFloat(size.replace("ltr", ""));
+  const totalLiters = litersPerUnit * quantity;
+
+  const oneLtrBottles = Math.floor(totalLiters); // full liters
+  const halfLtrBottles = (totalLiters % 1 === 0.5) ? 1 : 0; // half liter if remainder is .5
+
+  return { oneLtrBottles, halfLtrBottles };
+}
+
 const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
   try {
     const deliveryBoyId = req.deliveryBoy?._id;
 
     if (!deliveryBoyId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
     const deliveryBoy = await DeliveryBoy.findById(deliveryBoyId);
     if (!deliveryBoy) {
-      return res.status(404).json({
-        success: false,
-        message: "Delivery boy not found",
-      });
+      return res.status(404).json({ success: false, message: "Delivery boy not found" });
     }
 
-    // Get all relevant orders (Pending + Delivered for bottle returns)
     const orders = await CustomerOrders.find({
       deliveryBoy: deliveryBoyId,
       status: { $in: ["Pending", "Delivered"] },
@@ -650,24 +654,17 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
       halfLtrReturned = 0;
 
     for (const order of orders) {
+      // 🔹 Issued bottles
       for (const p of order.products) {
         if (p.productName === "Milk") {
-          const size = p.productSize;
-
-          if (size === "1ltr") {
+          if (p.productSize === "1ltr") {
             oneLtrIssued += p.quantity;
             totalIssued += p.quantity;
-          } else if (size === "1/2ltr") {
+          } else if (p.productSize === "1/2ltr") {
             halfLtrIssued += p.quantity;
             totalIssued += p.quantity;
           } else {
-            // Handle custom sizes like 1.5ltr, 2.5ltr, etc.
-            const litersPerUnit = parseFloat(size.replace("ltr", ""));
-            const totalLiters = litersPerUnit * p.quantity;
-
-            const oneLtrBottles = Math.floor(totalLiters);
-            const halfLtrBottles = totalLiters % 1 === 0.5 ? 1 : 0;
-
+            const { oneLtrBottles, halfLtrBottles } = convertToBottles(p.productSize, p.quantity);
             oneLtrIssued += oneLtrBottles;
             halfLtrIssued += halfLtrBottles;
             totalIssued += oneLtrBottles + halfLtrBottles;
@@ -675,14 +672,17 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
         }
       }
 
-      // Returned bottles (only check if exist)
+      // 🔹 Returned bottles
       if (order.bottleReturns && order.bottleReturns.length > 0) {
         order.bottleReturns.forEach((ret) => {
           if (ret.size === "1ltr") {
             oneLtrReturned += ret.quantity;
-          }
-          if (ret.size === "1/2ltr") {
+          } else if (ret.size === "1/2ltr") {
             halfLtrReturned += ret.quantity;
+          } else {
+            const { oneLtrBottles, halfLtrBottles } = convertToBottles(ret.size, ret.quantity);
+            oneLtrReturned += oneLtrBottles;
+            halfLtrReturned += halfLtrBottles;
           }
         });
       }
@@ -690,25 +690,13 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
 
     totalReturned = oneLtrReturned + halfLtrReturned;
 
-    // yetToReturn logic
-    let yetToReturn = totalReturned;
-
     const response = {
       _id: deliveryBoy._id,
       deliveryBoy: deliveryBoy.name,
-      total: {
-        issued: totalIssued,
-        returned: totalReturned,
-      },
-      yetToReturn,
-      "1ltr": {
-        issued: oneLtrIssued,
-        returned: oneLtrReturned,
-      },
-      "1/2ltr": {
-        issued: halfLtrIssued,
-        returned: halfLtrReturned,
-      },
+      total: { issued: totalIssued, returned: totalReturned },
+      yetToReturn: totalIssued - totalReturned,
+      "1ltr": { issued: oneLtrIssued, returned: oneLtrReturned },
+      "1/2ltr": { issued: halfLtrIssued, returned: halfLtrReturned },
     };
 
     return res.json({
@@ -718,12 +706,10 @@ const getDeliveryBoyOwnBootleTrackingRecord = async (req, res) => {
     });
   } catch (error) {
     console.error("getDeliveryBoyOwnBootleTrackingRecord error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to get delivery boy own bottle tracking record",
-    });
+    return res.status(500).json({ success: false, message: "Failed to get delivery boy own bottle tracking record" });
   }
 };
+
 
 //✅ Order history
 const getOrderHistory = async (req, res) => {
