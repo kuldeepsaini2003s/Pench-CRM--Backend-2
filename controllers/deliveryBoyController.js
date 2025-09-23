@@ -459,10 +459,15 @@ const getOrdersByDeliveryBoy = async (req, res) => {
     if (search) {
       if (!isNaN(search)) {
         pipeline.push({
+          $addFields: {
+            phoneNumberStr: { $toString: "$customer.phoneNumber" },
+          },
+        });
+        pipeline.push({
           $match: {
             $or: [
               { orderNumber: { $regex: search, $options: "i" } },
-              { "customer.phoneNumber": Number(search) },
+              { phoneNumberStr: { $regex: search, $options: "i" } },
             ],
           },
         });
@@ -472,12 +477,13 @@ const getOrdersByDeliveryBoy = async (req, res) => {
             $or: [
               { orderNumber: { $regex: search, $options: "i" } },
               { "customer.name": { $regex: search, $options: "i" } },
+              { "customer.address": { $regex: search, $options: "i" } },
             ],
           },
         });
       }
     }
-    
+
     pipeline.push({
       $project: {
         orderNumber: 1,
