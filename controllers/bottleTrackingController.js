@@ -5,8 +5,6 @@ const {
   parseUniversalDate,
 } = require("../utils/parsedDateAndDay");
 
-
-
 // Get bottle count for a specific date
 // Helper function to map product size to bottle size
 // const mapProductSizeToBottleSize = (productSize) => {
@@ -243,6 +241,12 @@ const getBottleCountForDate = async (req, res) => {
       total: 0,
     };
 
+    let bottleReturnsCount = {
+      "1/2ltr": 0,
+      "1ltr": 0,
+      total: 0,
+    };
+
     // Helper: calculate bottles from products
     const calculateBottles = (products) => {
       products.forEach((product) => {
@@ -261,12 +265,34 @@ const getBottleCountForDate = async (req, res) => {
       });
     };
 
+    // Helper: calculate bottle returns from orders
+    const calculateBottleReturns = (orders) => {
+      orders.forEach((order) => {
+        if (order.bottleReturns && Array.isArray(order.bottleReturns)) {
+          order.bottleReturns.forEach((returnItem) => {
+            const size = returnItem.size;
+            const quantity = returnItem.quantity || 0;
+
+            if (size === "1ltr") {
+              bottleReturnsCount["1ltr"] += quantity;
+            } else if (size === "1/2ltr") {
+              bottleReturnsCount["1/2ltr"] += quantity;
+            }
+          });
+        }
+      });
+
+      bottleReturnsCount.total =
+        bottleReturnsCount["1ltr"] + bottleReturnsCount["1/2ltr"];
+    };
+
     if (targetDate.getTime() === today.getTime()) {
       const orders = await CustomerOrders.find({
         deliveryDate: formatDateToDDMMYYYY(targetDate),
         status: { $in: ["Pending", "Delivered", "Returned"] },
       });
       orders.forEach((order) => calculateBottles(order.products));
+      calculateBottleReturns(orders);
     } else {
       const customers = await Customer.find({
         subscriptionStatus: "active",
@@ -339,9 +365,18 @@ const getBottleCountForDate = async (req, res) => {
       success: true,
       message: `Bottle count for ${targetDate.toISOString().split("T")[0]}`,
       data: {
-        totalBottles: { issue: bottleCount.total, return: 0 },
-        "1/2ltr": { issue: bottleCount["1/2ltr"], return: 0 },
-        "1ltr": { issue: bottleCount["1ltr"], return: 0 },
+        totalBottles: {
+          issue: bottleCount.total,
+          return: bottleReturnsCount.total,
+        },
+        "1/2ltr": {
+          issue: bottleCount["1/2ltr"],
+          return: bottleReturnsCount["1/2ltr"],
+        },
+        "1ltr": {
+          issue: bottleCount["1ltr"],
+          return: bottleReturnsCount["1ltr"],
+        },
       },
     });
   } catch (error) {
