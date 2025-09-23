@@ -482,19 +482,61 @@ const normalizeSize = (sizeStr) => {
   return s;
 };
 
+const convertToStandardBottles = (size, quantity) => {
+  const litersPerUnit = parseFloat(size.replace("ltr", ""));
+  const totalLiters = litersPerUnit * quantity;
+
+  const oneLtrBottles = Math.floor(totalLiters);
+  const remainder = totalLiters % 1;
+  const halfLtrBottles = remainder >= 0.5 ? 1 : 0;
+
+  return { oneLtrBottles, halfLtrBottles };
+};
+
 const updateBottleReturns = async (req, res) => {
   try {
-    const { orderId } = req.params;
+    const { customerId } = req.params;
     const { bottleReturns } = req.body;
 
-    const order = await CustomerOrders.findById(orderId)
+    const deliveryBoy = await DeliveryBoy.findById(req.deliveryBoy._id);
+
+    if (!deliveryBoy) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery boy not found",
+      });
+    }
+
+    const today = moment().format("DD/MM/YYYY");
+    const yesterday = moment().subtract(1, "day").format("DD/MM/YYYY");
+
+    const yesterdayOrder = await CustomerOrders.findOne({
+      customer: customerId,
+      deliveryBoy: deliveryBoy._id,
+      deliveryDate: yesterday,
+    })
       .populate("customer")
       .populate("deliveryBoy");
 
-    if (!order) {
+    if (!yesterdayOrder) {
       return res.status(404).json({
         success: false,
-        message: "Order not found",
+        message: `No delivered order found for yesterday (${yesterday})`,
+      });
+    }
+
+    const todayOrder = await CustomerOrders.findOne({
+      customer: customerId,
+      deliveryBoy: deliveryBoy._id,
+      deliveryDate: today,
+    })
+      .populate("customer")
+      .populate("deliveryBoy");
+
+    if (!todayOrder) {
+      return res.status(404).json({
+        success: false,
+        message: `No order found for today (${today}). Please create an order first.`,
       });
     }
 
@@ -505,64 +547,76 @@ const updateBottleReturns = async (req, res) => {
       });
     }
 
-    // ✅ Allowed sizes only from order products
-    const allowedSizes = order.products.map((p) =>
+    const allowedSizes = yesterdayOrder.products.map((p) =>
       normalizeSize(p.productSize)
     );
 
-    const filteredReturns = [];
+    const standardBottleReturns = [];
+    let totalOneLtrReturned = 0;
+    let totalHalfLtrReturned = 0;
+
     for (const ret of bottleReturns) {
       const normSize = normalizeSize(ret.size);
-      if (
-        allowedSizes.includes(normSize) &&
-        typeof ret.quantity === "number" &&
-        ret.quantity > 0
-      ) {
-        filteredReturns.push({
-          size: normSize,
-          quantity: ret.quantity,
-        });
+
+      if (!allowedSizes.includes(normSize)) {
+        continue;
+      }
+
+      if (typeof ret.quantity === "number" && ret.quantity > 0) {
+        const { oneLtrBottles, halfLtrBottles } = convertToStandardBottles(
+          normSize,
+          ret.quantity
+        );
+
+        if (oneLtrBottles > 0) {
+          totalOneLtrReturned += oneLtrBottles;
+        }
+        if (halfLtrBottles > 0) {
+          totalHalfLtrReturned += halfLtrBottles;
+        }
       }
     }
 
-    if (filteredReturns.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "No valid bottle sizes found in this order. Only sizes from order products are allowed.",
-        allowedSizes,
+    if (totalOneLtrReturned > 0) {
+      standardBottleReturns.push({
+        size: "1ltr",
+        quantity: totalOneLtrReturned,
+      });
+    }
+    if (totalHalfLtrReturned > 0) {
+      standardBottleReturns.push({
+        size: "1/2ltr",
+        quantity: totalHalfLtrReturned,
       });
     }
 
-    // ✅ Save only valid returns
-    order.bottleReturns = filteredReturns;
+    if (standardBottleReturns.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid bottle returns to process",
+        allowedSizes,
+        yesterdayDeliveryDate: yesterday,
+      });
+    }
 
-    // ✅ Recalculate pendingBottleQuantity dynamically
-    const totalReturned = filteredReturns.reduce(
-      (sum, ret) => sum + ret.quantity,
-      0
-    );
+    todayOrder.bottleReturns = standardBottleReturns;
 
-    // ⚡ Important: calculate pending from original issued bottles
-    const totalIssued = order.products.reduce(
-      (sum, p) => sum + (p.quantity || 0),
-      0
-    );
+    await Promise.all([todayOrder.save(), yesterdayOrder.save()]);
 
-    order.pendingBottleQuantity = Math.max(totalIssued - totalReturned, 0);
-
-    await order.save();
+    const cleanedBottleReturns = todayOrder.bottleReturns.map((ret) => ({
+      size: ret.size,
+      quantity: ret.quantity,
+    }));
 
     return res.status(200).json({
       success: true,
-      message: "Bottle return details updated successfully",
-      _id: order?._id,
-      orderNumber: order?.orderNumber,
-      customerId: order?.customer?._id,
-      customerName: order?.customer?.name,
-      deliveryBoyName: order?.deliveryBoy?.name,
-      bottleReturns: order?.bottleReturns,
-      pendingBottleQuantity: order?.pendingBottleQuantity,
+      message: `Bottle return details added to today's order (${today})`,
+      _id: todayOrder._id,
+      orderNumber: todayOrder.orderNumber,
+      deliveryDate: today,
+      deliveryBoyName: yesterdayOrder.deliveryBoy?.name,
+      customerName: yesterdayOrder.customer?.name,
+      bottleReturns: cleanedBottleReturns,
     });
   } catch (error) {
     console.error("updateBottleReturns Error:", error);
