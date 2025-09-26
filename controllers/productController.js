@@ -41,8 +41,7 @@ const createProduct = async (req, res) => {
     if (!sizePattern.test(normalizeSize)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid size format",
+        message: "Invalid size format",
       });
     }
 
@@ -732,13 +731,6 @@ const getTotalProductDeliveryTommorow = async (req, res) => {
       status: "Pending",
     };
 
-    if (search) {
-      matchConditions.$or = [
-        { "customer.name": { $regex: search, $options: "i" } },
-        { "deliveryBoy.name": { $regex: search, $options: "i" } },
-      ];
-    }
-
     const pipeline = [
       { $match: matchConditions },
 
@@ -764,6 +756,20 @@ const getTotalProductDeliveryTommorow = async (req, res) => {
       },
       { $unwind: "$deliveryBoy" },
 
+      // Apply search filter AFTER lookups
+      ...(search
+        ? [
+            {
+              $match: {
+                $or: [
+                  { "customer.name": { $regex: search, $options: "i" } },
+                  { "deliveryBoy.name": { $regex: search, $options: "i" } },
+                ],
+              },
+            },
+          ]
+        : []),
+
       { $unwind: "$products" },
 
       // Apply product filters after unwinding products
@@ -779,7 +785,7 @@ const getTotalProductDeliveryTommorow = async (req, res) => {
                 }),
                 ...(productSize && {
                   "products.productSize": {
-                    $regex: productSize,
+                    $regex: `^${productSize}$`,
                     $options: "i",
                   },
                 }),
@@ -877,9 +883,7 @@ const getTotalProductDeliveryTommorow = async (req, res) => {
       },
       { $unwind: "$deliveryBoy" },
 
-      { $unwind: "$products" },
-
-      // ✅ Apply search filter AFTER lookups
+      // Apply search filter AFTER lookups
       ...(search
         ? [
             {
@@ -893,7 +897,9 @@ const getTotalProductDeliveryTommorow = async (req, res) => {
           ]
         : []),
 
-      // ✅ Apply product filters AFTER unwind
+      { $unwind: "$products" },
+
+      // Apply product filters AFTER unwind
       ...(productName || productSize
         ? [
             {
@@ -906,7 +912,7 @@ const getTotalProductDeliveryTommorow = async (req, res) => {
                 }),
                 ...(productSize && {
                   "products.productSize": {
-                    $regex: productSize,
+                    $regex: `^${productSize}$`,
                     $options: "i",
                   },
                 }),

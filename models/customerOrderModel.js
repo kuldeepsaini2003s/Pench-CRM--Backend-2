@@ -95,7 +95,7 @@ const customerOrdersSchema = new mongoose.Schema(
       }
     ],
     
-    pendingBottleQuantity: {
+    pendingBottleReturnQuantity: {
       type: Number,
       default: 0,
     },

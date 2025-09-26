@@ -417,8 +417,8 @@ const updateOrderStatus = async (req, res) => {
         });
 
         // Sirf ek baar Delivered hone par hi add karo
-        order.pendingBottleQuantity =
-          (order.pendingBottleQuantity || 0) + milkQuantity;
+        order.pendingBottleReturnQuantity =
+          (order.pendingBottleReturnQuantity || 0) + milkQuantity;
       }
 
       order.status = status;
@@ -433,12 +433,12 @@ const updateOrderStatus = async (req, res) => {
     // if (typeof bottlesReturned === "number" && bottlesReturned >= 0) {
     //   order.bottlesReturned = bottlesReturned;
 
-    //   // Decrease pendingBottleQuantity based on returned bottles
-    //   order.pendingBottleQuantity =
-    //     (order.pendingBottleQuantity || 0) - bottlesReturned;
+    //   // Decrease pendingBottleReturnQuantity based on returned bottles
+    //   order.pendingBottleReturnQuantity =
+    //     (order.pendingBottleReturnQuantity || 0) - bottlesReturned;
 
-    //   if (order.pendingBottleQuantity < 0) {
-    //     order.pendingBottleQuantity = 0; // prevent negative
+    //   if (order.pendingBottleReturnQuantity < 0) {
+    //     order.pendingBottleReturnQuantity = 0; // prevent negative
     //   }
     // }
 
@@ -460,7 +460,7 @@ const updateOrderStatus = async (req, res) => {
       productSize: productSizes,
       quantity: productQuantities,
       status: order?.status,
-      pendingBottleQuantity: order?.pendingBottleQuantity,
+      pendingBottleReturnQuantity: order?.pendingBottleReturnQuantity,
     });
   } catch (error) {
     console.error("updateOrderStatus Error:", error);
@@ -508,21 +508,21 @@ const updateBottleReturns = async (req, res) => {
     }
 
     const today = moment().format("DD/MM/YYYY");
-    
-    const previousOrder = await CustomerOrders.findOne({
+
+    // Find the last delivered order for this customer and delivery boy
+    const lastDeliveredOrder = await CustomerOrders.findOne({
       customer: customerId,
       deliveryBoy: deliveryBoy._id,
-      deliveryDate: { $ne: today },
-      status : "Delivered"
+      status: "Delivered",
     })
       .populate("customer")
       .populate("deliveryBoy")
-      .sort({ deliveryDate: -1, createdAt: -1 });
+      .sort({ deliveryDate: -1, createdAt: -1 }); // Sort by delivery date descending, then by creation date
 
-    if (!previousOrder) {
+    if (!lastDeliveredOrder) {
       return res.status(404).json({
         success: false,
-        message: `No previous order found for this customer and delivery boy`,
+        message: "No delivered order found for this customer",
       });
     }
 
@@ -548,7 +548,7 @@ const updateBottleReturns = async (req, res) => {
       });
     }
 
-    const allowedSizes = previousOrder.products.map((p) =>
+    const allowedSizes = lastDeliveredOrder.products.map((p) =>
       normalizeSize(p.productSize)
     );
 
@@ -596,13 +596,13 @@ const updateBottleReturns = async (req, res) => {
         success: false,
         message: "No valid bottle returns to process",
         allowedSizes,
-        previousOrderDeliveryDate: previousOrder.deliveryDate,
+        lastDeliveryDate: lastDeliveredOrder.deliveryDate,
       });
     }
 
     todayOrder.bottleReturns = standardBottleReturns;
 
-    await todayOrder.save();
+    await Promise.all([todayOrder.save(), lastDeliveredOrder.save()]);
 
     const cleanedBottleReturns = todayOrder.bottleReturns.map((ret) => ({
       size: ret.size,
@@ -615,8 +615,9 @@ const updateBottleReturns = async (req, res) => {
       _id: todayOrder._id,
       orderNumber: todayOrder.orderNumber,
       deliveryDate: today,
-      deliveryBoyName: previousOrder.deliveryBoy?.name,
-      customerName: previousOrder.customer?.name,
+      deliveryBoyName: lastDeliveredOrder.deliveryBoy?.name,
+      customerName: lastDeliveredOrder.customer?.name,
+      lastDeliveryDate: lastDeliveredOrder.deliveryDate,
       bottleReturns: cleanedBottleReturns,
     });
   } catch (error) {

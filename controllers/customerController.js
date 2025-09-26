@@ -261,7 +261,10 @@ const getAllCustomers = async (req, res) => {
     page = parseInt(page);
     limit = parseInt(limit);
 
-    let filter = { isDeleted: false };
+    let filter = { 
+      customerStatus : "Active",
+      isDeleted: false 
+    };
 
     if (search) {
       const searchRegex = new RegExp(search, "i");
@@ -309,7 +312,7 @@ const getAllCustomers = async (req, res) => {
 
     // Apply product size filter
     if (productSize) {
-      const productSizeRegex = new RegExp(productSize, "i");
+      const productSizeRegex = new RegExp(`^${productSize}$`, "i");
       filteredCustomers = filteredCustomers.filter((customer) => {
         return customer.products.some((product) => {
           return (
