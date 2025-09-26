@@ -228,7 +228,11 @@ const getActiveSubscriptions = async (req, res) => {
     limit = parseInt(limit);
 
     // ---- Build filter ----
-    const filter = { subscriptionStatus: "active" };
+    const filter = {
+      subscriptionStatus: "active",
+      customerStatus: "Active",
+      isDeleted: false,
+    };
 
     // 🔍 Search filter
     if (search) {
@@ -367,9 +371,8 @@ const getNewOnboardCustomers = async (req, res) => {
                 .toLowerCase()
                 .includes(productName.toLowerCase())) &&
             (!size ||
-              (p.productSize || p.product?.size || "")
-                .toLowerCase()
-                .includes(size.toLowerCase()))
+              (p.productSize || p.product?.size || "").toLowerCase() ===
+                size.toLowerCase())
         )
       );
     }
@@ -621,7 +624,6 @@ const getLowestProductSale = async (req, res) => {
     ];
 
     const result = await CustomerOrder.aggregate(pipeline);
-console.log("result", result)
     if (!result || result.length === 0) {
       return res.status(404).json({
         success: false,

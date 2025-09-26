@@ -272,12 +272,9 @@ const getBottleCountForDate = async (req, res) => {
           order.bottleReturns.forEach((returnItem) => {
             const size = returnItem.size;
             const quantity = returnItem.quantity || 0;
-
-            if (size === "1ltr") {
-              bottleReturnsCount["1ltr"] += quantity;
-            } else if (size === "1/2ltr") {
-              bottleReturnsCount["1/2ltr"] += quantity;
-            }
+            const bottles = convertSizeToBottles(size, quantity);
+            bottleReturnsCount["1ltr"] += bottles["1ltr"];
+            bottleReturnsCount["1/2ltr"] += bottles["1/2ltr"];
           });
         }
       });
@@ -363,7 +360,7 @@ const getBottleCountForDate = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Bottle count for ${targetDate.toISOString().split("T")[0]}`,
+      message: `Bottle count for ${formatDateToDDMMYYYY(targetDate)}`,
       data: {
         totalBottles: {
           issue: bottleCount.total,
@@ -477,7 +474,12 @@ const getAllBottleTrackingOrders = async (req, res) => {
 
     if (regexSize) {
       let productMatch = {};
-      productMatch["products.productSize"] = regexSize;
+      // Create a more precise regex that matches exact bottle sizes
+      const exactSizeRegex = new RegExp(
+        `^${size.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+        "i"
+      );
+      productMatch["products.productSize"] = exactSizeRegex;
 
       pipeline.push({ $match: productMatch });
     }
